@@ -77,6 +77,11 @@ message("OpenCV_LIBS:" ${OpenCV_LIBS})
 find_package(Ceres REQUIRED)
 set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${CERES_LIBRARIES})
 message("CERES_LIBRARIES:" ${CERES_LIBRARIES})
+find_package(GTest REQUIRED)
+set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${GTEST_INCLUDE_DIRS})
+set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${GTEST_LIBRARIES})
+message("GTEST_INCLUDE_DIRS:" ${GTEST_INCLUDE_DIRS})
+message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
 
 # add ros
 find_package(catkin REQUIRED COMPONENTS
@@ -107,3 +112,9 @@ camera_model/stereo_camera.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
+add_executable(cppt_test
+test/cppt_test.cpp
+camera_model/pinhole_camera_test.cpp
+camera_model/stereo_camera_test.cpp
+)
+target_link_libraries(cppt_test cppt_modules)
