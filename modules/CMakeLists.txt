@@ -102,6 +102,8 @@ ${PROJECT_SOURCE_DIR}
 
 add_library(cppt_modules SHARED
 camera_model/camera.cpp
+camera_model/pinhole_camera.cpp
+camera_model/stereo_camera.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
