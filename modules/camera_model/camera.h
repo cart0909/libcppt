@@ -1,8 +1,11 @@
 #pragma once
 #include <memory>
+#include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
+#include "basic_datatype/basic_sensor.h"
 
-class CameraBase {
+class CameraBase : public SensorBase
+{
 public:
     enum ModelType {
         PINHOLE,
@@ -10,10 +13,12 @@ public:
     };
 
     CameraBase();
+    CameraBase(ModelType model_type, const std::string& camera_name, int num_intrinsics,
+               int image_width, int image_height);
     virtual ~CameraBase();
 
-    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p) = 0;
-    virtual void BackProject(const Eigen::Vector2d& p , Eigen::Vector3d& P) = 0;
+    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p) const = 0;
+    virtual void BackProject(const Eigen::Vector2d& p , Eigen::Vector3d& P) const = 0;
 
     ModelType mModelType;
     std::string mCameraName;
