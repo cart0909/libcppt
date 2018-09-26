@@ -100,9 +100,8 @@ ${THRID_PARTY_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}
 )
 
-add_executable(cppt_modules
-a.cpp
+add_library(cppt_modules SHARED
+camera_model/camera.cpp
 )
-
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
