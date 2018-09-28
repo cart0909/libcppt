@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.11)
-project(cppt_modules)
+project(cppt_player)
 
 # Cross Compile
 if ("$ENV{CROSS_COMPILE_FLAG}" STREQUAL "XU4")
@@ -61,62 +61,31 @@ endif()
 # Debug / Release / RelWithDebInfo
 set(CMAKE_BUILD_TYPE Release)
 
-# Thirdparty dependencies
-# If CFG_VIEW is turned on, need to install glut (freeglut3-dev) and glew (libglew-dev)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/../cmake")
-
-# add 3rd party
-find_package(Eigen3 3.3.5 REQUIRED)
-set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
-message("EIGEN3_INCLUDE_DIR:" ${EIGEN3_INCLUDE_DIR})
-find_package(OpenCV 3.4.3 REQUIRED)
-set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
-set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${OpenCV_LIBS})
-message("OpenCV_INCLUDE_DIRS:" ${OpenCV_INCLUDE_DIRS})
-message("OpenCV_LIBS:" ${OpenCV_LIBS})
-find_package(Ceres REQUIRED)
-set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${CERES_LIBRARIES})
-message("CERES_LIBRARIES:" ${CERES_LIBRARIES})
-find_package(GTest REQUIRED)
-set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${GTEST_INCLUDE_DIRS})
-set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${GTEST_LIBRARIES})
-message("GTEST_INCLUDE_DIRS:" ${GTEST_INCLUDE_DIRS})
-message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
-
 # add ros
 find_package(catkin REQUIRED COMPONENTS
 roscpp
 roslib
 cmake_modules
+std_msgs
+visualization_msgs
+nav_msgs
+sensor_msgs
+image_transport
+cv_bridge
+tf
+cppt_modules
+)
+catkin_package()
+
+include_directories(${catkin_INCLUDE_DIRS})
+include_directories(src)
+
+add_executable(cppt_player
+player_node.cpp
 )
 
-set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
-
-catkin_package(
-DEPENDS
-CATKIN_DEPENDS roscpp roslib
-INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
-LIBRARIES cppt_modules
+target_link_libraries(cppt_player
+${catkin_LIBRARIES}
 )
 
-# include
-include_directories(
-${THRID_PARTY_INCLUDE_DIRS}
-${PROJECT_SOURCE_DIR}
-)
 
-add_library(cppt_modules SHARED
-camera_model/camera.cpp
-camera_model/pinhole_camera.cpp
-camera_model/stereo_camera.cpp
-front_end/image_processor.cpp
-front_end/frontend_config.cpp
-)
-target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
-
-add_executable(cppt_test
-test/cppt_test.cpp
-camera_model/pinhole_camera_test.cpp
-camera_model/stereo_camera_test.cpp
-)
-target_link_libraries(cppt_test cppt_modules)
