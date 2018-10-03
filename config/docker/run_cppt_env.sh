@@ -13,7 +13,12 @@ then
     chmod a+r $XAUTH
 fi
 
-docker run -it \
+docker run \
+    --privileged \
+    -v /home/carl_liu/datasets:/datasets \
+    -v /home/carl_liu/docker_ws:/catkin_ws \
+    -v /sys/kernel/debug:/sys/kernel/debug \
+    -it \
     --env="DISPLAY" \
     --env="QT_X11_NO_MITSHM=1" \
     --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
