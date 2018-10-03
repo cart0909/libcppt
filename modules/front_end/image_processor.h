@@ -14,6 +14,8 @@ public:
     void ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, double timestamp,
                     const std::vector<ImuData>& imu_data);
 
+    void RemoveOutlierFromF();
+
     void SetMask();
 
     cv::Mat mMask;
@@ -26,6 +28,8 @@ public:
     std::vector<cv::Point2f> mvLastPts, mvCurPts;
     std::vector<cv::Point2f> mvLastPtsR, mvCurPtsR;
     std::vector<int> mvTrackCnt;
+    std::vector<uint64_t> mvIds;
+    uint64_t mNextPtId;
 
     StereoCameraPtr mpStereoCam;
 };
