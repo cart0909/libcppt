@@ -6,7 +6,7 @@ StereoCamera::StereoCamera(const ImuSensorPtr& imu_sensor,
              const PinholeCameraPtr& right_cam)
     : mpImuSensor(imu_sensor), mpCamera{left_cam, right_cam}
 {
-    ROS_ASSERT(mpCamera[0] && mpCamera[1])
+    ROS_ASSERT(mpCamera[0] && mpCamera[1]);
     if(mpImuSensor)
         mbNoImuSensor = false;
     else

@@ -1,7 +1,9 @@
 #include <queue>
 #include <thread>
 #include <condition_variable>
+#include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
+#include <opencv2/core/eigen.hpp>
 #include <ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 #include <message_filters/subscriber.h>
@@ -30,7 +32,48 @@ public:
         fs["imu_topic"] >> imu_topic;
         fs["image_topic"] >> img_topic[0];
         fs["image_r_topic"] >> img_topic[1];
-        std::cout << imu_topic << std::endl;
+
+        double  acc_n, gyr_n, acc_w, gyr_w;
+        acc_n = fs["acc_n"];
+        gyr_n = fs["gyr_n"];
+        acc_w = fs["acc_w"];
+        gyr_w = fs["gyr_w"];
+
+        cv::Mat Tbs;
+        fs["T_BI"] >> Tbs;
+        Eigen::Matrix4d eTbs;
+        cv::cv2eigen(Tbs, eTbs);
+        ImuSensorPtr imu(new ImuSensor(gyr_n, acc_n, gyr_w, acc_w));
+        imu->mTbs = Sophus::SE3d(eTbs);
+
+        int image_width, image_height;
+        image_width = fs["image_width"];
+        image_height = fs["image_height"];
+
+        std::vector<double> intrinsic;
+        std::vector<double> distortion;
+        fs["intrinsics0"] >> intrinsic;
+        fs["distortion_coefficients0"] >> distortion;
+        fs["T_BC0"] >> Tbs;
+        cv::cv2eigen(Tbs, eTbs);
+        PinholeCameraPtr cam[2];
+
+        cam[0] = PinholeCameraPtr(new PinholeCamera("cam0", image_width, image_height, intrinsic[0],
+                                  intrinsic[1], intrinsic[2], intrinsic[3], distortion[0], distortion[1],
+                                  distortion[2], distortion[3]));
+        cam[0]->mTbs = Sophus::SE3d(eTbs);
+
+        fs["intrinsics1"] >> intrinsic;
+        fs["distortion_coefficients1"] >> distortion;
+        fs["T_BC1"] >> Tbs;
+        cv::cv2eigen(Tbs, eTbs);
+        cam[1] = PinholeCameraPtr(new PinholeCamera("cam0", image_width, image_height, intrinsic[0],
+                                  intrinsic[1], intrinsic[2], intrinsic[3], distortion[0], distortion[1],
+                                  distortion[2], distortion[3]));
+        cam[1]->mTbs = Sophus::SE3d(eTbs);
+
+        StereoCameraPtr scam(new StereoCamera(imu, cam[0], cam[1]));
+        image_proc.mpStereoCam = scam;
         fs.release();
     }
 
@@ -101,8 +144,8 @@ public:
                 double timestamp = img_msg->header.stamp.toSec();
 
                 cv::Mat img_left, img_right;
-                img_left = cv_bridge::toCvShare(img_msg, "mono8")->image;
-                img_right = cv_bridge::toCvShare(img_msg_right, "mono8")->image;
+                img_left = cv_bridge::toCvCopy(img_msg, "mono8")->image;
+                img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
 
                 image_proc.ReadStereo(img_left, img_right, timestamp);
             }
