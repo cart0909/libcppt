@@ -91,6 +91,7 @@ cmake_modules
 )
 
 set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
+set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${catkin_LIBRARIES})
 
 catkin_package(
 DEPENDS

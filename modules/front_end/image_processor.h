@@ -15,18 +15,22 @@ public:
                     const std::vector<ImuData>& imu_data);
 
     void RemoveOutlierFromF();
+    void CheckStereoConstrain();
 
     void SetMask();
 
     cv::Mat mMask;
 //    bool mbFirstImage = true;
-    std::vector<cv::Mat> mvCurImagePyramid, mvCurImagePyramidR;
-    std::vector<cv::Mat> mvLastImagePyramid, mvLastImagePyramidR;
+    cv::Mat mCurImage, mCurImageR;
+    cv::Mat mLastImage, mLastImageR;
     std::vector<cv::Point2f> mvNewPts;
 
     // size all same
     std::vector<cv::Point2f> mvLastPts, mvCurPts;
-    std::vector<cv::Point2f> mvLastPtsR, mvCurPtsR;
+    std::vector<cv::Point2f> mvLastUnPts, mvCurUnPts;
+    std::vector<cv::Point2f> mvCurPtsR;
+    int mNumStereo;
+    std::vector<uchar> mvIsStereo;
     std::vector<int> mvTrackCnt;
     std::vector<uint64_t> mvIds;
     uint64_t mNextPtId;

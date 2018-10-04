@@ -17,6 +17,8 @@ class ImuSensor : public SensorBase
 {
 public:
     ImuSensor() {}
+    ImuSensor(double gn, double an, double gbn, double abn)
+        :gyro_noise(gn), acc_noise(an), gyro_bias_noise(gbn), acc_bias_noise(abn) {}
     virtual ~ImuSensor() {}
 
     // Process noise
