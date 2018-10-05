@@ -94,7 +94,7 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
             }
         }
         // check epipolar constrain
-//        CheckStereoConstrain();
+        CheckStereoConstrain();
     }
 
     // update states
@@ -201,34 +201,26 @@ void ImageProcessor::RemoveOutlierFromF() {
 }
 
 void ImageProcessor::CheckStereoConstrain() {
-    // FIXME
-    if(mNumStereo > 8) {
-        std::vector<cv::Point2d> un_cur_pts, un_cur_pts_r;
-        std::vector<size_t> cur_pts_index;
-        auto right_cam = mpStereoCam->mpCamera[1];
-        double fx = right_cam->fx;
-        double fy = right_cam->fy;
-        double cx = right_cam->cx;
-        double cy = right_cam->cy;
-        for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
-            if(mvIsStereo[i]) {
-                Eigen::Vector3d tmp_p;
-                right_cam->BackProject(Eigen::Vector2d(mvCurPtsR[i].x, mvCurPtsR[i].y), tmp_p);
-                tmp_p.x() = fx * tmp_p.x() / tmp_p.z() + cx;
-                tmp_p.y() = fy * tmp_p.y() / tmp_p.z() + cy;
+    auto right_cam = mpStereoCam->mpCamera[1];
+    double fx = right_cam->fx;
+    double fy = right_cam->fy;
+    double cx = right_cam->cx;
+    double cy = right_cam->cy;
+    for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
+        if(mvIsStereo[i]) {
+            Eigen::Vector3d xr, xl;
+            right_cam->BackProject(Eigen::Vector2d(mvCurPtsR[i].x, mvCurPtsR[i].y), xr);
+            xr /= xr.z();
+            xr.x() = fx * xr.x() + cx;
+            xr.y() = fy * xr.y() + cy;
 
-                cur_pts_index.emplace_back(i);
-                un_cur_pts.emplace_back(mvCurUnPts[i]);
-                un_cur_pts_r.emplace_back(tmp_p.x(), tmp_p.y());
-            }
-        }
+            xl << mvCurUnPts[i].x, mvCurUnPts[i].y, 1;
 
-        std::vector<uchar> status;
-        cv::findFundamentalMat(un_cur_pts, un_cur_pts_r, cv::FM_RANSAC, F_THRESHOLD, 0.99, status);
-        for(int i = 0, n = un_cur_pts.size(); i < n; ++i) {
-            if(status[i] == 0) {
-                size_t index = cur_pts_index[i];
-                mvIsStereo[index] = 0;
+            Eigen::Matrix<double, 1, 3> lt = xr.transpose() * mpStereoCam->mF;
+            double dist_epipolar = std::abs(lt * xl) / lt.block<1,2>(0, 0).norm();
+
+            if(dist_epipolar >= F_THRESHOLD) {
+                mvIsStereo[i] = 0;
             }
         }
     }

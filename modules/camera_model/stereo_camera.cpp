@@ -19,4 +19,12 @@ StereoCamera::StereoCamera(const ImuSensorPtr& imu_sensor,
     mTij[I_RC][I_IMU] = mTij[I_IMU][I_RC].inverse();
     mTij[I_LC][I_RC] = mpCamera[I_LC]->mTbs.inverse() *  mpCamera[I_RC]->mTbs;
     mTij[I_RC][I_LC] = mTij[I_LC][I_RC].inverse();
+
+    Eigen::Matrix3d Rrl = mTij[I_RC][I_LC].rotationMatrix();
+    Eigen::Matrix3d trl_hat = Sophus::SO3d::hat(mTij[I_RC][I_LC].translation());
+    mE = Rrl * trl_hat;
+    mE /= mE(2, 2);
+
+    mF = mpCamera[I_RC]->K.transpose().inverse() * mE * mpCamera[I_LC]->K.inverse();
+    mF /= mF(2, 2);
 }

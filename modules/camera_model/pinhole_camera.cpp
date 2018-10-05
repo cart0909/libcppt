@@ -19,6 +19,10 @@ PinholeCamera::PinholeCamera(const std::string& camera_name, int image_width, in
     inv_K02 = -cx / fx;
     inv_K11 = 1.0 / fy;
     inv_K12 = -cy / fy;
+
+    K << fx, 0, cx,
+            0, fy, cy,
+            0, 0, 1;
 }
 
 void PinholeCamera::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p) const {

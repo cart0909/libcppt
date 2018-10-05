@@ -31,6 +31,8 @@ public:
     double inv_K11;
     double inv_K02;
     double inv_K12;
+
+    Eigen::Matrix3d K; // camera matrix
 };
 
 using PinholeCameraPtr = std::shared_ptr<PinholeCamera>;

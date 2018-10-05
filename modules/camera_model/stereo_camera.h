@@ -18,6 +18,9 @@ public:
     PinholeCameraPtr mpCamera[2];
     Sophus::SE3d mTij[NUM_OF_SENSOR][NUM_OF_SENSOR];
     bool mbNoImuSensor;
+
+    Eigen::Matrix3d mE; // essential matrix yl' * E * yr = 0
+    Eigen::Matrix3d mF; // fundamental matrix xl' * F * xr = 0
 };
 
 using StereoCameraPtr = std::shared_ptr<StereoCamera>;
