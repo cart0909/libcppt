@@ -1,4 +1,4 @@
-#include "image_processor.h"
+﻿#include "image_processor.h"
 #include "basic_datatype/tic_toc.h"
 #include <ros/ros.h>
 
@@ -113,20 +113,23 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
     for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
         if(mvTrackCnt[i] < 0) {
             cv::circle(result, mvCurPts[i], 3, cv::Scalar(255, 0, 0), -1);
-            if(mvIsStereo[i])
-                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(255, 0, 0), -1);
         }
         else if(mvTrackCnt[i] >= max_count) {
             cv::circle(result, mvCurPts[i], 3, cv::Scalar(0, 0, 255), -1);
-            if(mvIsStereo[i])
-                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(0, 0, 255), -1);
         }
         else {
             cv::circle(result, mvCurPts[i], 3, cv::Scalar(255 - each_step * mvTrackCnt[i], 0,
                                                           each_step * mvTrackCnt[i]), -1);
-            if(mvIsStereo[i])
-                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(255 - each_step * mvTrackCnt[i], 0,
-                                                                 each_step * mvTrackCnt[i]), -1);
+        }
+
+        if(mvIsStereo[i]) {
+            if(mvInvDepth[i] < 0.5) {
+                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(255 - 255.0 * 2 * mvInvDepth[i], 0,
+                                                                 255.0 * 2 * mvInvDepth[i]), -1);
+            }
+            else {
+                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(0, 0, 255), -1);
+            }
         }
     }
 
@@ -201,27 +204,42 @@ void ImageProcessor::RemoveOutlierFromF() {
 }
 
 void ImageProcessor::CheckStereoConstrain() {
+    auto left_cam = mpStereoCam->mpCamera[0];
     auto right_cam = mpStereoCam->mpCamera[1];
     double fx = right_cam->fx;
     double fy = right_cam->fy;
     double cx = right_cam->cx;
     double cy = right_cam->cy;
+
+    mvInvDepth.resize(mvCurPts.size(), -1);
     for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
         if(mvIsStereo[i]) {
+            Eigen::Vector3d ray_ll, ray_rr;
             Eigen::Vector3d xr, xl;
-            right_cam->BackProject(Eigen::Vector2d(mvCurPtsR[i].x, mvCurPtsR[i].y), xr);
-            xr /= xr.z();
-            xr.x() = fx * xr.x() + cx;
-            xr.y() = fy * xr.y() + cy;
-
+            right_cam->BackProject(Eigen::Vector2d(mvCurPtsR[i].x, mvCurPtsR[i].y), ray_rr);
+            ray_rr /= ray_rr.z();
+            xr << fx * ray_rr.x() + cx, fy * ray_rr.y() + cy, 1;
             xl << mvCurUnPts[i].x, mvCurUnPts[i].y, 1;
 
             Eigen::Matrix<double, 1, 3> lt = xr.transpose() * mpStereoCam->mF;
             double dist_epipolar = std::abs(lt * xl) / lt.block<1,2>(0, 0).norm();
 
+            // check epipolar constrain
             if(dist_epipolar >= F_THRESHOLD) {
                 mvIsStereo[i] = 0;
             }
+
+            // check depth must >= min_depth
+            ray_ll << mvCurUnPts[i].x * left_cam->inv_K00 + left_cam->inv_K02,
+                    mvCurUnPts[i].y * left_cam->inv_K11 + left_cam->inv_K12, 1;
+
+            Eigen::Vector3d x3Dl = mpStereoCam->Triangulate(ray_ll, ray_rr);
+
+            if(x3Dl(2) < STEREO_MIN_DEPTH) {
+                mvIsStereo[i] = 0;
+            }
+
+            mvInvDepth[i] = 1.0/x3Dl(2);
         }
     }
 }

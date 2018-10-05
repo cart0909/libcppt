@@ -97,3 +97,44 @@ TEST(stereo_camera, extrinsic) {
         }
     }
 }
+
+TEST(stereo_camera, triangulate) {
+    T_BC0 << 0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
+                           0.999557249008, 0.0149672133247, 0.025715529948, -0.064676986768,
+                          -0.0257744366974, 0.00375618835797, 0.999660727178, 0.00981073058949,
+                           0.0, 0.0, 0.0, 1.0;
+
+    T_BC1 << 0.0125552670891, -0.999755099723, 0.0182237714554, -0.0198435579556,
+                           0.999598781151, 0.0130119051815, 0.0251588363115, 0.0453689425024,
+                          -0.0253898008918, 0.0179005838253, 0.999517347078, 0.00786212447038,
+                           0.0, 0.0, 0.0, 1.0;
+
+    PinholeCameraPtr left_cam(new PinholeCamera("L", image_width, image_height, fx, fy, cx, cy, k1, k2, p1, p2));
+    PinholeCameraPtr right_cam(new PinholeCamera("R", image_width, image_height, fx_r, fy_r, cx_r, cy_r,
+                                                 k1_r, k2_r, p1_r, p2_r));
+    ImuSensorPtr imu(new ImuSensor());
+
+    left_cam->mTbs = Sophus::SE3d(T_BC0);
+    right_cam->mTbs = Sophus::SE3d(T_BC1);
+
+    StereoCameraPtr stereo(new StereoCamera(imu, left_cam, right_cam));
+
+    Eigen::Vector3d Xl, Xr;
+    Xl << -0.281348,
+          0.321307,
+           0.57979;
+
+    Xr = stereo->mTij[1][0].rotationMatrix() * Xl + stereo->mTij[1][0].translation();
+
+    Eigen::Vector2d x, xr;
+    stereo->mpCamera[0]->Project(Xl, x);
+    stereo->mpCamera[1]->Project(Xr, xr);
+
+    Eigen::Vector3d ray_ll, ray_rr;
+    stereo->mpCamera[0]->BackProject(x, ray_ll);
+    stereo->mpCamera[1]->BackProject(xr, ray_rr);
+    Eigen::Vector3d tXl = stereo->Triangulate(ray_ll, ray_rr);
+
+    for(int i = 0; i < 3; ++i)
+        EXPECT_FLOAT_EQ(Xl(i), tXl(i));
+}
