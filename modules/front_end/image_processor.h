@@ -33,6 +33,7 @@ public:
     std::vector<uchar> mvIsStereo;
     std::vector<int> mvTrackCnt;
     std::vector<uint64_t> mvIds;
+    std::vector<double> mvInvDepth;
     uint64_t mNextPtId;
 
     StereoCameraPtr mpStereoCam;

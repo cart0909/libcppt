@@ -14,6 +14,9 @@ public:
                  const PinholeCameraPtr& left_cam,
                  const PinholeCameraPtr& right_cam);
 
+    Eigen::Vector3d Triangulate(const Eigen::Vector3d& ray_ll,
+                                const Eigen::Vector3d& ray_rr);
+
     ImuSensorPtr mpImuSensor;
     PinholeCameraPtr mpCamera[2];
     Sophus::SE3d mTij[NUM_OF_SENSOR][NUM_OF_SENSOR];
