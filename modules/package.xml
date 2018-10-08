@@ -21,4 +21,6 @@
 
   <build_depend>roslib</build_depend>
   <run_depend>roslib</run_depend>
+
+  <build_depend>systrace</build_depend>
 </package>

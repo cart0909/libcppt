@@ -88,6 +88,7 @@ find_package(catkin REQUIRED COMPONENTS
 roscpp
 roslib
 cmake_modules
+systrace
 )
 
 set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
@@ -112,6 +113,8 @@ camera_model/pinhole_camera.cpp
 camera_model/stereo_camera.cpp
 front_end/image_processor.cpp
 front_end/frontend_config.cpp
+back_end/msckf.cpp
+back_end/imu_state.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
