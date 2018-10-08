@@ -1,5 +1,6 @@
 ﻿#include "image_processor.h"
 #include "basic_datatype/tic_toc.h"
+#include "tracer.h"
 #include <ros/ros.h>
 
 bool InBorder(const cv::Point2f &pt)
@@ -29,12 +30,12 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
     mCurImageR = imRight;
 
     if(!mvLastPts.empty()) {
+        ScopedTrace st("TrackLF");
         std::vector<uchar> status;
         std::vector<float> err;
         // optical flow
         cv::calcOpticalFlowPyrLK(mLastImage, mCurImage, mvLastPts, mvCurPts, status,
                                  err, cv::Size(21, 21), 3);
-
         for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
             if(status[i] && !InBorder(mvCurPts[i]))
                 status[i] = 0;
@@ -53,11 +54,12 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
             mvTrackCnt[i] += 1;
     }
 
-    // set mask avoiding new feature points close to old points
-    SetMask();
-
     // detect new
     if(mvCurPts.size() < MAX_CNT) {
+        // set mask avoiding new feature points close to old points
+        SetMask();
+
+        ScopedTrace st("GFTT");
         cv::goodFeaturesToTrack(mCurImage, mvNewPts, MAX_CNT - mvCurPts.size(),
                                 0.01, MIN_DIST, mMask);
         auto left_cam = mpStereoCam->mpCamera[0];
@@ -80,6 +82,7 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
 
     // stereo matching
     {
+        ScopedTrace st("SM");
         std::vector<float> err;
         // optical flow
         cv::calcOpticalFlowPyrLK(mCurImage, mCurImageR, mvCurPts, mvCurPtsR, mvIsStereo,
@@ -104,7 +107,7 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
     mLastImageR = mCurImageR;
 
     ROS_DEBUG_STREAM("ImageProcess cost " << tic.toc());
-
+    ScopedTrace st("show");
     cv::Mat result, result_r;
     cv::cvtColor(mCurImage, result, CV_GRAY2BGR);
     cv::cvtColor(mCurImageR, result_r, CV_GRAY2BGR);
@@ -146,7 +149,7 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
 void ImageProcessor::SetMask() {
     if(mvCurPts.empty())
         return;
-
+    ScopedTrace st("mask");
     mMask = cv::Mat(ROW, COL, CV_8U, cv::Scalar(255));
 
     // Prefer to keep features that are tracked for long time
