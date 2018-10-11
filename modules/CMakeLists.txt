@@ -108,6 +108,7 @@ ${PROJECT_SOURCE_DIR}
 )
 
 add_library(cppt_modules SHARED
+basic_datatype/so3_extent.cpp
 camera_model/camera.cpp
 camera_model/pinhole_camera.cpp
 camera_model/stereo_camera.cpp
@@ -115,6 +116,7 @@ front_end/image_processor.cpp
 front_end/frontend_config.cpp
 back_end/msckf.cpp
 back_end/imu_state.cpp
+back_end/imu_preintegration.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
