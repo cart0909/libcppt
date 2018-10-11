@@ -8,10 +8,16 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     ImuPreintegration();
+    ImuPreintegration(const Eigen::Vector3d& bg, const Eigen::Vector3d& ba,
+                      const Eigen::Matrix<double, 6, 6>& noise_cov);
     ~ImuPreintegration();
 
+    void Clear();
     void push_back(double dt, const Eigen::Vector3d& meas_gyr,
                    const Eigen::Vector3d& meas_acc);
+    void Propagate(double dt, const Eigen::Vector3d& meas_gyr,
+                   const Eigen::Vector3d& meas_acc);
+    void Repropagate(const Eigen::Vector3d& bg, const Eigen::Vector3d& ba);
 
     std::vector<double> mvdt;
     std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > mvMeasGyr;
@@ -33,4 +39,6 @@ public:
     Eigen::Matrix<double, 9, 9> mCovariance; // phi, v, p
 
     double mdel_tij;
+private:
+    void Init();
 };
