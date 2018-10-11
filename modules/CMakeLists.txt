@@ -117,6 +117,7 @@ front_end/frontend_config.cpp
 back_end/msckf.cpp
 back_end/imu_state.cpp
 back_end/imu_preintegration.cpp
+back_end/sparse_img_align.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
