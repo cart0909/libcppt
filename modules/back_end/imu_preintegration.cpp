@@ -2,6 +2,30 @@
 #include "basic_datatype/so3_extent.h"
 
 ImuPreintegration::ImuPreintegration() {
+    Init();
+}
+
+ImuPreintegration::ImuPreintegration(const Eigen::Vector3d& bg, const Eigen::Vector3d& ba,
+                    const Eigen::Matrix<double, 6, 6>& noise_cov) {
+    Init();
+    mbg = bg;
+    mba = ba;
+    mGyrAccCov = noise_cov;
+}
+
+ImuPreintegration::~ImuPreintegration() {
+
+}
+
+void ImuPreintegration::Clear() {
+    mvdt.clear();
+    mvMeasGyr.clear();
+    mvMeasAcc.clear();
+    Init();
+}
+
+void ImuPreintegration::Init() {
+    mdelRij.setQuaternion(Eigen::Quaterniond(1, 0, 0, 0));
     mdelVij.setZero();
     mdelPij.setZero();
 
@@ -16,17 +40,17 @@ ImuPreintegration::ImuPreintegration() {
     mdel_tij = 0.0f;
 }
 
-ImuPreintegration::~ImuPreintegration() {
-
-}
-
 void ImuPreintegration::push_back(double dt, const Eigen::Vector3d& meas_gyr,
                                   const Eigen::Vector3d& meas_acc) {
-    double dt2 = dt * dt;
-
     mvdt.emplace_back(dt);
     mvMeasGyr.emplace_back(meas_gyr);
     mvMeasAcc.emplace_back(meas_acc);
+    Propagate(dt, meas_gyr, meas_acc);
+}
+
+void ImuPreintegration::Propagate(double dt, const Eigen::Vector3d& meas_gyr,
+                                  const Eigen::Vector3d& meas_acc) {
+    double dt2 = dt * dt;
 
     Eigen::Vector3d omega = meas_gyr - mbg;
     Eigen::Vector3d acc = meas_acc - mba;
@@ -72,4 +96,13 @@ void ImuPreintegration::push_back(double dt, const Eigen::Vector3d& meas_gyr,
     mdelRij = mdelRij * dR;
 
     mdel_tij += dt;
+}
+
+void ImuPreintegration::Repropagate(const Eigen::Vector3d& bg, const Eigen::Vector3d& ba) {
+    Init();
+    mbg = bg;
+    mba = ba;
+    for(int i = 0, n = mvdt.size(); i < n; ++i) {
+        Propagate(mvdt[i], mvMeasGyr[i], mvMeasAcc[i]);
+    }
 }
