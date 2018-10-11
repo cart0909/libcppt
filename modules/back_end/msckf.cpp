@@ -39,8 +39,29 @@ void MsckfSystem::ProcessImuData(const ImuData& imu_data) {
     Eigen::Matrix<double, 21, 21> Phi = Eigen::Matrix<double, 21, 21>::Identity() + Fdt +
             0.5*Fdt_square + (1.0/6.0)*Fdt_cube;
 
-    // PRopogate the state using 4-th order Runge-Kutta
+    // Propogate the state using 4-th order Runge-Kutta
+    PredictNewState(dtime, gyro, acc, mImuState);
 
+    // this is confuse for me
+    // Modify the transition matrix
+//    Matrix3d R_kk_1 = quaternionToRotation(imu_state.orientation_null);
+//    Phi.block<3, 3>(0, 0) =
+//      quaternionToRotation(imu_state.orientation) * R_kk_1.transpose();
+
+//    Vector3d u = R_kk_1 * IMUState::gravity;
+//    RowVector3d s = (u.transpose()*u).inverse() * u.transpose();
+
+//    Matrix3d A1 = Phi.block<3, 3>(6, 0);
+//    Vector3d w1 = skewSymmetric(
+//        imu_state.velocity_null-imu_state.velocity) * IMUState::gravity;
+//    Phi.block<3, 3>(6, 0) = A1 - (A1*u-w1)*s;
+
+//    Matrix3d A2 = Phi.block<3, 3>(12, 0);
+//    Vector3d w2 = skewSymmetric(
+//        dtime*imu_state.velocity_null+imu_state.position_null-
+//        imu_state.position) * IMUState::gravity;
+//    Phi.block<3, 3>(12, 0) = A2 - (A2*u-w2)*s;
+    // end
 }
 
 void MsckfSystem::PredictNewState(double dt, const Eigen::Vector3d& gyro,
@@ -53,7 +74,6 @@ void MsckfSystem::PredictNewState(double dt, const Eigen::Vector3d& gyro,
     Sophus::SO3d Rigdt_2 = Sophus::SO3d::exp(gyrodt_2) * imu_state.qig;
     Sophus::SO3d Rigdt_trans = Rigdt.inverse();
     Sophus::SO3d Rigdt_2_trans = Rigdt_2.inverse();
-
 
     // k1 = f(tn, yn)
     Eigen::Vector3d k1_v_dot = imu_state.qig.inverse().matrix()*acc + imu_state.g_gravity;
