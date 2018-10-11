@@ -34,20 +34,33 @@ void ImuPreintegration::push_back(double dt, const Eigen::Vector3d& meas_gyr,
     Sophus::SO3d dR = Sophus::SO3d::exp(omega*dt);
     Eigen::Matrix3d Jr = Sophus::JacobianR(omega*dt);
 
+    Eigen::Matrix3d delRij_1 = mdelRij.matrix();
+    Eigen::Matrix3d acc_hat = Sophus::SO3d::hat(acc);
+    Eigen::Matrix3d delRij_1_acc_hat = delRij_1 * acc_hat;
+
     // noise covariance propagation of delta measurements
     // paper: Supplementary Material to: IMU Preintegration on Manifold for
     // Efficient Visual-Inertial Maximum-a-Posteriori Estimation (A.8) (A.9)
     Eigen::Matrix<double, 9, 9> A_phi_v_p = Eigen::Matrix<double, 9, 9>::Identity();
-    Eigen::Matrix<double, 9, 6> B_gyr_acc = Eigen::Matrix<double, 9, 6>::Identity();
+    Eigen::Matrix<double, 9, 6> B_gyr_acc = Eigen::Matrix<double, 9, 6>::Zero();
+    A_phi_v_p.block<3, 3>(0, 0) = dR.inverse().matrix();
+    A_phi_v_p.block<3, 3>(3, 0) = - delRij_1_acc_hat * dt;
+    A_phi_v_p.block<3, 3>(6, 0) = - 0.5 * delRij_1_acc_hat * dt2;
+    A_phi_v_p.block<3, 3>(6, 3) = Eigen::Matrix3d::Identity() * dt;
+
+    B_gyr_acc.block<3, 3>(0, 0) = Jr * dt;
+    B_gyr_acc.block<3, 3>(3, 3) = delRij_1 * dt;
+    B_gyr_acc.block<3, 3>(6, 3) = 0.5 * delRij_1 * dt2;
+
+    mCovariance = A_phi_v_p * mCovariance * A_phi_v_p.transpose() +
+            B_gyr_acc * mGyrAccCov * B_gyr_acc.transpose();
 
     // jacobian of delta measurements w.r.t bias of gyro/acc
     // update P fitst, then V, then R
-    Eigen::Matrix3d delRij_1 = mdelRij.matrix();
-    Eigen::Matrix3d acc_hat = Sophus::SO3d::hat(acc);
     mJP_ba += mJV_ba * dt - 0.5 * delRij_1 * dt2;
-    mJP_bg += mJV_bg * dt - 0.5 * delRij_1 * acc_hat * mJR_bg * dt2;
+    mJP_bg += mJV_bg * dt - 0.5 * delRij_1_acc_hat * mJR_bg * dt2;
     mJV_ba += -delRij_1 * dt;
-    mJV_bg += -delRij_1 * acc_hat * mJR_bg * dt;
+    mJV_bg += -delRij_1_acc_hat * mJR_bg * dt;
     mJR_bg = dR.inverse().matrix() * mJR_bg - Jr * dt;
 
 
