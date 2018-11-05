@@ -88,6 +88,9 @@ message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
 find_package(ArrayFire REQUIRED)
 message("ArrayFire::afcuda:" ArrayFire::afcuda)
 set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ArrayFire::afcuda)
+find_package(GTSAM REQUIRED)
+set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${GTSAM_INCLUDE_DIR})
+set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} gtsam)
 
 # add ros
 find_package(catkin REQUIRED COMPONENTS
@@ -131,6 +134,7 @@ add_executable(cppt_test
 test/cppt_test.cpp
 test/openmp_test.cpp
 test/arrayfire_test.cpp
+test/gtsam_test.cpp
 camera_model/pinhole_camera_test.cpp
 camera_model/stereo_camera_test.cpp
 )
