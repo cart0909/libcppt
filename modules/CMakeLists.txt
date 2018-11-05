@@ -58,6 +58,9 @@ if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
 endif()
 
+# enable openmp flag
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+
 # Debug / Release / RelWithDebInfo
 set(CMAKE_BUILD_TYPE Release)
 
@@ -82,6 +85,9 @@ set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${GTEST_INCLUDE_DIRS})
 set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${GTEST_LIBRARIES})
 message("GTEST_INCLUDE_DIRS:" ${GTEST_INCLUDE_DIRS})
 message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
+find_package(ArrayFire REQUIRED)
+message("ArrayFire::afcuda:" ArrayFire::afcuda)
+set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ArrayFire::afcuda)
 
 # add ros
 find_package(catkin REQUIRED COMPONENTS
@@ -123,6 +129,8 @@ target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
 add_executable(cppt_test
 test/cppt_test.cpp
+test/openmp_test.cpp
+test/arrayfire_test.cpp
 camera_model/pinhole_camera_test.cpp
 camera_model/stereo_camera_test.cpp
 )
