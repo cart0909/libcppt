@@ -11,7 +11,7 @@ public:
 
     void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p) const override;
     void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p,
-                 Eigen::Matrix<double, 2, 3>& J) const;
+                 Eigen::Matrix<double, 2, 3>& J) const override;
     void BackProject(const Eigen::Vector2d& p , Eigen::Vector3d& P) const override;
 
     void Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u) const;

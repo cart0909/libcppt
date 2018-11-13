@@ -1,3 +1,4 @@
+#if 0
 #include "msckf.h"
 
 MsckfSystem::MsckfSystem() {
@@ -99,3 +100,4 @@ void MsckfSystem::PredictNewState(double dt, const Eigen::Vector3d& gyro,
     imu_state.vgi = imu_state.vgi + dt/6*(k1_v_dot + 2 * k2_v_dot + 2 * k3_v_dot + k4_v_dot);
     imu_state.pgi = imu_state.pgi + dt/6*(k1_p_dot + 2 * k2_p_dot + 2 * k3_p_dot + k4_p_dot);
 }
+#endif
