@@ -1,3 +1,4 @@
+#if 0
 #pragma once
 #include <vector>
 #include <Eigen/Dense>
@@ -31,3 +32,4 @@ public:
 
     ImuState mImuState;
 };
+#endif
