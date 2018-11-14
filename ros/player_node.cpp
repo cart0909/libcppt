@@ -11,6 +11,8 @@
 #include <sensor_msgs/Imu.h>
 #include "ros_utility.h"
 #include "front_end/image_processor.h"
+#include "front_end/utility.h"
+#include "back_end/sparse_img_align.h"
 
 using namespace std;
 using namespace message_filters;
@@ -147,7 +149,10 @@ public:
                 img_left = cv_bridge::toCvCopy(img_msg, "mono8")->image;
                 img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
 
+                cur_pyr = Utility::Pyramid(img_left, 3);
                 image_proc.ReadStereo(img_left, img_right, timestamp);
+
+                last_pyr = cur_pyr;
             }
         }
     }
@@ -163,6 +168,8 @@ public:
     thread t_system;
 
     ImageProcessor image_proc;
+    SparseImgAlign sparse_img_align;
+    ImagePyr last_pyr, cur_pyr;
 };
 
 int main(int argc, char** argv) {

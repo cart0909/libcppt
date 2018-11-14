@@ -123,6 +123,7 @@ camera_model/pinhole_camera.cpp
 camera_model/stereo_camera.cpp
 front_end/image_processor.cpp
 front_end/frontend_config.cpp
+front_end/utility.cpp
 back_end/msckf.cpp
 back_end/imu_state.cpp
 back_end/imu_preintegration.cpp
