@@ -2,6 +2,7 @@
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include "frontend_config.h"
+#include "utility.h"
 #include "basic_datatype/imu_data.h"
 #include "camera_model/stereo_camera.h"
 
@@ -34,6 +35,8 @@ public:
     std::vector<int> mvTrackCnt;
     std::vector<uint64_t> mvIds;
     std::vector<double> mvInvDepth;
+    VecVector3d mv_x3Dl;
+
     uint64_t mNextPtId;
 
     StereoCameraPtr mpStereoCam;

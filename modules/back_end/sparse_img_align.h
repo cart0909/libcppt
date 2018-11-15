@@ -4,38 +4,25 @@
 #include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 #include <sophus/se3.hpp>
+#include "front_end/utility.h"
 #include "camera_model/pinhole_camera.h"
-#include "ceres/intensity_factor.h"
+#include "sparse_img_align_impl.h"
 
 // From SVO SparseImgAlign
 class SparseImgAlign {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    using ImagePyr = std::vector<cv::Mat>;
-    using VecVector2d = std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>;
-    using VecVector3d = std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>;
-    SparseImgAlign(int max_iter = 10, int max_level = 2, int min_level = 0)
-        : mMaxLevel(max_level), mMinLevel(min_level), mMaxIter(max_iter) {}
-    ~SparseImgAlign() {}
+    SparseImgAlign(PinholeCameraPtr camera, int max_iter = 10, int max_level = 2, int min_level = 0);
+    ~SparseImgAlign();
 
-    void SetState(const ImagePyr& ref_img_pyr, const ImagePyr& cur_img_pyr,
-                  const VecVector2d& ref_pts, const VecVector3d& ref_mps,
-                  const Sophus::SE3d& predict_Tcr);
-    bool Run(Sophus::SE3d& Tcr);
+    Sophus::SE3d Run(const ImagePyr& img_ref_pyr, const ImagePyr& img_cur_pyr,
+                     const VecVector2d& ref_pts, const VecVector3d& ref_mps,
+                     const Sophus::SE3d& init_Tcr);
 
-    ImagePyr mvRefImgPyr;
-    ImagePyr mvCurImgPyr;
-    VecVector2d mvRefPts;
-    VecVector3d mvRefMps; // x3Dw
-    Sophus::SE3d mTrw;
-    Sophus::SE3d mTcr;
-
+private:
     int mMaxLevel; // coarsest pyramid level for the alignment.
     int mMinLevel; // finest pyramid level for the alignment.
-    int mCurLevel;
-
-    int mMaxIter; // 10?
-    PinholeCameraPtr mpCamera;
+    SparseImgAlignImplPtr impl;
 };
 
 using SparseImgAlignPtr = std::shared_ptr<SparseImgAlign>;

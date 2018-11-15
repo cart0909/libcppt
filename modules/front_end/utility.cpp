@@ -8,7 +8,7 @@ ImagePyr Pyramid(const cv::Mat& img, int num_levels) {
     image_pyr[0] = img;
 
     for(int i = 1; i < num_levels; ++i) {
-        cv::resize(image_pyr[0], image_pyr[1], image_pyr[0].size()/2);
+        cv::resize(image_pyr[i-1], image_pyr[i], image_pyr[i-1].size()/2);
     }
     return image_pyr;
 }

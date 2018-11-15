@@ -1,43 +1,25 @@
 #include "sparse_img_align.h"
+#include <ros/ros.h>
 
-void SparseImgAlign::SetState(const ImagePyr& ref_img_pyr, const ImagePyr& cur_img_pyr,
-                              const VecVector2d& ref_pts, const VecVector3d& ref_mps,
-                              const Sophus::SE3d& predict_Tcr) {
-    mvRefImgPyr = ref_img_pyr;
-    mvCurImgPyr = cur_img_pyr;
-    mvRefPts = ref_pts;
-    mvRefMps = ref_mps;
-    mTcr = predict_Tcr;
+SparseImgAlign::SparseImgAlign(PinholeCameraPtr camera, int max_iter, int max_level, int min_level)
+    : mMaxLevel(max_level), mMinLevel(min_level)
+{
+    impl = SparseImgAlignImplPtr(new SparseImgAlignImpl(camera, max_iter));
 }
 
-bool SparseImgAlign::Run(Sophus::SE3d& Tcr) {
-    double *Tcr_ptr = mTcr.data();
-    for(mCurLevel = mMaxLevel; mCurLevel >= mMinLevel; --mCurLevel) {
-        cv::Mat ref_img = mvRefImgPyr[mCurLevel];
-        cv::Mat cur_img = mvCurImgPyr[mCurLevel];
-        ceres::Problem problem;
-        ceres::LocalParameterization* vertex_se3 = Sophus::VertexSE3::Create(false, true);
-        problem.AddParameterBlock(Tcr_ptr, Sophus::SE3d::num_parameters, vertex_se3);
+SparseImgAlign::~SparseImgAlign() {
 
-        for(int i = 0, n = mvRefPts.size(); i < n; ++i) {
-            const auto& x3Dw = mvRefMps[i];
-            const auto& uv_r = mvRefPts[i];
-            Eigen::Vector3d x3Dr = mTrw * x3Dw;
+}
 
-            auto intensity_factor = new IntensityFactor(mpCamera, ref_img, cur_img, x3Dr,
-                                                        uv_r, mCurLevel);
-            problem.AddResidualBlock(intensity_factor, NULL, Tcr_ptr);
-        }
-
-        ceres::Solver::Options options;
-        options.max_num_iterations = mMaxIter;
-        options.linear_solver_type = ceres::DENSE_QR;
-        options.trust_region_strategy_type = ceres::DOGLEG;
-
-        ceres::Solver::Summary summary;
-        ceres::Solve(options, &problem, &summary);
-        summary.BriefReport();
+Sophus::SE3d SparseImgAlign::Run(const ImagePyr& img_ref_pyr, const ImagePyr& img_cur_pyr,
+                                 const VecVector2d& ref_pts, const VecVector3d& ref_mps,
+                                 const Sophus::SE3d& init_Tcr)
+{
+    Sophus::SE3f Tcr = init_Tcr.cast<float>();
+    for(int i = mMaxLevel; mMaxLevel >= mMinLevel; --i) {
+        auto& img_ref = img_ref_pyr[i];
+        auto& img_cur = img_cur_pyr[i];
+        impl->Run(i, img_ref, img_cur, ref_pts, ref_mps, Tcr);
     }
-    Tcr = mTcr;
-    return true;
+    return Tcr.cast<double>();
 }

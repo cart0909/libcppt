@@ -1,20 +1,20 @@
 #include "intensity_factor.h"
-
+#include <ros/ros.h>
 const int IntensityFactor::patch_halfsize = 2;
 const int IntensityFactor::patch_size = 2 * IntensityFactor::patch_halfsize;
 const int IntensityFactor::patch_area = IntensityFactor::patch_area * IntensityFactor::patch_area;
 
 IntensityFactor::IntensityFactor(PinholeCameraConstPtr camera, const cv::Mat& img_ref,
                 const cv::Mat& img_cur, const Eigen::Vector3d& _x3Dr,
-                const Eigen::Vector2d& uv_r,
+                const Eigen::Vector2d& uv_r_,
                 int level)
-: mLevel(level), x3Dr(_x3Dr), mImgRef(img_ref), mImgCur(img_cur), mpCamera(camera)
+: mLevel(level), x3Dr(_x3Dr), uv_r(uv_r_), mImgRef(img_ref), mImgCur(img_cur), mpCamera(camera)
 {
-    const int border = patch_halfsize + 1;
-    if(uv_r(0) - border < 0 || uv_r(1) - border < 0 || uv_r(0) + border >= img_ref.cols ||
-            uv_r(1) + border >= img_ref.rows)
-        assert(0);
 
+}
+
+bool IntensityFactor::Init() {
+    const int border = patch_halfsize + 1;
     const int stride = mImgRef.cols; // mImgRef.step / 1
     const double scale = 1.0f / (1 << mLevel);
     const double u_ref = uv_r(0) * scale;
@@ -22,9 +22,13 @@ IntensityFactor::IntensityFactor(PinholeCameraConstPtr camera, const cv::Mat& im
     const int u_ref_i = std::floor(u_ref);
     const int v_ref_i = std::floor(v_ref);
 
+    if(u_ref_i - border < 0 || v_ref_i - border < 0 || u_ref_i + border >= mImgRef.cols ||
+            v_ref_i + border >= mImgRef.rows)
+        return false;
+
     Eigen::Matrix<double, 2, 3> proj_jac;
     Eigen::Vector2d uv_proj;
-    camera->Project(x3Dr, uv_proj, proj_jac);
+    mpCamera->Project(x3Dr, uv_proj, proj_jac);
     Eigen::Matrix<double, 3, 6> frame_jac;
     frame_jac << Eigen::Matrix3d::Identity(), -Sophus::SO3d::hat(x3Dr);
     Eigen::Matrix<double, 2, 6> proj_frame_jac = proj_jac * frame_jac;
@@ -62,6 +66,8 @@ IntensityFactor::IntensityFactor(PinholeCameraConstPtr camera, const cv::Mat& im
                     (dx * proj_frame_jac.row(0) + dy * proj_frame_jac.row(1)) * scale;
         }
     }
+
+    return true;
 }
 
 bool IntensityFactor::Evaluate(double const* const* parameters_raw,
@@ -105,7 +111,7 @@ bool IntensityFactor::Evaluate(double const* const* parameters_raw,
 
     if(jacobian_raw && jacobian_raw[0]) {
         Eigen::Map<Eigen::Matrix<double, 16, 7, Eigen::RowMajor>> jacobian(jacobian_raw[0]);
-        jacobian.block<16, 1>(15, 0).setZero();
+        jacobian.block<16, 1>(0, 6).setZero();
         jacobian.block<16, 6>(0, 0) = mJacobian;
     }
 

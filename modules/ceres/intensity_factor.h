@@ -13,6 +13,8 @@ public:
                     int level);
 
     ~IntensityFactor() {}
+
+    bool Init();
     virtual bool Evaluate(double const* const* parameters_raw,
                           double* residuals_raw, double** jacobian_raw) const;
 

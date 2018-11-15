@@ -107,38 +107,38 @@ void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, d
     mLastImageR = mCurImageR;
 
     ROS_DEBUG_STREAM("ImageProcess cost " << tic.toc());
-    ScopedTrace st("show");
-    cv::Mat result, result_r;
-    cv::cvtColor(mCurImage, result, CV_GRAY2BGR);
-    cv::cvtColor(mCurImageR, result_r, CV_GRAY2BGR);
-    const int max_count = 25;
-    const float each_step = 255.0 / max_count;
-    for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
-        if(mvTrackCnt[i] < 0) {
-            cv::circle(result, mvCurPts[i], 3, cv::Scalar(255, 0, 0), -1);
-        }
-        else if(mvTrackCnt[i] >= max_count) {
-            cv::circle(result, mvCurPts[i], 3, cv::Scalar(0, 0, 255), -1);
-        }
-        else {
-            cv::circle(result, mvCurPts[i], 3, cv::Scalar(255 - each_step * mvTrackCnt[i], 0,
-                                                          each_step * mvTrackCnt[i]), -1);
-        }
+//    ScopedTrace st("show");
+//    cv::Mat result, result_r;
+//    cv::cvtColor(mCurImage, result, CV_GRAY2BGR);
+//    cv::cvtColor(mCurImageR, result_r, CV_GRAY2BGR);
+//    const int max_count = 25;
+//    const float each_step = 255.0 / max_count;
+//    for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
+//        if(mvTrackCnt[i] < 0) {
+//            cv::circle(result, mvCurPts[i], 3, cv::Scalar(255, 0, 0), -1);
+//        }
+//        else if(mvTrackCnt[i] >= max_count) {
+//            cv::circle(result, mvCurPts[i], 3, cv::Scalar(0, 0, 255), -1);
+//        }
+//        else {
+//            cv::circle(result, mvCurPts[i], 3, cv::Scalar(255 - each_step * mvTrackCnt[i], 0,
+//                                                          each_step * mvTrackCnt[i]), -1);
+//        }
 
-        if(mvIsStereo[i]) {
-            if(mvInvDepth[i] < 0.5) {
-                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(255 - 255.0 * 2 * mvInvDepth[i], 0,
-                                                                 255.0 * 2 * mvInvDepth[i]), -1);
-            }
-            else {
-                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(0, 0, 255), -1);
-            }
-        }
-    }
+//        if(mvIsStereo[i]) {
+//            if(mvInvDepth[i] < 0.5) {
+//                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(255 - 255.0 * 2 * mvInvDepth[i], 0,
+//                                                                 255.0 * 2 * mvInvDepth[i]), -1);
+//            }
+//            else {
+//                cv::circle(result_r, mvCurPtsR[i], 3, cv::Scalar(0, 0, 255), -1);
+//            }
+//        }
+//    }
 
-    cv::hconcat(result, result_r, result);
-    cv::imshow("result", result);
-    cv::waitKey(1);
+//    cv::hconcat(result, result_r, result);
+//    cv::imshow("result", result);
+//    cv::waitKey(1);
 }
 
 void ImageProcessor::ReadStereo(const cv::Mat& imLeft, const cv::Mat& imRight, double timestamp,
@@ -215,6 +215,7 @@ void ImageProcessor::CheckStereoConstrain() {
     double cy = right_cam->cy;
 
     mvInvDepth.resize(mvCurPts.size(), -1);
+    mv_x3Dl.resize(mvCurPts.size());
     for(int i = 0, n = mvCurPts.size(); i < n; ++i) {
         if(mvIsStereo[i]) {
             Eigen::Vector3d ray_ll, ray_rr;
@@ -240,8 +241,9 @@ void ImageProcessor::CheckStereoConstrain() {
 
             if(x3Dl(2) < STEREO_MIN_DEPTH) {
                 mvIsStereo[i] = 0;
+                continue;
             }
-
+            mv_x3Dl[i] = x3Dl;
             mvInvDepth[i] = 1.0/x3Dl(2);
         }
     }
