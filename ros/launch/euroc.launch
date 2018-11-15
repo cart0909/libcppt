@@ -6,5 +6,5 @@
         <param name="config_file" type="string" value="$(arg config_path)" />
     </node>
 
-    <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />
+    <!--<node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />-->
 </launch>

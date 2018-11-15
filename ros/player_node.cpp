@@ -76,6 +76,8 @@ public:
 
         StereoCameraPtr scam(new StereoCamera(imu, cam[0], cam[1]));
         image_proc.mpStereoCam = scam;
+
+        sparse_img_align = SparseImgAlignPtr(new SparseImgAlign(scam->mpCamera[0]));
         fs.release();
     }
 
@@ -148,11 +150,30 @@ public:
                 cv::Mat img_left, img_right;
                 img_left = cv_bridge::toCvCopy(img_msg, "mono8")->image;
                 img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
-
                 cur_pyr = Utility::Pyramid(img_left, 3);
+
+
+                if(ref_pts.size() > 20) {
+                    Sophus::SE3d Tcr;
+//                    sparse_img_align->SetState(ref_pyr, cur_pyr, ref_pts, x3Dref, Sophus::SE3d());
+//                    sparse_img_align->Run(Tcr);
+                }
+
+
                 image_proc.ReadStereo(img_left, img_right, timestamp);
 
-                last_pyr = cur_pyr;
+                ref_pts.clear();
+                x3Dref.clear();
+                for(int i = 0, n = image_proc.mvCurPts.size(); i < n; ++i) {
+                    if(image_proc.mvIsStereo[i]) {
+                        const auto& pt = image_proc.mvCurPts[i];
+                        const auto& mp = image_proc.mv_x3Dl[i];
+                        ref_pts.emplace_back(pt.x, pt.y);
+                        x3Dref.emplace_back(mp);
+                    }
+                }
+
+                ref_pyr = cur_pyr;
             }
         }
     }
@@ -168,8 +189,10 @@ public:
     thread t_system;
 
     ImageProcessor image_proc;
-    SparseImgAlign sparse_img_align;
-    ImagePyr last_pyr, cur_pyr;
+    SparseImgAlignPtr sparse_img_align;
+    ImagePyr ref_pyr, cur_pyr;
+    VecVector2d ref_pts;
+    VecVector3d x3Dref;
 };
 
 int main(int argc, char** argv) {
