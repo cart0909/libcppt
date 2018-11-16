@@ -15,11 +15,11 @@ Sophus::SE3d SparseImgAlign::Run(const ImagePyr& img_ref_pyr, const ImagePyr& im
                                  const VecVector2d& ref_pts, const VecVector3d& ref_mps,
                                  const Sophus::SE3d& init_Tcr)
 {
-    Sophus::SE3f Tcr = init_Tcr.cast<float>();
+    Sophus::SE3d Tcr = init_Tcr;
     for(int i = mMaxLevel; mMaxLevel >= mMinLevel; --i) {
         auto& img_ref = img_ref_pyr[i];
         auto& img_cur = img_cur_pyr[i];
         impl->Run(i, img_ref, img_cur, ref_pts, ref_mps, Tcr);
     }
-    return Tcr.cast<double>();
+    return Tcr;
 }

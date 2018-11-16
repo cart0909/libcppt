@@ -19,7 +19,7 @@ public:
 
     void Run(int level, const cv::Mat& img_ref, const cv::Mat& img_cur,
              const VecVector2d& ref_pts, const VecVector3d& v_x3Dr,
-             Sophus::SE3f& Tcr)
+             Sophus::SE3d& Tcr)
     {
         PreComputeJacobianAndRefPatch(level, img_ref, ref_pts, v_x3Dr);
 
@@ -68,8 +68,8 @@ public:
             float* ref_patch_ptr = mvRefPatch[i].data();
 
             for(int y = 0; y < patch_size; ++y) {
-                int vbegin = v_ref_i - patch_size;
-                int ubegin = u_ref_i - patch_size;
+                int vbegin = v_ref_i - patch_halfsize;
+                int ubegin = u_ref_i - patch_halfsize;
                 uchar* ref_img_ptr = img_ref.data + (vbegin + y) * stride + ubegin;
                 for(int x = 0; x < patch_size; ++x, ++ref_img_ptr, ++ref_patch_ptr) {
                     // bilinear intensity
@@ -94,7 +94,53 @@ public:
         }
     }
 
-    void ComputeResidual();
+    void ComputeResidual(int level, const cv::Mat& img_cur,const VecVector3d& v_x3Dr,
+                         Sophus::SE3d& Tcr) {
+        const int border = patch_halfsize + 1;
+        const int stride = img_cur.cols;
+        const float scale = 1.0f/(1 << level);
+        int num_pts = v_x3Dr.size();
+        for(int idx = 0; idx < num_pts; ++idx) {
+            if(!mbAvailable[idx])
+                continue;
+
+            auto& x3Dr = v_x3Dr[idx];
+            Eigen::Vector3d x3Dc = Tcr * x3Dr;
+            Eigen::Vector2d uv_c;
+            mpCamera->Project(x3Dc, uv_c);
+
+            const float u_cur = uv_c(0) * scale;
+            const float v_cur = uv_c(1) * scale;
+            const int u_cur_i = std::floor(u_cur);
+            const int v_cur_i = std::floor(v_cur);
+
+            // remove thes points of the projection out of the image
+            if(u_cur_i - border < 0 || v_cur_i - border < 0 || u_cur_i + border >= img_cur.cols ||
+                    v_cur_i + border >= img_cur.rows)
+                continue;
+
+            const float subpix_u_cur = u_cur - u_cur_i;
+            const float subpix_v_cur = v_cur - v_cur_i;
+            const float w_cur_tl = (1.0 - subpix_u_cur) * (1.0 - subpix_v_cur);
+            const float w_cur_tr = subpix_u_cur * (1.0 - subpix_v_cur);
+            const float w_cur_bl = (1.0 - subpix_u_cur) * subpix_v_cur;
+            const float w_cur_br = subpix_u_cur * subpix_v_cur;
+
+            float* ref_patch_ptr = mvRefPatch[idx].data();
+
+            for(int y = 0; y < patch_size; ++y) {
+                int ubegin = u_cur_i - patch_halfsize;
+                int vbegin = v_cur_i - patch_halfsize;
+                uchar* cur_img_ptr = img_cur.data + (vbegin + y) * stride + ubegin;
+                for(int x = 0; x < patch_size; ++x, ++cur_img_ptr, ++ref_patch_ptr) {
+                    // compute residual
+                    const float intensity_cur = w_cur_tl*cur_img_ptr[0]+w_cur_tr*cur_img_ptr[1]+
+                            w_cur_bl*cur_img_ptr[stride]+w_cur_br*cur_img_ptr[stride+1];
+                    const float res = *ref_patch_ptr - intensity_cur;
+                }
+            }
+        }
+    }
 
 private:
     static const int patch_halfsize;
