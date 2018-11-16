@@ -43,8 +43,8 @@ bool IntensityFactor::Init() {
     double* ref_patch_ptr = mRefPatch.data();
 
     for(int y = 0; y < patch_size; ++y) {
-        int vbegin = v_ref_i - patch_size;
-        int ubegin = u_ref_i - patch_size;
+        int vbegin = v_ref_i - patch_halfsize;
+        int ubegin = u_ref_i - patch_halfsize;
         uchar* ref_img_ptr = mImgRef.data + (vbegin + y) * stride + ubegin;
         for(int x = 0; x < patch_size; ++x, ++ref_img_ptr, ++ref_patch_ptr) {
             // bilinear intensity
@@ -98,8 +98,8 @@ bool IntensityFactor::Evaluate(double const* const* parameters_raw,
     const double w_cur_br = subpix_u_cur * subpix_v_cur;
 
     for(int y = 0; y < patch_size; ++y) {
-        int vbegin = v_cur_i - patch_size;
-        int ubegin = u_cur_i - patch_size;
+        int vbegin = v_cur_i - patch_halfsize;
+        int ubegin = u_cur_i - patch_halfsize;
         uchar* cur_img_ptr = mImgCur.data + (vbegin + y) * stride + ubegin;
         for(int x = 0; x < patch_size; ++x, ++cur_img_ptr) {
             double intensity_cur = w_cur_tl * cur_img_ptr[0] + w_cur_tr * cur_img_ptr[1] +
