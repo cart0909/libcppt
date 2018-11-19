@@ -118,6 +118,7 @@ ${PROJECT_SOURCE_DIR}
 
 add_library(cppt_modules SHARED
 basic_datatype/so3_extent.cpp
+basic_datatype/frame.cpp
 camera_model/camera.cpp
 camera_model/pinhole_camera.cpp
 camera_model/stereo_camera.cpp
@@ -125,12 +126,15 @@ camera_model/simple_stereo_camera.cpp
 front_end/image_processor.cpp
 front_end/frontend_config.cpp
 front_end/utility.cpp
+front_end/simple_frontend.cpp
 back_end/msckf.cpp
 back_end/imu_state.cpp
 back_end/imu_preintegration.cpp
 back_end/sparse_img_align.cpp
 back_end/sparse_img_align_impl.cpp
+back_end/isam2_backend.cpp
 ceres/intensity_factor.cpp
+system/vo_system.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
