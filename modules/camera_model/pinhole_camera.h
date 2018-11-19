@@ -7,7 +7,7 @@ public:
     PinholeCamera(const std::string& camera_name, int image_width, int image_height,
                   double fx_, double fy_, double cx_, double cy_,
                   double k1_ = 0.0, double k2_ = 0.0, double p1_ = 0.0, double p2_ = 0.0);
-    ~PinholeCamera();
+    virtual ~PinholeCamera();
 
     void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p) const override;
     void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p,
