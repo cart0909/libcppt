@@ -43,8 +43,8 @@ TEST(stereo_camera, extrinsic) {
                                                  k1_r, k2_r, p1_r, p2_r));
     ImuSensorPtr imu(new ImuSensor());
 
-    left_cam->mTbs = Sophus::SE3d(T_BC0);
-    right_cam->mTbs = Sophus::SE3d(T_BC1);
+    left_cam->Tbs = Sophus::SE3d(T_BC0);
+    right_cam->Tbs = Sophus::SE3d(T_BC1);
 
     StereoCameraPtr stereo(new StereoCamera(imu, left_cam, right_cam));
 
@@ -114,8 +114,8 @@ TEST(stereo_camera, triangulate) {
                                                  k1_r, k2_r, p1_r, p2_r));
     ImuSensorPtr imu(new ImuSensor());
 
-    left_cam->mTbs = Sophus::SE3d(T_BC0);
-    right_cam->mTbs = Sophus::SE3d(T_BC1);
+    left_cam->Tbs = Sophus::SE3d(T_BC0);
+    right_cam->Tbs = Sophus::SE3d(T_BC1);
 
     StereoCameraPtr stereo(new StereoCamera(imu, left_cam, right_cam));
 

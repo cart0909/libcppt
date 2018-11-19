@@ -121,6 +121,7 @@ basic_datatype/so3_extent.cpp
 camera_model/camera.cpp
 camera_model/pinhole_camera.cpp
 camera_model/stereo_camera.cpp
+camera_model/simple_stereo_camera.cpp
 front_end/image_processor.cpp
 front_end/frontend_config.cpp
 front_end/utility.cpp

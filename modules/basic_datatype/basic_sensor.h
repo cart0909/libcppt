@@ -5,9 +5,10 @@
 class SensorBase {
 public:
     SensorBase() {}
+    SensorBase(const Sophus::SE3d& Tbs_) : Tbs(Tbs_) {}
     virtual ~SensorBase() {}
 
-    Sophus::SE3d mTbs;
+    Sophus::SE3d Tbs;
 };
 
 using SensorBasePtr = std::shared_ptr<SensorBase>;
