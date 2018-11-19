@@ -4,6 +4,7 @@
 #include "basic_datatype/basic_sensor.h"
 
 class SimpleStereoCam : public SensorBase {
+public:
     SimpleStereoCam() = delete;
     SimpleStereoCam(const Sophus::SE3d& Tbs_, int width_, int height_,
                     double f_, double cx_, double cy_, double b_,
