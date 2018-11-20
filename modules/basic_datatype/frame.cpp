@@ -4,9 +4,9 @@ uint64_t Frame::gNextFrameID = 0;
 uint64_t Frame::gNextKeyFrameID = 0;
 
 Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r)
-    : mImgL(img_l), mImgR(img_r)
+    : mFrameID(gNextFrameID++), mIsKeyFrame(false), mKeyFrameID(0),
+      mImgL(img_l), mImgR(img_r), mNumStereo(0)
 {
-    mFrameID = gNextFrameID++;
 }
 
 Frame::~Frame() {}
@@ -18,7 +18,6 @@ void Frame::SetToKeyFrame() {
     for(int i = 0, n = mv_uv.size(); i < n; ++i) {
         mvLastKFuv[i] = mv_uv[i];
     }
-    std::cout << "set to keyframe " << mKeyFrameID << std::endl;
 }
 
 bool Frame::CheckKeyFrame() {
@@ -34,8 +33,6 @@ bool Frame::CheckKeyFrame() {
         parallax_sum += std::sqrt(dx*dx + dy*dy);
     }
     float parallax_ave = parallax_sum / num_features;
-
-    std::cout << "frame" << mFrameID << " parallax_ave: " << parallax_ave << std::endl;
 
     if(parallax_ave > 10) {
         return true;

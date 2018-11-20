@@ -119,7 +119,29 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur
 
 // simple sparse stereo matching algorithm by optical flow
 void SimpleFrontEnd::SparseStereoMatching(FramePtr frame) {
+    std::vector<uchar> status;
+    std::vector<float> err;
+    std::vector<cv::Point2f> pt_r;
+    frame->mv_ur.resize(frame->mv_uv.size(), -1);
+    // optical flow between left and right image
+    cv::calcOpticalFlowPyrLK(frame->mImgL, frame->mImgR, frame->mv_uv,
+                             pt_r, status, err, cv::Size(21, 21), 3);
 
+    uint32_t stereo_count = 0;
+    static const double MAX_DISPARITY = mpCamera->bf / 0.3;
+    static const double MIN_DISPARITY = 0;
+    for(int i = 0, n = pt_r.size(); i < n; ++i)
+        if(status[i])
+            if(InBorder(pt_r[i], mpCamera->width, mpCamera->height)) {
+                double dy = std::abs(frame->mv_uv[i].y - pt_r[i].y);
+                if(dy > 3)
+                    continue;
+                double dx = frame->mv_uv[i].x - pt_r[i].x;
+                if(dx > MIN_DISPARITY && dx < MAX_DISPARITY) {
+                    ++stereo_count;
+                    frame->mv_ur[i] = pt_r[i].x;
+                }
+            }
 }
 
 void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
