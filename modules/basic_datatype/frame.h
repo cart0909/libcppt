@@ -25,6 +25,7 @@ public:
     std::vector<cv::Point2f> mv_uv;
     std::vector<cv::Point2f> mvLastKFuv;
     std::vector<float> mv_ur; // value -1 is mono point
+    uint32_t mNumStereo;
 
     // image
     cv::Mat mImgL, mImgR;

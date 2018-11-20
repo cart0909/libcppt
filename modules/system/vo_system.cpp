@@ -102,18 +102,26 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r) {
             frame->SetToKeyFrame();
             mpFrontEnd->ExtractFeatures(frame);
         }
+        mpFrontEnd->SparseStereoMatching(frame);
     }
     else {
-        mpFrontEnd->ExtractFeatures(frame);
         frame->SetToKeyFrame();
+        mpFrontEnd->ExtractFeatures(frame);
+        mpFrontEnd->SparseStereoMatching(frame);
     }
     mpLastFrame = frame;
 
-//    cv::Mat result;
-//    cv::cvtColor(frame->mImgL, result, CV_GRAY2BGR);
-//    for(auto& pt : frame->mv_uv) {
-//        cv::circle(result, pt, 2, cv::Scalar(0, 255, 0), -1);
-//    }
-//    cv::imshow("a", result);
-//    cv::waitKey(1);
+    cv::Mat result, result_r;
+    cv::cvtColor(frame->mImgL, result, CV_GRAY2BGR);
+    cv::cvtColor(frame->mImgR, result_r, CV_GRAY2BGR);
+    for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
+        auto& pt = frame->mv_uv[i];
+        auto& ur = frame->mv_ur[i];
+        cv::circle(result, pt, 2, cv::Scalar(0, 255, 0), -1);
+        if(ur != -1)
+            cv::circle(result_r, cv::Point(ur, pt.y), 2, cv::Scalar(0, 255, 0), -1);
+    }
+    cv::hconcat(result, result_r, result);
+    cv::imshow("a", result);
+    cv::waitKey(1);
 }
