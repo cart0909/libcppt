@@ -1,6 +1,7 @@
 #pragma once
-#include <memory>
 #include <string>
+#include <memory>
+#include <thread>
 #include "camera_model/simple_stereo_camera.h"
 #include "front_end/simple_frontend.h"
 #include "back_end/isam2_backend.h"
@@ -16,6 +17,8 @@ private:
     SimpleFrontEndPtr  mpFrontEnd;
     ISAM2BackEndPtr    mpBackEnd;
     FramePtr mpLastFrame;
+
+    std::thread mtBackEnd;
 };
 
 using VOSystemPtr = std::shared_ptr<VOSystem>;

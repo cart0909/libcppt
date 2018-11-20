@@ -17,7 +17,7 @@ public:
     bool mIsKeyFrame;
     uint64_t mKeyFrameID;
 
-    Sophus::SE3d mTwb;
+    Sophus::SE3d mTwc;
 
     // image points
     std::vector<uint64_t> mvPtID;
