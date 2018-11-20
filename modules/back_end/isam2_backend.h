@@ -30,6 +30,7 @@ public:
     void AddKeyFrame(FramePtr keyframe);
 
 private:
+    bool InitSystem(FramePtr keyframe);
     void CreateMapPointFromStereoMatching(FramePtr keyframe);
 
     BackEndState mState;
@@ -46,8 +47,8 @@ private:
     // store the feature id which has been triangulated.
     std::unordered_set<uint64_t> msIsTriangulate;
 
-    gtsam::NonlinearFactorGraph graph;
-    gtsam::Values initial_estimate;
+    gtsam::NonlinearFactorGraph mGraph;
+    gtsam::Values mInitValues;
 };
 
 using ISAM2BackEndPtr = std::shared_ptr<ISAM2BackEnd>;

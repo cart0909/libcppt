@@ -152,6 +152,8 @@ void SimpleFrontEnd::SparseStereoMatching(FramePtr frame) {
                     frame->mv_ur[i] = pt_r[i].x;
                 }
             }
+
+    frame->mNumStereo = stereo_count;
 }
 
 void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
