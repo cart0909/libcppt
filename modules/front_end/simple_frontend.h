@@ -20,14 +20,10 @@ public:
     void SparseStereoMatching(FramePtr frame);
 
 private:
-    void RemoveOutlierFromF(std::vector<uint64_t>& ref_pt_id,
-                            std::vector<uint32_t>& ref_pt_count,
-                            std::vector<cv::Point2f>& ref_pts,
-                            std::vector<cv::Point2f>& cur_pts);
+    void RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
+                            FramePtr cur_frame);
 
-    void UniformFeatureDistribution(std::vector<uint64_t>& ref_pt_id,
-                                    std::vector<uint32_t>& ref_pt_count,
-                                    std::vector<cv::Point2f>& cur_pts);
+    void UniformFeatureDistribution(FramePtr cur_frame);
 
     SimpleStereoCamPtr mpCamera;
     uint64_t mFeatureID;

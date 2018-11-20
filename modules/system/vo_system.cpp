@@ -98,10 +98,22 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r) {
     FramePtr frame(new Frame(img_remap_l, img_remap_r));
     if(mpLastFrame) {
         mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
-        mpFrontEnd->ExtractFeatures(frame);
+        if(frame->CheckKeyFrame()) {
+            frame->SetToKeyFrame();
+            mpFrontEnd->ExtractFeatures(frame);
+        }
     }
     else {
         mpFrontEnd->ExtractFeatures(frame);
+        frame->SetToKeyFrame();
     }
     mpLastFrame = frame;
+
+//    cv::Mat result;
+//    cv::cvtColor(frame->mImgL, result, CV_GRAY2BGR);
+//    for(auto& pt : frame->mv_uv) {
+//        cv::circle(result, pt, 2, cv::Scalar(0, 255, 0), -1);
+//    }
+//    cv::imshow("a", result);
+//    cv::waitKey(1);
 }
