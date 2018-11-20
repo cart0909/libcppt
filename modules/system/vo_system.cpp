@@ -84,6 +84,12 @@ VOSystem::VOSystem(const std::string& config_file) {
     mpBackEnd = std::make_shared<ISAM2BackEnd>(mpStereoCam);
 
     fs.release();
+
+    // set opencv thread
+    cv::setNumThreads(4);
+
+    // create backend thread
+    mtBackEnd = std::thread(&ISAM2BackEnd::Process, mpBackEnd);
 }
 
 VOSystem::~VOSystem() {
@@ -101,13 +107,17 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r) {
         if(frame->CheckKeyFrame()) {
             frame->SetToKeyFrame();
             mpFrontEnd->ExtractFeatures(frame);
+            mpFrontEnd->SparseStereoMatching(frame);
+            mpBackEnd->AddKeyFrame(frame);
         }
-        mpFrontEnd->SparseStereoMatching(frame);
+        else
+            mpFrontEnd->SparseStereoMatching(frame);
     }
     else {
         frame->SetToKeyFrame();
         mpFrontEnd->ExtractFeatures(frame);
         mpFrontEnd->SparseStereoMatching(frame);
+        mpBackEnd->AddKeyFrame(frame);
     }
     mpLastFrame = frame;
 

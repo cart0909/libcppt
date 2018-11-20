@@ -1,5 +1,6 @@
 #include "simple_frontend.h"
 #include "basic_datatype/tic_toc.h"
+#include "tracer.h"
 
 template<class T>
 void ReduceVector(std::vector<T> &v, const std::vector<uchar>& status) {
@@ -34,6 +35,7 @@ SimpleFrontEnd::~SimpleFrontEnd() {
 // with frame without any feature extract by FAST corner detector
 // if exist some features extract FAST corner in empty grid.
 void SimpleFrontEnd::ExtractFeatures(FramePtr frame) {
+    ScopedTrace st("EFeat");
     // uniform the feature distribution
     UniformFeatureDistribution(frame);
 
@@ -50,7 +52,9 @@ void SimpleFrontEnd::ExtractFeatures(FramePtr frame) {
     }
 
     std::vector<cv::KeyPoint> kps;
-    cv::FAST(frame->mImgL, kps, 7);
+    Tracer::TraceBegin("FAST");
+    cv::FAST(frame->mImgL, kps, 20);
+    Tracer::TraceEnd();
 
     for(int i = 0, n = kps.size(); i < n; ++i) {
         auto& pt = kps[i].pt;
@@ -86,6 +90,7 @@ void SimpleFrontEnd::ExtractFeatures(FramePtr frame) {
 void SimpleFrontEnd::TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur_frame) {
     if(ref_frame->mv_uv.empty())
         return;
+    ScopedTrace st("TrackFeat");
 
     const int width = mpCamera->width, height = mpCamera->height;
 
@@ -98,18 +103,22 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur
     // optical flow
     std::vector<uchar> status;
     std::vector<float> err;
+    Tracer::TraceBegin("Optical Flow");
     cv::calcOpticalFlowPyrLK(ref_frame->mImgL, cur_frame->mImgL, ref_frame_pts,
                              cur_frame->mv_uv, status, err, cv::Size(21, 21), 3);
+    Tracer::TraceEnd();
 
     for(int i = 0, n = cur_frame->mv_uv.size(); i < n; ++i)
         if(status[i] && !InBorder(cur_frame->mv_uv[i], width, height))
             status[i] = 0;
 
+    Tracer::TraceBegin("reduce vector");
     ReduceVector(ref_frame_pts, status);
     ReduceVector(cur_frame->mv_uv, status);
     ReduceVector(cur_frame->mvPtID, status);
     ReduceVector(cur_frame->mvPtCount, status);
     ReduceVector(cur_frame->mvLastKFuv, status);
+    Tracer::TraceEnd();
 
     RemoveOutlierFromF(ref_frame_pts, cur_frame);
 
@@ -119,6 +128,7 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur
 
 // simple sparse stereo matching algorithm by optical flow
 void SimpleFrontEnd::SparseStereoMatching(FramePtr frame) {
+    ScopedTrace st("SM");
     std::vector<uchar> status;
     std::vector<float> err;
     std::vector<cv::Point2f> pt_r;
@@ -147,6 +157,7 @@ void SimpleFrontEnd::SparseStereoMatching(FramePtr frame) {
 void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
                                         FramePtr cur_frame) {
     if(ref_pts.size() > 8) {
+        ScopedTrace st("RemoveF");
         std::vector<uchar> status;
         cv::findFundamentalMat(ref_pts, cur_frame->mv_uv, cv::FM_RANSAC, 1, 0.99, status);
         ReduceVector(ref_pts, status);
@@ -158,6 +169,7 @@ void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
 }
 
 void SimpleFrontEnd::UniformFeatureDistribution(FramePtr cur_frame) {
+    ScopedTrace st("UDist");
     static int empty_value = -1;
     int grid_rows = std::ceil(static_cast<float>(mpCamera->height)/32);
     int grid_cols = std::ceil(static_cast<float>(mpCamera->width)/32);

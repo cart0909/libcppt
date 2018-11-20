@@ -1,6 +1,10 @@
 #pragma once
-#include <memory>
 #include <vector>
+#include <deque>
+#include <unordered_set>
+#include <memory>
+#include <thread>
+#include <condition_variable>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Cal3_S2Stereo.h>
 #include <gtsam/nonlinear/Values.h>
@@ -14,22 +18,36 @@
 
 class ISAM2BackEnd {
 public:
-    ISAM2BackEnd(const SimpleStereoCamPtr& camera) {
-        assert(camera != nullptr);
-        mKStereo = boost::make_shared<gtsam::Cal3_S2Stereo>(camera->f, camera->f, 0,
-                                                            camera->cx, camera->cy, camera->b);
-        mKMono = boost::make_shared<gtsam::Cal3_S2>(camera->f, camera->f, 0, camera->cx, camera->cy);
-        gtsam::ISAM2Params parameters;
-        parameters.relinearizeThreshold = 0.01;
-        parameters.relinearizeSkip = 1;
-        mISAM = gtsam::ISAM2(parameters);
-    }
+    enum BackEndState {
+        INIT,
+        NON_LINEAR
+    };
 
-    ~ISAM2BackEnd() {}
+    ISAM2BackEnd(const SimpleStereoCamPtr& camera);
+    ~ISAM2BackEnd();
+
+    void Process();
+    void AddKeyFrame(FramePtr keyframe);
+
 private:
+    void CreateMapPointFromStereoMatching(FramePtr keyframe);
+
+    BackEndState mState;
+    SimpleStereoCamPtr mpCamera;
     gtsam::Cal3_S2::shared_ptr mKMono;
     gtsam::Cal3_S2Stereo::shared_ptr mKStereo;
     gtsam::ISAM2 mISAM;
+
+    // buffer
+    std::deque<FramePtr> mKFBuffer;
+    std::mutex mKFBufferMutex;
+    std::condition_variable mKFBufferCV;
+
+    // store the feature id which has been triangulated.
+    std::unordered_set<uint64_t> msIsTriangulate;
+
+    gtsam::NonlinearFactorGraph graph;
+    gtsam::Values initial_estimate;
 };
 
 using ISAM2BackEndPtr = std::shared_ptr<ISAM2BackEnd>;
