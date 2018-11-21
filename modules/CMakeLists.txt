@@ -133,6 +133,7 @@ back_end/imu_preintegration.cpp
 back_end/sparse_img_align.cpp
 back_end/sparse_img_align_impl.cpp
 back_end/isam2_backend.cpp
+back_end/simple_backend.cpp
 ceres/intensity_factor.cpp
 system/vo_system.cpp
 )

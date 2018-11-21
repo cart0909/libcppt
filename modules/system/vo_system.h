@@ -11,8 +11,9 @@ public:
     VOSystem(const std::string& config_file);
     ~VOSystem();
 
-    void Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r);
-private:
+    void Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r,
+                 double timestamp);
+
     SimpleStereoCamPtr mpStereoCam;
     SimpleFrontEndPtr  mpFrontEnd;
     ISAM2BackEndPtr    mpBackEnd;

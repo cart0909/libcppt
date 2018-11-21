@@ -3,9 +3,9 @@
 uint64_t Frame::gNextFrameID = 0;
 uint64_t Frame::gNextKeyFrameID = 0;
 
-Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r)
+Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp)
     : mFrameID(gNextFrameID++), mIsKeyFrame(false), mKeyFrameID(0),
-      mImgL(img_l), mImgR(img_r), mNumStereo(0)
+      mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp)
 {
 }
 
@@ -14,10 +14,6 @@ Frame::~Frame() {}
 void Frame::SetToKeyFrame() {
     mIsKeyFrame = true;
     mKeyFrameID = gNextKeyFrameID++;
-
-    for(int i = 0, n = mv_uv.size(); i < n; ++i) {
-        mvLastKFuv[i] = mv_uv[i];
-    }
 }
 
 bool Frame::CheckKeyFrame() {

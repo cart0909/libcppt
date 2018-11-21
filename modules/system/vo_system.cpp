@@ -81,7 +81,7 @@ VOSystem::VOSystem(const std::string& config_file) {
     mpStereoCam = std::make_shared<SimpleStereoCam>(sTbcp0, image_size.width, image_size.height,
                                                     f, cx, cy, b, M1l, M2l, M1r, M2r);
     mpFrontEnd = std::make_shared<SimpleFrontEnd>(mpStereoCam);
-    mpBackEnd = std::make_shared<ISAM2BackEnd>(mpStereoCam);
+//    mpBackEnd = std::make_shared<ISAM2BackEnd>(mpStereoCam);
 
     fs.release();
 
@@ -89,26 +89,26 @@ VOSystem::VOSystem(const std::string& config_file) {
     cv::setNumThreads(4);
 
     // create backend thread
-    mtBackEnd = std::thread(&ISAM2BackEnd::Process, mpBackEnd);
+//    mtBackEnd = std::thread(&ISAM2BackEnd::Process, mpBackEnd);
 }
 
 VOSystem::~VOSystem() {
 
 }
 
-void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r) {
+void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, double timestamp) {
     cv::Mat img_remap_l, img_remap_r;
     cv::remap(img_raw_l, img_remap_l, mpStereoCam->M1l, mpStereoCam->M2l, cv::INTER_LINEAR);
     cv::remap(img_raw_r, img_remap_r, mpStereoCam->M1r, mpStereoCam->M2r, cv::INTER_LINEAR);
 
-    FramePtr frame(new Frame(img_remap_l, img_remap_r));
+    FramePtr frame(new Frame(img_remap_l, img_remap_r, timestamp));
     if(mpLastFrame) {
         mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
         if(frame->CheckKeyFrame()) {
             frame->SetToKeyFrame();
             mpFrontEnd->ExtractFeatures(frame);
             mpFrontEnd->SparseStereoMatching(frame);
-            mpBackEnd->AddKeyFrame(frame);
+//            mpBackEnd->AddKeyFrame(frame);
         }
         else
             mpFrontEnd->SparseStereoMatching(frame);
@@ -117,21 +117,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r) {
         frame->SetToKeyFrame();
         mpFrontEnd->ExtractFeatures(frame);
         mpFrontEnd->SparseStereoMatching(frame);
-        mpBackEnd->AddKeyFrame(frame);
+//        mpBackEnd->AddKeyFrame(frame);
     }
     mpLastFrame = frame;
-
-    cv::Mat result, result_r;
-    cv::cvtColor(frame->mImgL, result, CV_GRAY2BGR);
-    cv::cvtColor(frame->mImgR, result_r, CV_GRAY2BGR);
-    for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
-        auto& pt = frame->mv_uv[i];
-        auto& ur = frame->mv_ur[i];
-        cv::circle(result, pt, 2, cv::Scalar(0, 255, 0), -1);
-        if(ur != -1)
-            cv::circle(result_r, cv::Point(ur, pt.y), 2, cv::Scalar(0, 255, 0), -1);
-    }
-    cv::hconcat(result, result_r, result);
-    cv::imshow("a", result);
-    cv::waitKey(1);
 }

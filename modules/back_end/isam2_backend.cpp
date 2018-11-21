@@ -55,10 +55,10 @@ void ISAM2BackEnd::Process() {
                 auto& currentEstimate = mISAM.calculateEstimate(Symbol('x',keyframe->mKeyFrameID));
                 const Pose3& T = currentEstimate.cast<Pose3>();
 
-                std::cout << keyframe->mKeyFrameID <<" before\n";
-                std::cout << keyframe->mTwc.matrix() << std::endl;
-                std::cout << keyframe->mKeyFrameID<< " after\n";
-                std::cout << T.matrix() << std::endl;
+//                std::cout << keyframe->mKeyFrameID <<" before\n";
+//                std::cout << keyframe->mTwc.matrix() << std::endl;
+//                std::cout << keyframe->mKeyFrameID<< " after\n";
+//                std::cout << T.matrix() << std::endl;
                 mGraph.resize(0);
                 mInitValues.clear();
             }
@@ -108,10 +108,10 @@ void ISAM2BackEnd::CreateMapPointFromStereoMatching(const FramePtr& keyframe) {
 
 //        if(bfirst) {
 //            // Add a prior on landmark l0
-        static auto kPointPrior = noiseModel::Isotropic::Sigma(3, 0.1);
-        mGraph.emplace_shared<PriorFactor<Point3>>(Symbol('l', v_pt_id[i]),
-                                                   Point3(x3Dw(0), x3Dw(1), x3Dw(2)),
-                                                   kPointPrior);
+//        static auto kPointPrior = noiseModel::Isotropic::Sigma(3, 0.1);
+//        mGraph.emplace_shared<PriorFactor<Point3>>(Symbol('l', v_pt_id[i]),
+//                                                   Point3(x3Dw(0), x3Dw(1), x3Dw(2)),
+//                                                   kPointPrior);
 //            bfirst = false;
 //        }
     }
