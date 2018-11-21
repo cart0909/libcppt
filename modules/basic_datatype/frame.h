@@ -6,7 +6,7 @@
 
 class Frame {
 public:
-    Frame(const cv::Mat& img_l, const cv::Mat& img_r);
+    Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
     ~Frame();
 
     bool CheckKeyFrame();
@@ -29,6 +29,7 @@ public:
 
     // image
     cv::Mat mImgL, mImgR;
+    double mTimeStamp;
     // or CLAHE img?
 };
 

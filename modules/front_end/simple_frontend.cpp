@@ -98,7 +98,10 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur
     std::vector<cv::Point2f> ref_frame_pts = ref_frame->mv_uv;
     cur_frame->mvPtID = ref_frame->mvPtID;
     cur_frame->mvPtCount = ref_frame->mvPtCount;
-    cur_frame->mvLastKFuv = ref_frame->mvLastKFuv;
+    if(ref_frame->mIsKeyFrame)
+        cur_frame->mvLastKFuv = ref_frame->mv_uv;
+    else
+        cur_frame->mvLastKFuv = ref_frame->mvLastKFuv;
 
     // optical flow
     std::vector<uchar> status;
