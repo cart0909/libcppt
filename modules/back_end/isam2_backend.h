@@ -5,6 +5,9 @@
 #include <memory>
 #include <thread>
 #include <condition_variable>
+#include <opencv2/opencv.hpp>
+#include <ros/ros.h>
+#include <gtsam/inference/Symbol.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Cal3_S2Stereo.h>
 #include <gtsam/nonlinear/Values.h>
@@ -12,7 +15,9 @@
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/ISAM2.h>
+#include <gtsam/slam/PriorFactor.h>
 #include <gtsam/slam/StereoFactor.h>
+#include <gtsam/slam/ProjectionFactor.h>
 #include "basic_datatype/frame.h"
 #include "camera_model/simple_stereo_camera.h"
 
@@ -27,11 +32,13 @@ public:
     ~ISAM2BackEnd();
 
     void Process();
-    void AddKeyFrame(FramePtr keyframe);
+    void AddKeyFrame(const FramePtr& keyframe);
 
 private:
-    bool InitSystem(FramePtr keyframe);
-    void CreateMapPointFromStereoMatching(FramePtr keyframe);
+    bool InitSystem(const FramePtr& keyframe);
+    void CreateMapPointFromStereoMatching(const FramePtr& keyframe);
+    void CreateFactorGraph(const FramePtr& keyframe);
+    bool SolvePnP(const FramePtr& keyframe);
 
     BackEndState mState;
     SimpleStereoCamPtr mpCamera;
