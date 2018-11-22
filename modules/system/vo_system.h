@@ -2,9 +2,11 @@
 #include <string>
 #include <memory>
 #include <thread>
+#include "basic_datatype/util_datatype.h"
 #include "camera_model/simple_stereo_camera.h"
 #include "front_end/simple_frontend.h"
-#include "back_end/isam2_backend.h"
+#include "back_end/simple_backend.h"
+#include "basic_datatype/sliding_window.h"
 
 class VOSystem {
 public:
@@ -16,11 +18,11 @@ public:
 
     SimpleStereoCamPtr mpStereoCam;
     SimpleFrontEndPtr  mpFrontEnd;
-    ISAM2BackEndPtr    mpBackEnd;
+    SimpleBackEndPtr   mpBackEnd;
+    SlidingWindowPtr   mpSlidingWindow;
     FramePtr mpLastFrame;
 
     std::thread mtBackEnd;
 };
 
-using VOSystemPtr = std::shared_ptr<VOSystem>;
-using VOSystemConstPtr = std::shared_ptr<const VOSystem>;
+SMART_PTR(VOSystem)

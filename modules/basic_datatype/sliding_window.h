@@ -2,6 +2,7 @@
 #include <memory>
 #include <mutex>
 #include "frame.h"
+#include "util_datatype.h"
 
 class SlidingWindow {
 public:
@@ -18,5 +19,4 @@ private:
     mutable std::mutex mDequeueMutex;
 };
 
-using SlidingWindowPtr = std::shared_ptr<SlidingWindow>;
-using SlidingWindowConstPtr = std::shared_ptr<const SlidingWindow>;
+SMART_PTR(SlidingWindow);
