@@ -35,6 +35,9 @@ public:
         fs["image_r_topic"] >> img_topic[1];
 
         mpSystem = std::make_shared<VOSystem>(config_file);
+        mpSystem->mpBackEnd->SetDebugCallback(std::bind(&Node::PubSlidingWindow, this,
+                                                        std::placeholders::_1,
+                                                        std::placeholders::_2));
         fs.release();
     }
 
@@ -143,6 +146,11 @@ public:
         pub_track_img_r.publish(feature_img_msg_r.toImageMsg());
     }
 
+    void PubSlidingWindow(const std::vector<Sophus::SE3d>& v_Twc,
+                          const VecVector3d& v_x3Dw) {
+
+    }
+
     string imu_topic;
     string img_topic[2];
 
@@ -157,6 +165,8 @@ public:
 
     ros::Publisher pub_track_img;
     ros::Publisher pub_track_img_r;
+
+    ros::Publisher pub_path;
 };
 
 int main(int argc, char** argv) {

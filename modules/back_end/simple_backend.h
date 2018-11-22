@@ -21,6 +21,8 @@ public:
 
     void Process();
     void AddKeyFrame(const FramePtr& keyframe);
+    void SetDebugCallback(const std::function<void(const std::vector<Sophus::SE3d>&,
+                                                   const VecVector3d&)>& callback);
 private:
     bool InitSystem(const FramePtr& keyframe);
     void CreateMapPointFromStereoMatching(const FramePtr& keyframe);
