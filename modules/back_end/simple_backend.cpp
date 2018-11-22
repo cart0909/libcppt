@@ -38,6 +38,8 @@ void SimpleBackEnd::Process() {
                 exit(-1);
             }
         }
+
+        ShowResultGUI();
     }
 }
 
@@ -47,6 +49,13 @@ void SimpleBackEnd::AddKeyFrame(const FramePtr& keyframe) {
     mKFBuffer.push_back(keyframe);
     mKFBufferMutex.unlock();
     mKFBufferCV.notify_one();
+}
+
+void SimpleBackEnd::SetDebugCallback(
+        const std::function<void(const std::vector<Sophus::SE3d>&,
+                            const VecVector3d&)>& callback)
+{
+    mDebugCallback = callback;
 }
 
 void SimpleBackEnd::ShowResultGUI() const {

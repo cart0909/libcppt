@@ -82,6 +82,7 @@ include_directories(src)
 
 add_executable(cppt_player
 player_node.cpp
+src/CameraPoseVisualization.cpp
 )
 
 target_link_libraries(cppt_player
