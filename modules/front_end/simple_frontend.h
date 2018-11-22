@@ -2,6 +2,7 @@
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include "basic_datatype/frame.h"
+#include "basic_datatype/util_datatype.h"
 #include "camera_model/simple_stereo_camera.h"
 
 class SimpleFrontEnd {
@@ -11,23 +12,23 @@ public:
 
     // with frame without any feature extract by FAST corner detector
     // if exist some features extract FAST corner in empty grid.
-    void ExtractFeatures(FramePtr frame);
+    void ExtractFeatures(const FramePtr& frame);
 
     // track features by optical flow and check epipolar constrain
-    void TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur_frame);
+    void TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
+                                    const FramePtr& cur_frame);
 
     // simple sparse stereo matching algorithm by optical flow
-    void SparseStereoMatching(FramePtr frame);
+    void SparseStereoMatching(const FramePtr& frame);
 
 private:
     void RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
-                            FramePtr cur_frame);
+                            const FramePtr& cur_frame);
 
-    void UniformFeatureDistribution(FramePtr cur_frame);
+    void UniformFeatureDistribution(const FramePtr& cur_frame);
 
     SimpleStereoCamPtr mpCamera;
     uint64_t mFeatureID;
 };
 
-using SimpleFrontEndPtr = std::shared_ptr<SimpleFrontEnd>;
-using SimpleFrontEndConstPtr = std::shared_ptr<const SimpleFrontEnd>;
+SMART_PTR(SimpleFrontEnd)

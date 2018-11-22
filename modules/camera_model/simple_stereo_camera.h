@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <opencv2/opencv.hpp>
+#include "basic_datatype/util_datatype.h"
 #include "basic_datatype/basic_sensor.h"
 
 class SimpleStereoCam : public SensorBase {
@@ -43,5 +44,4 @@ public:
     cv::Mat M1r, M2r;
 };
 
-using SimpleStereoCamPtr = std::shared_ptr<SimpleStereoCam>;
-using SimpleStereoCamConstPtr = std::shared_ptr<const SimpleStereoCam>;
+SMART_PTR(SimpleStereoCam)

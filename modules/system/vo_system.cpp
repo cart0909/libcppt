@@ -81,7 +81,7 @@ VOSystem::VOSystem(const std::string& config_file) {
     mpStereoCam = std::make_shared<SimpleStereoCam>(sTbcp0, image_size.width, image_size.height,
                                                     f, cx, cy, b, M1l, M2l, M1r, M2r);
     mpFrontEnd = std::make_shared<SimpleFrontEnd>(mpStereoCam);
-//    mpBackEnd = std::make_shared<ISAM2BackEnd>(mpStereoCam);
+    mpBackEnd  = std::make_shared<SimpleBackEnd>(mpStereoCam, mpSlidingWindow);
 
     fs.release();
 
@@ -89,7 +89,7 @@ VOSystem::VOSystem(const std::string& config_file) {
     cv::setNumThreads(4);
 
     // create backend thread
-//    mtBackEnd = std::thread(&ISAM2BackEnd::Process, mpBackEnd);
+    mtBackEnd = std::thread(&SimpleBackEnd::Process, mpBackEnd);
 }
 
 VOSystem::~VOSystem() {
@@ -108,7 +108,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
             frame->SetToKeyFrame();
             mpFrontEnd->ExtractFeatures(frame);
             mpFrontEnd->SparseStereoMatching(frame);
-//            mpBackEnd->AddKeyFrame(frame);
+            mpBackEnd->AddKeyFrame(frame);
         }
         else
             mpFrontEnd->SparseStereoMatching(frame);
@@ -117,7 +117,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
         frame->SetToKeyFrame();
         mpFrontEnd->ExtractFeatures(frame);
         mpFrontEnd->SparseStereoMatching(frame);
-//        mpBackEnd->AddKeyFrame(frame);
+        mpBackEnd->AddKeyFrame(frame);
     }
     mpLastFrame = frame;
 }

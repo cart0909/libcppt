@@ -34,7 +34,7 @@ SimpleFrontEnd::~SimpleFrontEnd() {
 
 // with frame without any feature extract by FAST corner detector
 // if exist some features extract FAST corner in empty grid.
-void SimpleFrontEnd::ExtractFeatures(FramePtr frame) {
+void SimpleFrontEnd::ExtractFeatures(const FramePtr& frame) {
     ScopedTrace st("EFeat");
     // uniform the feature distribution
     UniformFeatureDistribution(frame);
@@ -83,12 +83,13 @@ void SimpleFrontEnd::ExtractFeatures(FramePtr frame) {
                 frame->mvPtCount.emplace_back(0);
                 frame->mv_uv.emplace_back(kps[j].pt);
                 frame->mvLastKFuv.emplace_back(kps[j].pt);
-                frame->mvMapPoint.emplace_back();
+                frame->mvMapPoint.emplace_back(new MapPoint);
             }
 }
 
 // track features by optical flow and check epipolar constrain
-void SimpleFrontEnd::TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur_frame) {
+void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
+                                                const FramePtr& cur_frame) {
     if(ref_frame->mv_uv.empty())
         return;
     ScopedTrace st("TrackFeat");
@@ -133,7 +134,7 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(FramePtr ref_frame, FramePtr cur
 }
 
 // simple sparse stereo matching algorithm by optical flow
-void SimpleFrontEnd::SparseStereoMatching(FramePtr frame) {
+void SimpleFrontEnd::SparseStereoMatching(const FramePtr& frame) {
     ScopedTrace st("SM");
     std::vector<uchar> status;
     std::vector<float> err;
@@ -163,7 +164,7 @@ void SimpleFrontEnd::SparseStereoMatching(FramePtr frame) {
 }
 
 void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
-                                        FramePtr cur_frame) {
+                                        const FramePtr& cur_frame) {
     if(ref_pts.size() > 8) {
         ScopedTrace st("RemoveF");
         std::vector<uchar> status;
@@ -177,7 +178,7 @@ void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
     }
 }
 
-void SimpleFrontEnd::UniformFeatureDistribution(FramePtr cur_frame) {
+void SimpleFrontEnd::UniformFeatureDistribution(const FramePtr& cur_frame) {
     ScopedTrace st("UDist");
     static int empty_value = -1;
     int grid_rows = std::ceil(static_cast<float>(mpCamera->height)/32);
