@@ -80,6 +80,7 @@ VOSystem::VOSystem(const std::string& config_file) {
 
     mpStereoCam = std::make_shared<SimpleStereoCam>(sTbcp0, image_size.width, image_size.height,
                                                     f, cx, cy, b, M1l, M2l, M1r, M2r);
+    mpSlidingWindow = std::make_shared<SlidingWindow>();
     mpFrontEnd = std::make_shared<SimpleFrontEnd>(mpStereoCam);
     mpBackEnd  = std::make_shared<SimpleBackEnd>(mpStereoCam, mpSlidingWindow);
 
