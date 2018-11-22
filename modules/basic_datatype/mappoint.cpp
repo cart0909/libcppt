@@ -1,6 +1,7 @@
 #include "mappoint.h"
 
 uint64_t MapPoint::gNextID = 0;
+uint64_t MapPoint::gTraversalId = 0;
 
 MapPoint::MapPoint()
     : mID(0), mbNeedInit(true)

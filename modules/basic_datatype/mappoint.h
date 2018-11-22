@@ -24,6 +24,10 @@ public:
 
     bool empty() const;
     void reset();
+
+    // help us to traversal graph
+    static uint64_t gTraversalId;
+    uint64_t mTraversalId;
 private:
     bool mbNeedInit;
     Eigen::Vector3d m_x3Dw;

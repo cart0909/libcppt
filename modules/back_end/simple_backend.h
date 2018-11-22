@@ -22,6 +22,11 @@ public:
     void Process();
     void AddKeyFrame(const FramePtr& keyframe);
 private:
+    bool InitSystem(const FramePtr& keyframe);
+    void CreateMapPointFromStereoMatching(const FramePtr& keyframe);
+    void ShowResultGUI() const;
+    bool SolvePnP(const FramePtr& keyframe);
+
     BackEndState mState;
     SimpleStereoCamPtr mpCamera;
     SlidingWindowPtr mpSlidingWindow;
@@ -30,6 +35,10 @@ private:
     std::vector<FramePtr> mKFBuffer;
     std::mutex mKFBufferMutex;
     std::condition_variable mKFBufferCV;
+
+    // callback function
+    std::function<void(const std::vector<Sophus::SE3d>&,
+                       const VecVector3d&)> mDebugCallback;
 };
 
 SMART_PTR(SimpleBackEnd)
