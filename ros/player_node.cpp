@@ -11,8 +11,11 @@
 #include <sensor_msgs/Imu.h>
 #include <opencv2/core/eigen.hpp>
 #include <sophus/se3.hpp>
+#include <nav_msgs/Path.h>
+#include <visualization_msgs/MarkerArray.h>
 #include "ros_utility.h"
 #include "system/vo_system.h"
+#include "src/CameraPoseVisualization.h"
 using namespace std;
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -20,7 +23,9 @@ using namespace sensor_msgs;
 class Node {
 public:
     using Measurements = vector<pair<pair<ImageConstPtr, ImageConstPtr>, vector<ImuConstPtr>>>;
-    Node() {
+    Node() : camera_pose_visual(1, 0, 0, 1)
+    {
+        camera_pose_visual.setScale(0.3);
         t_system = std::thread(&Node::SystemThread, this);
     }
     ~Node() {}
@@ -148,7 +153,83 @@ public:
 
     void PubSlidingWindow(const std::vector<Sophus::SE3d>& v_Twc,
                           const VecVector3d& v_x3Dw) {
+        if(v_Twc.empty())
+            return;
+        // public latest frame
+        {
+            // path
+            Eigen::Vector3d twc = v_Twc.back().translation();
+            Eigen::Quaterniond qwc = v_Twc.back().so3().unit_quaternion();
+            geometry_msgs::PoseStamped pose_stamped;
+            pose_stamped.header.frame_id = "world";
+            pose_stamped.pose.orientation.w = qwc.w();
+            pose_stamped.pose.orientation.x = qwc.x();
+            pose_stamped.pose.orientation.y = qwc.y();
+            pose_stamped.pose.orientation.z = qwc.z();
+            pose_stamped.pose.position.x = twc(0);
+            pose_stamped.pose.position.y = twc(1);
+            pose_stamped.pose.position.z = twc(2);
+            path.poses.emplace_back(pose_stamped);
+            pub_path.publish(path);
 
+            // camera pose
+            camera_pose_visual.reset();
+            camera_pose_visual.add_pose(twc, qwc);
+            camera_pose_visual.publish_by(pub_camera_pose, path.header);
+        }
+
+        { // print keyframe point
+            visualization_msgs::Marker key_poses;
+            key_poses.header.frame_id = "world";
+            key_poses.ns = "keyframes";
+            key_poses.type = visualization_msgs::Marker::SPHERE_LIST;
+            key_poses.action = visualization_msgs::Marker::ADD;
+            key_poses.pose.orientation.w = 1.0;
+            key_poses.lifetime = ros::Duration();
+
+            key_poses.id = 0;
+            key_poses.scale.x = 0.05;
+            key_poses.scale.y = 0.05;
+            key_poses.scale.z = 0.05;
+            key_poses.color.r = 1.0;
+            key_poses.color.a = 1.0;
+
+            for(auto& Twc : v_Twc) {
+                Eigen::Vector3d twc = Twc.translation();
+                geometry_msgs::Point pose_marker;
+                pose_marker.x = twc(0);
+                pose_marker.y = twc(1);
+                pose_marker.z = twc(2);
+                key_poses.points.emplace_back(pose_marker);
+            }
+            pub_keyframes.publish(key_poses);
+        }
+
+        { // print map point
+            visualization_msgs::Marker msgs_points;
+            msgs_points.header.frame_id = "world";
+            msgs_points.ns = "mappoint";
+            msgs_points.type = visualization_msgs::Marker::SPHERE_LIST;
+            msgs_points.action = visualization_msgs::Marker::ADD;
+            msgs_points.pose.orientation.w = 1.0;
+            msgs_points.lifetime = ros::Duration();
+
+            msgs_points.id = 0;
+            msgs_points.scale.x = 0.01;
+            msgs_points.scale.y = 0.01;
+            msgs_points.scale.z = 0.01;
+            msgs_points.color.g = 1.0;
+            msgs_points.color.a = 1.0;
+
+            for(auto& x3Dw : v_x3Dw) {
+                geometry_msgs::Point point_marker;
+                point_marker.x = x3Dw(0);
+                point_marker.y = x3Dw(1);
+                point_marker.z = x3Dw(2);
+                msgs_points.points.emplace_back(point_marker);
+            }
+            pub_mappoints.publish(msgs_points);
+        }
     }
 
     string imu_topic;
@@ -167,6 +248,12 @@ public:
     ros::Publisher pub_track_img_r;
 
     ros::Publisher pub_path;
+    nav_msgs::Path path;
+    ros::Publisher pub_camera_pose;
+    ros::Publisher pub_keyframes;
+    ros::Publisher pub_mappoints;
+
+    CameraPoseVisualization camera_pose_visual;
 };
 
 int main(int argc, char** argv) {
@@ -187,7 +274,11 @@ int main(int argc, char** argv) {
 
     node.pub_track_img = nh.advertise<sensor_msgs::Image>("feature_img", 1000);
     node.pub_track_img_r = nh.advertise<sensor_msgs::Image>("feature_img_r", 1000);
-
+    node.pub_path = nh.advertise<nav_msgs::Path>("path", 1000);
+    node.path.header.frame_id = "world";
+    node.pub_camera_pose = nh.advertise<visualization_msgs::MarkerArray>("camera_pose", 1000);
+    node.pub_keyframes = nh.advertise<visualization_msgs::Marker>("keyframes", 1000);
+    node.pub_mappoints = nh.advertise<visualization_msgs::Marker>("mappoints", 1000);
     ROS_INFO_STREAM("Player is ready.");
 
     ros::spin();
