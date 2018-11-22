@@ -3,6 +3,7 @@
 #include <vector>
 #include <sophus/se3.hpp>
 #include "util_datatype.h"
+#include "mappoint.h"
 
 class Frame {
 public:
@@ -20,11 +21,12 @@ public:
     Sophus::SE3d mTwc;
 
     // image points
-    std::vector<uint64_t> mvPtID;
+    std::vector<uint64_t> mvPtID; // this is only for isam2 backend will remove in future
     std::vector<uint32_t> mvPtCount;
     std::vector<cv::Point2f> mv_uv;
     std::vector<cv::Point2f> mvLastKFuv;
     std::vector<float> mv_ur; // value -1 is mono point
+    std::vector<MapPointPtr> mvMapPoint; // FIXME
     uint32_t mNumStereo;
 
     // image
@@ -33,5 +35,4 @@ public:
     // or CLAHE img?
 };
 
-using FramePtr = std::shared_ptr<Frame>;
-using FrameConstPtr = std::shared_ptr<const Frame>;
+SMART_PTR(Frame)
