@@ -438,6 +438,53 @@ Visualization Manager:
           Value: true
       Enabled: false
       Name: pose_graph
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /cppt_player/camera_pose
+      Name: camera_pose
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /cppt_player/keyframes
+      Name: sliding_window
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /cppt_player/mappoints
+      Name: mappoints
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /cppt_player/path
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -461,25 +508,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 12.792828559875488
+      Distance: 16.18292999267578
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -2.4981257915496826
-        Y: -0.5070557594299316
-        Z: 2.236429827462416e-5
+        X: -1.0360203981399536
+        Y: 1.8305554389953613
+        Z: 2.1887461116421036e-5
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3997962474822998
+      Pitch: -0.19479762017726898
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz)
-      Yaw: 3.4822301864624023
+      Yaw: 4.757214546203613
     Saved: ~
 Window Geometry:
   Displays:
@@ -497,8 +544,8 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1390
-  X: 2127
-  Y: 109
+  X: 312
+  Y: 62
   loop_match_image:
     collapsed: false
   track_image:
