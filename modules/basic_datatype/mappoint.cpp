@@ -8,6 +8,12 @@ MapPoint::MapPoint()
 {
 }
 
+MapPoint::MapPoint(const FrameConstPtr& keyframe, const cv::Point2f& uv)
+    : mID(0), mbNeedInit(true)
+{
+    AddMeas(keyframe, uv);
+}
+
 MapPoint::~MapPoint() {
 }
 
@@ -60,4 +66,24 @@ bool MapPoint::empty() const {
 void MapPoint::reset() {
     std::unique_lock<std::mutex> lock(mMutex);
     mbNeedInit = true;
+}
+
+void MapPoint::AddMeas(const FrameConstPtr& keyframe, const cv::Point2f& uv) {
+    std::unique_lock<std::mutex> lock(mMeasMutex);
+    mvMeas.emplace_back(keyframe, uv);
+}
+
+std::vector<std::pair<FrameConstPtr, cv::Point2f>> MapPoint::GetMeas() {
+    std::vector<std::pair<FrameConstPtr, cv::Point2f>> meas;
+    std::unique_lock<std::mutex> lock(mMeasMutex);
+    for(auto it = mvMeas.begin(); it != mvMeas.end();) {
+        if(it->first.expired()) {
+            it = mvMeas.erase(it);
+        }
+        else {
+            meas.emplace_back(it->first.lock(), it->second);
+            ++it;
+        }
+    }
+    return meas;
 }

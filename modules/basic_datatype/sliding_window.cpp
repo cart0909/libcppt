@@ -26,3 +26,13 @@ size_t SlidingWindow::size() const {
     std::unique_lock<std::mutex> lock(mDequeueMutex);
     return mdKeyFrames.size();
 }
+
+bool SlidingWindow::empty() const {
+    std::unique_lock<std::mutex> lock(mDequeueMutex);
+    return mdKeyFrames.empty();
+}
+
+FramePtr SlidingWindow::back() const {
+    std::unique_lock<std::mutex> lock(mDequeueMutex);
+    return mdKeyFrames.back();
+}

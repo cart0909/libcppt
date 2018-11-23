@@ -30,6 +30,7 @@ void SimpleBackEnd::Process() {
                 SolvePnP(keyframe);
                 // create new map point
                 CreateMapPointFromStereoMatching(keyframe);
+                CreateMapPointFromMotionTracking(keyframe);
                 // add to sliding window
                 mpSlidingWindow->push_back(keyframe);
             }
@@ -103,6 +104,49 @@ void SimpleBackEnd::CreateMapPointFromStereoMatching(const FramePtr& keyframe) {
         Eigen::Vector3d x3Dc;
         mpCamera->Triangulate(p, x3Dc);
         v_mp[i]->Set_x3Dw(x3Dc, Twc);
+    }
+}
+
+void SimpleBackEnd::CreateMapPointFromMotionTracking(const FramePtr& keyframe) {
+    const auto& v_mp = keyframe->mvMapPoint;
+    const int N = v_mp.size();
+    Sophus::SE3d Tw0 = keyframe->mTwc;
+
+    for(auto& mp : v_mp) {
+        if(!mp->empty())
+            continue;
+
+        auto v_meas = mp->GetMeas();
+        int num_meas = v_meas.size();
+        if(num_meas < 2)
+            continue;
+
+        Eigen::MatrixXd A(2 * num_meas, 4);
+        int A_idx = 0;
+
+        for(int i = 0; i < num_meas; ++i) {
+            auto& keyframe_i = v_meas[i].first;
+            auto& uv_i = v_meas[i].second;
+            const Sophus::SE3d& Tiw = keyframe_i->mTwc.inverse();
+            Sophus::SE3d Ti0 = Tiw * Tw0;
+            Eigen::Matrix<double, 3, 4> P;
+            P << Ti0.rotationMatrix(), Ti0.translation();
+            Eigen::Vector3d normal_plane_uv;
+            mpCamera->BackProject(Eigen::Vector2d(uv_i.x, uv_i.y), normal_plane_uv);
+            A.row(A_idx++) = P.row(0) - normal_plane_uv(0) * P.row(2);
+            A.row(A_idx++) = P.row(1) - normal_plane_uv(1) * P.row(2);
+        }
+
+        // solve AX = 0
+        Eigen::Vector4d X = Eigen::JacobiSVD<Eigen::MatrixXd>(A,
+                            Eigen::ComputeThinV).matrixV().rightCols<1>();
+
+        X /= X(3);
+
+        if(X(2) < 0.3) // smaller than 30 cm
+            continue;
+
+        mp->Set_x3Dw(X.head(3), Tw0);
     }
 }
 

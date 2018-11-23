@@ -13,4 +13,5 @@ using VecVector3f = std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen:
 #define SMART_PTR(NAME) \
 using NAME##Ptr = std::shared_ptr<NAME>; \
 using NAME##ConstPtr = std::shared_ptr<const NAME>; \
-using NAME##WPtr = std::weak_ptr<NAME>;
+using NAME##WPtr = std::weak_ptr<NAME>; \
+using NAME##ConstWPtr = std::weak_ptr<const NAME>;

@@ -13,6 +13,8 @@ public:
     void push_back(const FramePtr& keyframe);
     std::vector<FramePtr> get() const;
     size_t size() const;
+    bool empty() const;
+    FramePtr back() const;
 private:
     int mMaxLens;
     std::deque<FramePtr> mdKeyFrames;
