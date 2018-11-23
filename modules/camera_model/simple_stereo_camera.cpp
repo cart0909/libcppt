@@ -32,6 +32,17 @@ void SimpleStereoCam::Project2(const Eigen::Vector3d& P, Eigen::Vector2d& p,
          0, f_inv_z, -f_inv_z2 * P(1);
 }
 
+Eigen::Matrix<double, 2, 3> SimpleStereoCam::J2(const Eigen::Vector3d& P) const {
+    Eigen::Matrix<double, 2, 3> J;
+    double inv_z = 1.0f / P(2);
+    double f_inv_z = f * inv_z;
+    double f_inv_z2 = f_inv_z * inv_z;
+
+    J << f_inv_z, 0, -f_inv_z2 * P(0),
+         0, f_inv_z, -f_inv_z2 * P(1);
+    return J;
+}
+
 // P(2) = 1
 void SimpleStereoCam::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
     P << (p(0) - cx) * inv_f, (p(1) - cy) * inv_f, 1;
@@ -59,6 +70,19 @@ void SimpleStereoCam::Project3(const Eigen::Vector3d& P, Eigen::Vector3d& p,
     J << f_inv_z, 0, -f_inv_z2 * P(0),
          0, f_inv_z, -f_inv_z2 * P(1),
          f_inv_z, 0, (bf - f * P(0)) * inv_z2;
+}
+
+Eigen::Matrix3d SimpleStereoCam::J3(const Eigen::Vector3d& P) const {
+    Eigen::Matrix3d J;
+    double inv_z = 1.0f / P(2);
+    double inv_z2 = inv_z * inv_z;
+    double f_inv_z = f * inv_z;
+    double f_inv_z2 = f * inv_z2;
+
+    J << f_inv_z, 0, -f_inv_z2 * P(0),
+         0, f_inv_z, -f_inv_z2 * P(1),
+         f_inv_z, 0, (bf - f * P(0)) * inv_z2;
+    return J;
 }
 
 void SimpleStereoCam::Triangulate(const Eigen::Vector3d& p, Eigen::Vector3d& P) const {

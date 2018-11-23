@@ -137,6 +137,7 @@ back_end/sparse_img_align_impl.cpp
 back_end/isam2_backend.cpp
 back_end/simple_backend.cpp
 ceres/intensity_factor.cpp
+ceres/projection_factor.cpp
 system/vo_system.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
