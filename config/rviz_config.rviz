@@ -24,7 +24,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: track_image
   - Class: rviz/Displays
     Help Height: 78
     Name: Displays
@@ -443,7 +443,7 @@ Visualization Manager:
       Marker Topic: /cppt_player/camera_pose
       Name: camera_pose
       Namespaces:
-        {}
+        CameraPoseVisualization: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -451,7 +451,7 @@ Visualization Manager:
       Marker Topic: /cppt_player/keyframes
       Name: sliding_window
       Namespaces:
-        {}
+        keyframes: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -459,7 +459,7 @@ Visualization Manager:
       Marker Topic: /cppt_player/mappoints
       Name: mappoints
       Namespaces:
-        {}
+        mappoint: true
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -508,7 +508,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 16.18292999267578
+      Distance: 19.155611038208008
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -523,10 +523,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: -0.19479762017726898
+      Pitch: 0.1102023497223854
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz)
-      Yaw: 4.757214546203613
+      Yaw: 4.917218208312988
     Saved: ~
 Window Geometry:
   Displays:
@@ -544,8 +544,8 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1390
-  X: 312
-  Y: 62
+  X: 1984
+  Y: 34
   loop_match_image:
     collapsed: false
   track_image:

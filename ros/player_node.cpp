@@ -155,11 +155,16 @@ public:
                           const VecVector3d& v_x3Dw) {
         if(v_Twc.empty())
             return;
+
+        static Sophus::SE3d Tglw = Sophus::SE3d::rotX(-M_PI/2);
+
+
         // public latest frame
         {
             // path
-            Eigen::Vector3d twc = v_Twc.back().translation();
-            Eigen::Quaterniond qwc = v_Twc.back().so3().unit_quaternion();
+            Sophus::SE3d Twc = Tglw * v_Twc.back();
+            Eigen::Vector3d twc = Twc.translation();
+            Eigen::Quaterniond qwc = Twc.so3().unit_quaternion();
             geometry_msgs::PoseStamped pose_stamped;
             pose_stamped.header.frame_id = "world";
             pose_stamped.pose.orientation.w = qwc.w();
@@ -195,7 +200,7 @@ public:
             key_poses.color.a = 1.0;
 
             for(auto& Twc : v_Twc) {
-                Eigen::Vector3d twc = Twc.translation();
+                Eigen::Vector3d twc = (Tglw*Twc).translation();
                 geometry_msgs::Point pose_marker;
                 pose_marker.x = twc(0);
                 pose_marker.y = twc(1);
@@ -223,9 +228,10 @@ public:
 
             for(auto& x3Dw : v_x3Dw) {
                 geometry_msgs::Point point_marker;
-                point_marker.x = x3Dw(0);
-                point_marker.y = x3Dw(1);
-                point_marker.z = x3Dw(2);
+                Eigen::Vector3d X = Tglw * x3Dw;
+                point_marker.x = X(0);
+                point_marker.y = X(1);
+                point_marker.z = X(2);
                 msgs_points.points.emplace_back(point_marker);
             }
             pub_mappoints.publish(msgs_points);
