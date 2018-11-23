@@ -26,6 +26,7 @@ public:
 private:
     bool InitSystem(const FramePtr& keyframe);
     void CreateMapPointFromStereoMatching(const FramePtr& keyframe);
+    void CreateMapPointFromMotionTracking(const FramePtr& keyframe);
     void ShowResultGUI() const;
     bool SolvePnP(const FramePtr& keyframe);
 

@@ -106,8 +106,8 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
     if(mpLastFrame) {
         mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
         if(frame->CheckKeyFrame()) {
-            frame->SetToKeyFrame();
             mpFrontEnd->ExtractFeatures(frame);
+            frame->SetToKeyFrame();
             mpFrontEnd->SparseStereoMatching(frame);
             mpBackEnd->AddKeyFrame(frame);
         }
@@ -115,8 +115,8 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
             mpFrontEnd->SparseStereoMatching(frame);
     }
     else {
-        frame->SetToKeyFrame();
         mpFrontEnd->ExtractFeatures(frame);
+        frame->SetToKeyFrame();
         mpFrontEnd->SparseStereoMatching(frame);
         mpBackEnd->AddKeyFrame(frame);
     }

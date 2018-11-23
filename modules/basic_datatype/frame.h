@@ -5,7 +5,10 @@
 #include "util_datatype.h"
 #include "mappoint.h"
 
-class Frame {
+class MapPoint;
+SMART_PTR(MapPoint)
+
+class Frame : public std::enable_shared_from_this<Frame> {
 public:
     Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
     ~Frame();
