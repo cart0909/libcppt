@@ -17,6 +17,9 @@ public:
     void Project2(const Eigen::Vector3d& P, Eigen::Vector2d& p) const;
     void Project2(const Eigen::Vector3d& P, Eigen::Vector2d& p,
                   Eigen::Matrix<double, 2, 3>& J) const;
+
+    Eigen::Matrix<double, 2, 3> J2(const Eigen::Vector3d& P) const;
+
     // P(2) = 1
     void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
 
@@ -26,6 +29,9 @@ public:
     // p is [u, v, ur]'
     void Project3(const Eigen::Vector3d& P, Eigen::Vector3d& p,
                   Eigen::Matrix3d& J) const;
+
+    Eigen::Matrix3d J3(const Eigen::Vector3d& P) const;
+
     // p is [u, v, ur]'
     void Triangulate(const Eigen::Vector3d& p, Eigen::Vector3d& P) const;
 

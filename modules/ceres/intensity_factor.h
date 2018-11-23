@@ -1,7 +1,7 @@
 #pragma once
 #include "ceres/local_parameterization_se3.h"
 #include <opencv2/opencv.hpp>
-#include <camera_model/pinhole_camera.h>
+#include "camera_model/pinhole_camera.h"
 
 class IntensityFactor : public ceres::SizedCostFunction<16, 7>
 {
