@@ -1,4 +1,7 @@
 #include "simple_backend.h"
+#include <ceres/ceres.h>
+#include "ceres/local_parameterization_se3.h"
+#include "ceres/projection_factor.h"
 #include <ros/ros.h>
 
 SimpleBackEnd::SimpleBackEnd(const SimpleStereoCamPtr& camera,
@@ -31,6 +34,8 @@ void SimpleBackEnd::Process() {
                 // create new map point
                 CreateMapPointFromStereoMatching(keyframe);
                 CreateMapPointFromMotionTracking(keyframe);
+                // solve the sliding window BA
+                SlidingWindowBA(keyframe);
                 // add to sliding window
                 mpSlidingWindow->push_back(keyframe);
             }
@@ -104,6 +109,7 @@ void SimpleBackEnd::CreateMapPointFromStereoMatching(const FramePtr& keyframe) {
         Eigen::Vector3d x3Dc;
         mpCamera->Triangulate(p, x3Dc);
         v_mp[i]->Set_x3Dw(x3Dc, Twc);
+        mpSlidingWindow->push_back(v_mp[i]);
     }
 }
 
@@ -147,6 +153,7 @@ void SimpleBackEnd::CreateMapPointFromMotionTracking(const FramePtr& keyframe) {
             continue;
 
         mp->Set_x3Dw(X.head(3), Tw0);
+        mpSlidingWindow->push_back(mp);
     }
 }
 
@@ -183,4 +190,98 @@ bool SimpleBackEnd::SolvePnP(const FramePtr& keyframe) {
         return true;
     }
     return false;
+}
+
+void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
+    std::vector<FramePtr> sliding_window = mpSlidingWindow->get(); // pose vertex
+    sliding_window.emplace_back(new_keyframe);
+    std::vector<double> keyframes_Tcw_raw((sliding_window.size()) * 7, 0);
+    std::vector<MapPointPtr> mps_in_sliding_window; // point vertex
+    std::vector<double> mps_x3Dw_raw;
+
+    // edges
+    std::vector<std::vector<std::pair<size_t, size_t>>> v_edges; // vector<uv_idx, mappointidx>
+
+    ceres::Problem problem;
+    ceres::LossFunction *loss_function2 = new ceres::HuberLoss(5.991);
+    ceres::LossFunction *loss_function3 = new ceres::HuberLoss(7.815);
+    ceres::LocalParameterization *pose_vertex = new Sophus::VertexSE3(true);
+
+    // traversal
+    ++MapPoint::gTraversalId;
+    {
+        int mps_idx = 0;
+        int kfs_idx = 0;
+        for(; kfs_idx < sliding_window.size(); ++kfs_idx) {
+            std::vector<std::pair<size_t, size_t>> edge;
+            Sophus::SE3d Tcw = sliding_window[kfs_idx]->mTwc.inverse();
+            std::memcpy(keyframes_Tcw_raw.data() + (7 * kfs_idx), Tcw.data(), sizeof(double) * 7);
+            problem.AddParameterBlock(keyframes_Tcw_raw.data() + (7 * kfs_idx), 7, pose_vertex);
+
+            if(kfs_idx == 0) {
+                problem.SetParameterBlockConstant(keyframes_Tcw_raw.data());
+            }
+
+            auto& v_mappoint_in_kf = sliding_window[kfs_idx]->mvMapPoint;
+
+            for(int i = 0, n = v_mappoint_in_kf.size(); i < n; ++i) {
+                auto& mp = v_mappoint_in_kf[i];
+                if(!mp || mp->empty() || mp->mTraversalId == MapPoint::gTraversalId)
+                    continue;
+                mp->mTraversalId = MapPoint::gTraversalId;
+                mps_in_sliding_window.emplace_back(mp);
+                edge.emplace_back(i, mps_idx++);
+            }
+
+            v_edges.emplace_back(edge);
+        }
+
+        mps_x3Dw_raw.resize(mps_idx * 3, 0);
+        for(int i = 0, n = mps_in_sliding_window.size(); i < n; ++i) {
+            auto& mp = mps_in_sliding_window[i];
+            auto x3Dw = mp->x3Dw();
+            std::memcpy(mps_x3Dw_raw.data() + (i * 3), x3Dw.data(), sizeof(double) * 3);
+        }
+    }
+
+    for(int i = 0, n = sliding_window.size(); i < n; ++i) {
+        auto& edges = v_edges[i];
+        double* pose_raw = keyframes_Tcw_raw.data() + 7 * i;
+
+        for(auto& it : edges) {
+            auto& uv = sliding_window[i]->mv_uv[it.first];
+            double ur = sliding_window[i]->mv_ur[it.first];
+            auto& mp = mps_in_sliding_window[it.second];
+            double* point_raw = mps_x3Dw_raw.data() + 3 * it.second;
+            if(ur < 0) { // mono constrain
+                ProjectionFactor* project_factor =
+                        new ProjectionFactor(mpCamera, Eigen::Vector2d(uv.x, uv.y));
+                problem.AddResidualBlock(project_factor, loss_function2, pose_raw, point_raw);
+            }
+            else { // stereo constrain
+                StereoProjectionFactor* project_factor =
+                        new StereoProjectionFactor(mpCamera, Eigen::Vector3d(uv.x, uv.y, ur));
+                problem.AddResidualBlock(project_factor, loss_function3, pose_raw, point_raw);
+            }
+        }
+    }
+
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.trust_region_strategy_type = ceres::DOGLEG;
+    options.max_num_iterations = 10;
+    ceres::Solver::Summary summary;
+
+    ceres::Solve(options, &problem, &summary);
+    std::cout << summary.BriefReport() << std::endl;
+
+    for(int i = 0, n = sliding_window.size(); i < n; ++i) {
+        Eigen::Map<Sophus::SE3d> Tcw(keyframes_Tcw_raw.data() + (7 * i));
+        sliding_window[i]->mTwc = Tcw.inverse();
+    }
+
+    for(int i = 0, n = mps_in_sliding_window.size(); i < n; ++i) {
+        Eigen::Map<Eigen::Vector3d> x3Dw(mps_x3Dw_raw.data() + (3 * i));
+        mps_in_sliding_window[i]->Set_x3Dw(x3Dw);
+    }
 }
