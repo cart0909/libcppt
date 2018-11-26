@@ -1,5 +1,7 @@
 #include "simple_frontend.h"
 #include "basic_datatype/tic_toc.h"
+#include "ceres/local_parameterization_se3.h"
+#include "ceres/projection_factor.h"
 #include "tracer.h"
 
 template<class T>
@@ -22,8 +24,9 @@ bool InBorder(const cv::Point2f& pt, int width, int height) {
     return true;
 }
 
-SimpleFrontEnd::SimpleFrontEnd(const SimpleStereoCamPtr& camera)
-    : mpCamera(camera), mFeatureID(0)
+SimpleFrontEnd::SimpleFrontEnd(const SimpleStereoCamPtr& camera,
+                               const SlidingWindowPtr& sliding_window)
+    : mpCamera(camera), mpSldingWindow(sliding_window), mFeatureID(0)
 {
 
 }
@@ -221,4 +224,14 @@ void SimpleFrontEnd::UniformFeatureDistribution(const FramePtr& cur_frame) {
     cur_frame->mv_uv = std::move(temp_pts);
     cur_frame->mvLastKFuv = std::move(temp_pts_lastkf);
     cur_frame->mvMapPoint = std::move(temp_mps);
+}
+
+void SimpleFrontEnd::PoseOpt(const FramePtr& frame) {
+    auto& v_mps = frame->mvMapPoint;
+
+    for(auto& mp : v_mps) {
+        if(!mp->empty()) {
+            std::cout << mp->x3Dw().transpose() << std::endl;
+        }
+    }
 }
