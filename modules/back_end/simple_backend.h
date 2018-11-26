@@ -43,6 +43,7 @@ private:
     // callback function
     std::function<void(const std::vector<Sophus::SE3d>&,
                        const VecVector3d&)> mDebugCallback;
+
 };
 
 SMART_PTR(SimpleBackEnd)

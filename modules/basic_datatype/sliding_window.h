@@ -7,7 +7,7 @@
 
 class SlidingWindow {
 public:
-    SlidingWindow(int max_lens = 20);
+    SlidingWindow(int max_lens = 10);
     ~SlidingWindow();
 
     void clear();
@@ -19,6 +19,10 @@ public:
 
     void push_back(const MapPointPtr& mp);
     std::vector<MapPointPtr> get_mps();
+
+    // for frontend and backend
+    std::mutex mSlidingWindowMutex;
+
 private:
     int mMaxLens;
     std::deque<FramePtr> mdKeyFrames;

@@ -28,3 +28,19 @@ public:
     SimpleStereoCamPtr mpCamera;
     Eigen::Vector3d pt; // u v ur
 };
+
+namespace unary {
+
+class ProjectionFactor : public ceres::SizedCostFunction<2, 7>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
+class StereoProjectionFactor : public ceres::SizedCostFunction<3, 7>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
+};

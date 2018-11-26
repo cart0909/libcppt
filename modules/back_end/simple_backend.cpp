@@ -237,7 +237,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
 
             for(int i = 0, n = v_mappoint_in_kf.size(); i < n; ++i) {
                 auto& mp = v_mappoint_in_kf[i];
-                if(!mp || mp->empty() || !v_inliers[i])
+                if(!mp || mp->empty())
                     continue;
 
                 if(mp->mTraversalId != MapPoint::gTraversalId) {
@@ -297,7 +297,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-    std::cout << summary.FullReport() << std::endl;
+//    std::cout << summary.FullReport() << std::endl;
 
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {
         Eigen::Map<Sophus::SE3d> Tcw(keyframes_Tcw_raw.data() + (7 * i));
