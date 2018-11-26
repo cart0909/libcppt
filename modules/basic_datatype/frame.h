@@ -32,6 +32,9 @@ public:
     std::vector<MapPointPtr> mvMapPoint; // FIXME
     uint32_t mNumStereo;
 
+    // pnp outlier
+    std::vector<bool> mvInliers;
+
     // image
     cv::Mat mImgL, mImgR;
     double mTimeStamp;
