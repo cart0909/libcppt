@@ -33,9 +33,11 @@ void SimpleBackEnd::Process() {
                 SolvePnP(keyframe);
                 // create new map point
                 CreateMapPointFromStereoMatching(keyframe);
-                CreateMapPointFromMotionTracking(keyframe);
+//                CreateMapPointFromMotionTracking(keyframe);
+
                 // solve the sliding window BA
                 SlidingWindowBA(keyframe);
+
                 // add to sliding window
                 mpSlidingWindow->push_back(keyframe);
             }
@@ -161,8 +163,11 @@ bool SimpleBackEnd::SolvePnP(const FramePtr& keyframe) {
     auto& v_pt = keyframe->mv_uv;
     auto& v_mp = keyframe->mvMapPoint;
     int N = keyframe->mv_uv.size();
+    keyframe->mvInliers.resize(N, false);
+
     std::vector<cv::Point2f> image_points;
     std::vector<cv::Point3f> object_points;
+    std::vector<size_t> origin_vector_idx;
     double f = mpCamera->f;
     double cx = mpCamera->cx;
     double cy = mpCamera->cy;
@@ -176,12 +181,18 @@ bool SimpleBackEnd::SolvePnP(const FramePtr& keyframe) {
         Eigen::Vector3d x3Dw = v_mp[i]->x3Dw();
         object_points.emplace_back(x3Dw.x(), x3Dw.y(), x3Dw.z());
         image_points.emplace_back(v_pt[i].x, v_pt[i].y);
+        origin_vector_idx.emplace_back(i);
     }
 
     if(image_points.size() > 16) {
         cv::Mat rvec, tvec, R;
+        std::vector<int> inliers;
         cv::solvePnPRansac(object_points, image_points, K, cv::noArray(), rvec, tvec, false,
-                           100, 8.0, 0.99, cv::noArray(), cv::SOLVEPNP_EPNP);
+                           100, 8.0, 0.99, inliers, cv::SOLVEPNP_EPNP);
+        for(auto& idx : inliers) {
+            keyframe->mvInliers[origin_vector_idx[idx]] = true;
+        }
+
         cv::Rodrigues(rvec, R);
         Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> eigen_R(R.ptr<double>());
         Eigen::Map<Eigen::Vector3d> eigen_t(tvec.ptr<double>());
@@ -209,10 +220,9 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
 
     // traversal
     ++MapPoint::gTraversalId;
+    int mps_idx = 0;
     {
-        int mps_idx = 0;
-        int kfs_idx = 0;
-        for(; kfs_idx < sliding_window.size(); ++kfs_idx) {
+        for(int kfs_idx = 0; kfs_idx < sliding_window.size(); ++kfs_idx) {
             std::vector<std::pair<size_t, size_t>> edge;
             Sophus::SE3d Tcw = sliding_window[kfs_idx]->mTwc.inverse();
             std::memcpy(keyframes_Tcw_raw.data() + (7 * kfs_idx), Tcw.data(), sizeof(double) * 7);
@@ -223,14 +233,20 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
             }
 
             auto& v_mappoint_in_kf = sliding_window[kfs_idx]->mvMapPoint;
+            auto& v_inliers = sliding_window[kfs_idx]->mvInliers;
 
             for(int i = 0, n = v_mappoint_in_kf.size(); i < n; ++i) {
                 auto& mp = v_mappoint_in_kf[i];
-                if(!mp || mp->empty() || mp->mTraversalId == MapPoint::gTraversalId)
+                if(!mp || mp->empty() || !v_inliers[i])
                     continue;
-                mp->mTraversalId = MapPoint::gTraversalId;
-                mps_in_sliding_window.emplace_back(mp);
-                edge.emplace_back(i, mps_idx++);
+
+                if(mp->mTraversalId != MapPoint::gTraversalId) {
+                    mp->mTraversalId = MapPoint::gTraversalId;
+                    mps_in_sliding_window.emplace_back(mp);
+                    mp->mVectorIdx = mps_idx++;
+                }
+
+                edge.emplace_back(i, mp->mVectorIdx);
             }
 
             v_edges.emplace_back(edge);
@@ -241,8 +257,15 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
             auto& mp = mps_in_sliding_window[i];
             auto x3Dw = mp->x3Dw();
             std::memcpy(mps_x3Dw_raw.data() + (i * 3), x3Dw.data(), sizeof(double) * 3);
+            problem.AddParameterBlock(mps_x3Dw_raw.data() + (i * 3), 3);
+//            problem.SetParameterBlockConstant(mps_x3Dw_raw.data() + (i * 3));
         }
     }
+
+//    for(auto& edge : v_edges) {
+//        std::cout << edge.size() << " ";
+//    }
+//    std::cout << "total: " << mps_idx << std::endl;
 
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {
         auto& edges = v_edges[i];
@@ -270,10 +293,11 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.trust_region_strategy_type = ceres::DOGLEG;
     options.max_num_iterations = 10;
+    options.num_threads = 4;
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-    std::cout << summary.BriefReport() << std::endl;
+    std::cout << summary.FullReport() << std::endl;
 
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {
         Eigen::Map<Sophus::SE3d> Tcw(keyframes_Tcw_raw.data() + (7 * i));

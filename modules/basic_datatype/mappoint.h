@@ -31,12 +31,14 @@ public:
     bool empty() const;
     void reset();
 
+    // for mono feature create stereo
     void AddMeas(const FrameConstPtr& keyframe, const cv::Point2f& uv);
     std::vector<std::pair<FrameConstPtr, cv::Point2f>> GetMeas();
 
     // help us to traversal graph
     static uint64_t gTraversalId;
     uint64_t mTraversalId;
+    uint64_t mVectorIdx;
 private:
     static uint64_t gNextID;
     bool mbNeedInit;

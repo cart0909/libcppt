@@ -7,7 +7,7 @@
 
 class SlidingWindow {
 public:
-    SlidingWindow(int max_lens = 10);
+    SlidingWindow(int max_lens = 20);
     ~SlidingWindow();
 
     void clear();
