@@ -27,7 +27,7 @@ bool InBorder(const cv::Point2f& pt, int width, int height) {
 
 SimpleFrontEnd::SimpleFrontEnd(const SimpleStereoCamPtr& camera,
                                const SlidingWindowPtr& sliding_window)
-    : mpCamera(camera), mpSldingWindow(sliding_window), mFeatureID(0)
+    : mpCamera(camera), mpSldingWindow(sliding_window)
 {
 
 }
@@ -83,7 +83,6 @@ void SimpleFrontEnd::ExtractFeatures(const FramePtr& frame) {
     for(auto& i : grids)
         for(auto& j : i)
             if(j >= 0) {
-                frame->mvPtID.emplace_back(mFeatureID++);
                 frame->mvPtCount.emplace_back(0);
                 frame->mv_uv.emplace_back(kps[j].pt);
                 frame->mvLastKFuv.emplace_back(kps[j].pt);
@@ -102,7 +101,6 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
 
     // copy ref frame data for cur frame
     std::vector<cv::Point2f> ref_frame_pts = ref_frame->mv_uv;
-    cur_frame->mvPtID = ref_frame->mvPtID;
     cur_frame->mvPtCount = ref_frame->mvPtCount;
     cur_frame->mvMapPoint = ref_frame->mvMapPoint;
     if(ref_frame->mIsKeyFrame) {
@@ -127,7 +125,6 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
     Tracer::TraceBegin("reduce vector");
     ReduceVector(ref_frame_pts, status);
     ReduceVector(cur_frame->mv_uv, status);
-    ReduceVector(cur_frame->mvPtID, status);
     ReduceVector(cur_frame->mvPtCount, status);
     ReduceVector(cur_frame->mvLastKFuv, status);
     ReduceVector(cur_frame->mvMapPoint, status);
@@ -177,7 +174,6 @@ void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
         cv::findFundamentalMat(ref_pts, cur_frame->mv_uv, cv::FM_RANSAC, 1, 0.99, status);
         ReduceVector(ref_pts, status);
         ReduceVector(cur_frame->mv_uv, status);
-        ReduceVector(cur_frame->mvPtID, status);
         ReduceVector(cur_frame->mvPtCount, status);
         ReduceVector(cur_frame->mvLastKFuv, status);
         ReduceVector(cur_frame->mvMapPoint, status);
@@ -211,7 +207,6 @@ void SimpleFrontEnd::UniformFeatureDistribution(const FramePtr& cur_frame) {
     for(auto& i : grids) {
         for(auto& j : i) {
             if(j != empty_value) {
-                temp_pt_id.emplace_back(cur_frame->mvPtID[j]);
                 temp_pt_count.emplace_back(cur_frame->mvPtCount[j]);
                 temp_pts.emplace_back(cur_frame->mv_uv[j]);
                 temp_pts_lastkf.emplace_back(cur_frame->mvLastKFuv[j]);
@@ -220,7 +215,6 @@ void SimpleFrontEnd::UniformFeatureDistribution(const FramePtr& cur_frame) {
         }
     }
 
-    cur_frame->mvPtID = std::move(temp_pt_id);
     cur_frame->mvPtCount = std::move(temp_pt_count);
     cur_frame->mv_uv = std::move(temp_pts);
     cur_frame->mvLastKFuv = std::move(temp_pts_lastkf);
@@ -305,7 +299,6 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
     cur_frame->mTwc = opt_Tcw.inverse();
 
     ReduceVector(cur_frame->mv_uv, status);
-    ReduceVector(cur_frame->mvPtID, status);
     ReduceVector(cur_frame->mvPtCount, status);
     ReduceVector(cur_frame->mvLastKFuv, status);
     ReduceVector(cur_frame->mvMapPoint, status);

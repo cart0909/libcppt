@@ -32,7 +32,6 @@ private:
 
     SimpleStereoCamPtr mpCamera;
     SlidingWindowPtr mpSldingWindow;
-    uint64_t mFeatureID;
 };
 
 SMART_PTR(SimpleFrontEnd)
