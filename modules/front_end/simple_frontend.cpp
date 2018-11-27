@@ -1,29 +1,10 @@
 #include "simple_frontend.h"
 #include "basic_datatype/tic_toc.h"
+#include "basic_datatype/util_datatype.h"
 #include "ceres/local_parameterization_se3.h"
 #include "ceres/projection_factor.h"
 #include "tracer.h"
 #include <ros/ros.h>
-
-template<class T>
-void ReduceVector(std::vector<T> &v, const std::vector<uchar>& status) {
-    int j = 0;
-    for(int i = 0, n = v.size(); i < n; ++i) {
-        if(status[i])
-            v[j++] = v[i];
-    }
-    v.resize(j);
-}
-
-bool InBorder(const cv::Point2f& pt, int width, int height) {
-    const int border_size = 1;
-    int img_x = std::round(pt.x);
-    int img_y = std::round(pt.y);
-    if(img_x - border_size < 0 || img_y - border_size <= 0 || img_x + border_size >= width ||
-            img_y + border_size >= height)
-        return false;
-    return true;
-}
 
 SimpleFrontEnd::SimpleFrontEnd(const SimpleStereoCamPtr& camera,
                                const SlidingWindowPtr& sliding_window)
@@ -41,7 +22,7 @@ SimpleFrontEnd::~SimpleFrontEnd() {
 void SimpleFrontEnd::ExtractFeatures(const FramePtr& frame) {
     ScopedTrace st("EFeat");
     // uniform the feature distribution
-    UniformFeatureDistribution(frame);
+//    UniformFeatureDistribution(frame); // FIXME!!!
 
     static int empty_value = -1, exist_value = -2;
     int grid_rows = std::ceil(static_cast<float>(mpCamera->height) / 32);
@@ -134,36 +115,6 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
 
     for(auto& it : cur_frame->mvPtCount)
         ++it;
-}
-
-// simple sparse stereo matching algorithm by optical flow
-void SimpleFrontEnd::SparseStereoMatching(const FramePtr& frame) {
-    ScopedTrace st("SM");
-    std::vector<uchar> status;
-    std::vector<float> err;
-    std::vector<cv::Point2f> pt_r;
-    frame->mv_ur.resize(frame->mv_uv.size(), -1);
-    // optical flow between left and right image
-    cv::calcOpticalFlowPyrLK(frame->mImgPyrL, frame->mImgPyrR, frame->mv_uv,
-                             pt_r, status, err, cv::Size(21, 21), 3);
-
-    uint32_t stereo_count = 0;
-    static const double MAX_DISPARITY = mpCamera->bf / 0.3;
-    static const double MIN_DISPARITY = 0;
-    for(int i = 0, n = pt_r.size(); i < n; ++i)
-        if(status[i])
-            if(InBorder(pt_r[i], mpCamera->width, mpCamera->height)) {
-                double dy = std::abs(frame->mv_uv[i].y - pt_r[i].y);
-                if(dy > 3)
-                    continue;
-                double dx = frame->mv_uv[i].x - pt_r[i].x;
-                if(dx > MIN_DISPARITY && dx < MAX_DISPARITY) {
-                    ++stereo_count;
-                    frame->mv_ur[i] = pt_r[i].x;
-                }
-            }
-
-    frame->mNumStereo = stereo_count;
 }
 
 void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
@@ -299,6 +250,7 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
     cur_frame->mTwc = opt_Tcw.inverse();
 
     ReduceVector(cur_frame->mv_uv, status);
+    ReduceVector(cur_frame->mv_ur, status);
     ReduceVector(cur_frame->mvPtCount, status);
     ReduceVector(cur_frame->mvLastKFuv, status);
     ReduceVector(cur_frame->mvMapPoint, status);

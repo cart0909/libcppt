@@ -16,6 +16,9 @@ public:
     bool CheckKeyFrame();
     void SetToKeyFrame();
 
+    // simple sparse stereo matching algorithm by optical flow
+    void SparseStereoMatching(double bf);
+
     static uint64_t gNextFrameID, gNextKeyFrameID;
     uint64_t mFrameID;
     bool mIsKeyFrame;

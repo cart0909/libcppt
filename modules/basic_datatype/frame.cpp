@@ -1,5 +1,6 @@
 #include "frame.h"
 #include "tracer.h"
+#include "util_datatype.h"
 uint64_t Frame::gNextFrameID = 0;
 uint64_t Frame::gNextKeyFrameID = 0;
 
@@ -41,4 +42,44 @@ bool Frame::CheckKeyFrame() {
         return true;
     }
     return  false;
+}
+
+void Frame::SparseStereoMatching(double bf) {
+    ScopedTrace st("SM");
+    int N = mv_uv.size();
+    int ur_size = mv_ur.size();
+
+    if(N == ur_size)
+        return;
+
+    mv_ur.resize(N);
+    for(int i = ur_size; i < N; ++i)
+        mv_ur[i] = -1;
+
+    uint32_t stereo_count = mNumStereo;
+
+    std::vector<cv::Point2f> uv(mv_uv.begin() + ur_size, mv_uv.end());
+    std::vector<cv::Point2f> pt_r;
+    std::vector<uchar> status;
+    std::vector<float> err;
+    cv::calcOpticalFlowPyrLK(mImgPyrL, mImgPyrR, uv, pt_r, status, err, cv::Size(21, 21), 3);
+
+    const double MAX_DISPARITY = bf / 0.3;
+    const double MIN_DISPARITY = 0;
+    for(int i = 0, n = pt_r.size(); i < n; ++i) {
+        if(status[i]) {
+            if(InBorder(pt_r[i], mImgL.cols, mImgL.rows)) {
+                double dy = std::abs(uv[i].y - pt_r[i].y);
+                if(dy > 3)
+                    continue;
+                double dx = uv[i].x - pt_r[i].x;
+                if(dx > MIN_DISPARITY && dx < MAX_DISPARITY) {
+                    ++stereo_count;
+                    mv_ur[i + ur_size] = pt_r[i].x;
+                }
+            }
+        }
+    }
+
+    mNumStereo = stereo_count;
 }

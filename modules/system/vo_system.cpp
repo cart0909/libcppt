@@ -105,20 +105,19 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
     FramePtr frame(new Frame(img_remap_l, img_remap_r, timestamp));
     if(mpLastFrame) {
         mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
+        frame->SparseStereoMatching(mpStereoCam->bf);
         mpFrontEnd->PoseOpt(frame, mpLastFrame->mTwc.inverse());
         if(frame->CheckKeyFrame()) {
             mpFrontEnd->ExtractFeatures(frame);
             frame->SetToKeyFrame();
-            mpFrontEnd->SparseStereoMatching(frame);
+            frame->SparseStereoMatching(mpStereoCam->bf);
             mpBackEnd->AddKeyFrame(frame);
         }
-        else
-            mpFrontEnd->SparseStereoMatching(frame);
     }
     else {
         mpFrontEnd->ExtractFeatures(frame);
         frame->SetToKeyFrame();
-        mpFrontEnd->SparseStereoMatching(frame);
+        frame->SparseStereoMatching(mpStereoCam->bf);
         mpBackEnd->AddKeyFrame(frame);
     }
     mpLastFrame = frame;

@@ -172,8 +172,8 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     std::vector<std::vector<std::pair<size_t, size_t>>> v_edges; // vector<uv_idx, mappointidx>
 
     ceres::Problem problem;
-    ceres::LossFunction *loss_function2 = new ceres::HuberLoss(5.991);
-    ceres::LossFunction *loss_function3 = new ceres::HuberLoss(7.815);
+    ceres::LossFunction *loss_function2 = new ceres::CauchyLoss(std::sqrt(5.991));
+    ceres::LossFunction *loss_function3 = new ceres::CauchyLoss(std::sqrt(7.815));
     ceres::LocalParameterization *pose_vertex = new Sophus::VertexSE3(true);
 
     // traversal
