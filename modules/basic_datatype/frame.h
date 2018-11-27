@@ -35,6 +35,7 @@ public:
     // image
     cv::Mat mImgL, mImgR;
     // image pyr for optical flow
+    ImagePyr mImgPyrL, mImgPyrR;
     double mTimeStamp;
     // or CLAHE img?
 };

@@ -1,5 +1,5 @@
 #include "frame.h"
-
+#include "tracer.h"
 uint64_t Frame::gNextFrameID = 0;
 uint64_t Frame::gNextKeyFrameID = 0;
 
@@ -7,6 +7,9 @@ Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp)
     : mFrameID(gNextFrameID++), mIsKeyFrame(false), mKeyFrameID(0),
       mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp)
 {
+    ScopedTrace st("build_pyr");
+    cv::buildOpticalFlowPyramid(mImgL, mImgPyrL, cv::Size(21, 21), 3);
+    cv::buildOpticalFlowPyramid(mImgR, mImgPyrR, cv::Size(21, 21), 3);
 }
 
 Frame::~Frame() {}

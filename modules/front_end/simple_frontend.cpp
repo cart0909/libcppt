@@ -116,7 +116,7 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
     std::vector<uchar> status;
     std::vector<float> err;
     Tracer::TraceBegin("Optical Flow");
-    cv::calcOpticalFlowPyrLK(ref_frame->mImgL, cur_frame->mImgL, ref_frame_pts,
+    cv::calcOpticalFlowPyrLK(ref_frame->mImgPyrL, cur_frame->mImgPyrL, ref_frame_pts,
                              cur_frame->mv_uv, status, err, cv::Size(21, 21), 3);
     Tracer::TraceEnd();
 
@@ -147,7 +147,7 @@ void SimpleFrontEnd::SparseStereoMatching(const FramePtr& frame) {
     std::vector<cv::Point2f> pt_r;
     frame->mv_ur.resize(frame->mv_uv.size(), -1);
     // optical flow between left and right image
-    cv::calcOpticalFlowPyrLK(frame->mImgL, frame->mImgR, frame->mv_uv,
+    cv::calcOpticalFlowPyrLK(frame->mImgPyrL, frame->mImgPyrR, frame->mv_uv,
                              pt_r, status, err, cv::Size(21, 21), 3);
 
     uint32_t stereo_count = 0;
