@@ -28,7 +28,6 @@ private:
     void CreateMapPointFromStereoMatching(const FramePtr& keyframe);
     void CreateMapPointFromMotionTracking(const FramePtr& keyframe);
     void ShowResultGUI() const;
-    bool SolvePnP(const FramePtr& keyframe);
     void SlidingWindowBA(const FramePtr& new_keyframe);
 
     BackEndState mState;

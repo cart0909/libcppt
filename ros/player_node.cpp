@@ -43,6 +43,7 @@ public:
         mpSystem->mpBackEnd->SetDebugCallback(std::bind(&Node::PubSlidingWindow, this,
                                                         std::placeholders::_1,
                                                         std::placeholders::_2));
+        mpSystem->mDebugCallback = std::bind(&Node::PubCurPose, this, std::placeholders::_1);
         fs.release();
     }
 
@@ -158,31 +159,6 @@ public:
 
         static Sophus::SE3d Tglw = Sophus::SE3d::rotX(-M_PI/2);
 
-
-        // public latest frame
-        {
-            // path
-            Sophus::SE3d Twc = Tglw * v_Twc.back();
-            Eigen::Vector3d twc = Twc.translation();
-            Eigen::Quaterniond qwc = Twc.so3().unit_quaternion();
-            geometry_msgs::PoseStamped pose_stamped;
-            pose_stamped.header.frame_id = "world";
-            pose_stamped.pose.orientation.w = qwc.w();
-            pose_stamped.pose.orientation.x = qwc.x();
-            pose_stamped.pose.orientation.y = qwc.y();
-            pose_stamped.pose.orientation.z = qwc.z();
-            pose_stamped.pose.position.x = twc(0);
-            pose_stamped.pose.position.y = twc(1);
-            pose_stamped.pose.position.z = twc(2);
-            path.poses.emplace_back(pose_stamped);
-            pub_path.publish(path);
-
-            // camera pose
-            camera_pose_visual.reset();
-            camera_pose_visual.add_pose(twc, qwc);
-            camera_pose_visual.publish_by(pub_camera_pose, path.header);
-        }
-
         { // print keyframe point
             visualization_msgs::Marker key_poses;
             key_poses.header.frame_id = "world";
@@ -236,6 +212,31 @@ public:
             }
             pub_mappoints.publish(msgs_points);
         }
+    }
+
+    void PubCurPose(const Sophus::SE3d& Twc) {
+        static Sophus::SE3d Tglw = Sophus::SE3d::rotX(-M_PI/2);
+        // public latest frame
+        // path
+        Sophus::SE3d Tglc = Tglw * Twc;
+        Eigen::Vector3d twc = Tglc.translation();
+        Eigen::Quaterniond qwc = Tglc.so3().unit_quaternion();
+        geometry_msgs::PoseStamped pose_stamped;
+        pose_stamped.header.frame_id = "world";
+        pose_stamped.pose.orientation.w = qwc.w();
+        pose_stamped.pose.orientation.x = qwc.x();
+        pose_stamped.pose.orientation.y = qwc.y();
+        pose_stamped.pose.orientation.z = qwc.z();
+        pose_stamped.pose.position.x = twc(0);
+        pose_stamped.pose.position.y = twc(1);
+        pose_stamped.pose.position.z = twc(2);
+        path.poses.emplace_back(pose_stamped);
+        pub_path.publish(path);
+
+        // camera pose
+        camera_pose_visual.reset();
+        camera_pose_visual.add_pose(twc, qwc);
+        camera_pose_visual.publish_by(pub_camera_pose, path.header);
     }
 
     string imu_topic;
