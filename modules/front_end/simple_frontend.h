@@ -20,9 +20,6 @@ public:
     void TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
                                     const FramePtr& cur_frame);
 
-    // simple sparse stereo matching algorithm by optical flow
-    void SparseStereoMatching(const FramePtr& frame);
-
     void PoseOpt(const FramePtr& frame, const Sophus::SE3d& init_Tcw);
 private:
     void RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,

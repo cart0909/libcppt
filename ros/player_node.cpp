@@ -127,13 +127,13 @@ public:
     void PubFeatureImg(const FramePtr& frame) {
         cv::Mat feature_img, feature_img_r;
         cv::cvtColor(frame->mImgL, feature_img, CV_GRAY2BGR);
-        cv::cvtColor(frame->mImgR, feature_img_r, CV_GRAY2BGR);
+//        cv::cvtColor(frame->mImgR, feature_img_r, CV_GRAY2BGR);
         for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
             auto& pt = frame->mv_uv[i];
-            auto& ur = frame->mv_ur[i];
+//            auto& ur = frame->mv_ur[i];
             cv::circle(feature_img, pt, 2, cv::Scalar(0, 255, 0), -1);
-            if(ur != -1)
-                cv::circle(feature_img_r, cv::Point(ur, pt.y), 2, cv::Scalar(0, 255, 0), -1);
+//            if(ur != -1)
+//                cv::circle(feature_img_r, cv::Point(ur, pt.y), 2, cv::Scalar(0, 255, 0), -1);
         }
 
         cv_bridge::CvImage feature_img_msg_l, feature_img_msg_r;
@@ -144,12 +144,12 @@ public:
         feature_img_msg_l.encoding = sensor_msgs::image_encodings::RGB8;
         pub_track_img.publish(feature_img_msg_l.toImageMsg());
 
-        feature_img_msg_r.header.seq = frame->mFrameID;
-        feature_img_msg_r.header.frame_id = "world";
-        feature_img_msg_r.header.stamp.fromSec(frame->mTimeStamp);
-        feature_img_msg_r.image = feature_img_r;
-        feature_img_msg_r.encoding = sensor_msgs::image_encodings::RGB8;
-        pub_track_img_r.publish(feature_img_msg_r.toImageMsg());
+//        feature_img_msg_r.header.seq = frame->mFrameID;
+//        feature_img_msg_r.header.frame_id = "world";
+//        feature_img_msg_r.header.stamp.fromSec(frame->mTimeStamp);
+//        feature_img_msg_r.image = feature_img_r;
+//        feature_img_msg_r.encoding = sensor_msgs::image_encodings::RGB8;
+//        pub_track_img_r.publish(feature_img_msg_r.toImageMsg());
     }
 
     void PubSlidingWindow(const std::vector<Sophus::SE3d>& v_Twc,

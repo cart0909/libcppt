@@ -15,3 +15,15 @@ using NAME##Ptr = std::shared_ptr<NAME>; \
 using NAME##ConstPtr = std::shared_ptr<const NAME>; \
 using NAME##WPtr = std::weak_ptr<NAME>; \
 using NAME##ConstWPtr = std::weak_ptr<const NAME>;
+
+template<class T>
+void ReduceVector(std::vector<T> &v, const std::vector<uchar>& status) {
+    int j = 0;
+    for(int i = 0, n = v.size(); i < n; ++i) {
+        if(status[i])
+            v[j++] = v[i];
+    }
+    v.resize(j);
+}
+
+bool InBorder(const cv::Point2f& pt, int width, int height);

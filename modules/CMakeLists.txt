@@ -121,6 +121,7 @@ basic_datatype/so3_extent.cpp
 basic_datatype/frame.cpp
 basic_datatype/sliding_window.cpp
 basic_datatype/mappoint.cpp
+basic_datatype/util_datatype.cpp
 camera_model/camera.cpp
 camera_model/pinhole_camera.cpp
 camera_model/stereo_camera.cpp
