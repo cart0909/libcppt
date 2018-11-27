@@ -24,7 +24,6 @@ public:
     Sophus::SE3d mTwc;
 
     // image points
-    std::vector<uint64_t> mvPtID; // this is only for isam2 backend will remove in future
     std::vector<uint32_t> mvPtCount;
     std::vector<cv::Point2f> mv_uv;
     std::vector<cv::Point2f> mvLastKFuv;
