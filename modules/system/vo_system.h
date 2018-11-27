@@ -23,6 +23,8 @@ public:
     FramePtr mpLastFrame;
 
     std::thread mtBackEnd;
+
+    std::function<void(const Sophus::SE3d)> mDebugCallback;
 };
 
 SMART_PTR(VOSystem)

@@ -105,7 +105,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
     FramePtr frame(new Frame(img_remap_l, img_remap_r, timestamp));
     if(mpLastFrame) {
         mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
-        mpFrontEnd->PoseOpt(frame);
+        mpFrontEnd->PoseOpt(frame, mpLastFrame->mTwc.inverse());
         if(frame->CheckKeyFrame()) {
             mpFrontEnd->ExtractFeatures(frame);
             frame->SetToKeyFrame();
@@ -122,4 +122,8 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
         mpBackEnd->AddKeyFrame(frame);
     }
     mpLastFrame = frame;
+
+    if(mDebugCallback) {
+        mDebugCallback(frame->mTwc);
+    }
 }

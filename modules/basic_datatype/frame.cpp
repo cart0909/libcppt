@@ -18,7 +18,6 @@ void Frame::SetToKeyFrame() {
     for(int i = 0, n = mvMapPoint.size(); i < n; ++i) {
         mvMapPoint[i]->AddMeas(shared_from_this(), mv_uv[i]);
     }
-    mvInliers.resize(mvMapPoint.size(), true);
 }
 
 bool Frame::CheckKeyFrame() {

@@ -3,6 +3,7 @@
 #include "ceres/local_parameterization_se3.h"
 #include "ceres/projection_factor.h"
 #include <ros/ros.h>
+#include "tracer.h"
 
 SimpleBackEnd::SimpleBackEnd(const SimpleStereoCamPtr& camera,
                              const SlidingWindowPtr& sliding_window)
@@ -29,11 +30,9 @@ void SimpleBackEnd::Process() {
                 }
             }
             else if(mState == NON_LINEAR) {
-                // solve the linear system get init pose
-                SolvePnP(keyframe);
                 // create new map point
                 CreateMapPointFromStereoMatching(keyframe);
-//                CreateMapPointFromMotionTracking(keyframe);
+                CreateMapPointFromMotionTracking(keyframe);
 
                 // solve the sliding window BA
                 SlidingWindowBA(keyframe);
@@ -97,6 +96,7 @@ bool SimpleBackEnd::InitSystem(const FramePtr& keyframe) {
 }
 
 void SimpleBackEnd::CreateMapPointFromStereoMatching(const FramePtr& keyframe) {
+    ScopedTrace st("c_mappt_s");
     const auto& v_uv = keyframe->mv_uv;
     const auto& v_ur = keyframe->mv_ur;
     const auto& v_mp = keyframe->mvMapPoint;
@@ -116,6 +116,7 @@ void SimpleBackEnd::CreateMapPointFromStereoMatching(const FramePtr& keyframe) {
 }
 
 void SimpleBackEnd::CreateMapPointFromMotionTracking(const FramePtr& keyframe) {
+    ScopedTrace st("c_mappt_m");
     const auto& v_mp = keyframe->mvMapPoint;
     const int N = v_mp.size();
     Sophus::SE3d Tw0 = keyframe->mTwc;
@@ -159,51 +160,8 @@ void SimpleBackEnd::CreateMapPointFromMotionTracking(const FramePtr& keyframe) {
     }
 }
 
-bool SimpleBackEnd::SolvePnP(const FramePtr& keyframe) {
-    auto& v_pt = keyframe->mv_uv;
-    auto& v_mp = keyframe->mvMapPoint;
-    int N = keyframe->mv_uv.size();
-    keyframe->mvInliers.resize(N, false);
-
-    std::vector<cv::Point2f> image_points;
-    std::vector<cv::Point3f> object_points;
-    std::vector<size_t> origin_vector_idx;
-    double f = mpCamera->f;
-    double cx = mpCamera->cx;
-    double cy = mpCamera->cy;
-    cv::Mat K = (cv::Mat_<double>(3, 3) << f, 0, cx,
-                                           0, f, cy,
-                                           0, 0,  0);
-
-    for(int i = 0; i < N; ++i) {
-        if(!v_mp[i] || v_mp[i]->empty())
-            continue;
-        Eigen::Vector3d x3Dw = v_mp[i]->x3Dw();
-        object_points.emplace_back(x3Dw.x(), x3Dw.y(), x3Dw.z());
-        image_points.emplace_back(v_pt[i].x, v_pt[i].y);
-        origin_vector_idx.emplace_back(i);
-    }
-
-    if(image_points.size() > 16) {
-        cv::Mat rvec, tvec, R;
-        std::vector<int> inliers;
-        cv::solvePnPRansac(object_points, image_points, K, cv::noArray(), rvec, tvec, false,
-                           100, 8.0, 0.99, inliers, cv::SOLVEPNP_EPNP);
-        for(auto& idx : inliers) {
-            keyframe->mvInliers[origin_vector_idx[idx]] = true;
-        }
-
-        cv::Rodrigues(rvec, R);
-        Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> eigen_R(R.ptr<double>());
-        Eigen::Map<Eigen::Vector3d> eigen_t(tvec.ptr<double>());
-        Sophus::SE3d Tcw(eigen_R, eigen_t), Twc = Tcw.inverse();
-        keyframe->mTwc = Twc;
-        return true;
-    }
-    return false;
-}
-
 void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
+    ScopedTrace st("ba");
     std::vector<FramePtr> sliding_window = mpSlidingWindow->get(); // pose vertex
     sliding_window.emplace_back(new_keyframe);
     std::vector<double> keyframes_Tcw_raw((sliding_window.size()) * 7, 0);
@@ -233,7 +191,6 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
             }
 
             auto& v_mappoint_in_kf = sliding_window[kfs_idx]->mvMapPoint;
-            auto& v_inliers = sliding_window[kfs_idx]->mvInliers;
 
             for(int i = 0, n = v_mappoint_in_kf.size(); i < n; ++i) {
                 auto& mp = v_mappoint_in_kf[i];
