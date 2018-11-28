@@ -1,0 +1,17 @@
+language: bash
+sudo: required
+services:
+  - docker
+
+before_install:
+  - docker info
+  - docker version
+
+jobs:
+  include:
+    # Stage of Build
+    # ==============
+    - stage: Build
+      script:
+        - echo "==> Build on Ubuntu18.04 ..."
+        - docker build -f config/docker/Dockerfile -t vim:Ubuntu18.04 . | tee config/output.Ubuntu18.04.log
