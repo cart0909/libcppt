@@ -24,7 +24,7 @@ public:
 
     std::thread mtBackEnd;
 
-    std::function<void(const Sophus::SE3d)> mDebugCallback;
+    std::function<void(const Sophus::SE3d, double timestamp)> mDebugCallback;
 };
 
 SMART_PTR(VOSystem)
