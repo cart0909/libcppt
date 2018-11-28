@@ -23,6 +23,7 @@ public:
     void AddKeyFrame(const FramePtr& keyframe);
     void SetDebugCallback(const std::function<void(const std::vector<Sophus::SE3d>&,
                                                    const VecVector3d&)>& callback);
+    BackEndState mState;
 private:
     bool InitSystem(const FramePtr& keyframe);
     void CreateMapPointFromStereoMatching(const FramePtr& keyframe);
@@ -30,7 +31,6 @@ private:
     void ShowResultGUI() const;
     void SlidingWindowBA(const FramePtr& new_keyframe);
 
-    BackEndState mState;
     SimpleStereoCamPtr mpCamera;
     SlidingWindowPtr mpSlidingWindow;
 

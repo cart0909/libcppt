@@ -1,3 +1,4 @@
+#include <fstream>
 #include <queue>
 #include <thread>
 #include <condition_variable>
@@ -13,6 +14,9 @@
 #include <sophus/se3.hpp>
 #include <nav_msgs/Path.h>
 #include <visualization_msgs/MarkerArray.h>
+// catch ctrl+c signal
+#include <signal.h>
+
 #include "ros_utility.h"
 #include "system/vo_system.h"
 #include "src/CameraPoseVisualization.h"
@@ -38,12 +42,15 @@ public:
         fs["imu_topic"] >> imu_topic;
         fs["image_topic"] >> img_topic[0];
         fs["image_r_topic"] >> img_topic[1];
+        fs["output_path"] >> log_filename;
 
         mpSystem = std::make_shared<VOSystem>(config_file);
         mpSystem->mpBackEnd->SetDebugCallback(std::bind(&Node::PubSlidingWindow, this,
                                                         std::placeholders::_1,
                                                         std::placeholders::_2));
-        mpSystem->mDebugCallback = std::bind(&Node::PubCurPose, this, std::placeholders::_1);
+        mpSystem->mDebugCallback = std::bind(&Node::PubCurPose, this,
+                                             std::placeholders::_1,
+                                             std::placeholders::_2);
         fs.release();
     }
 
@@ -214,7 +221,7 @@ public:
         }
     }
 
-    void PubCurPose(const Sophus::SE3d& Twc) {
+    void PubCurPose(const Sophus::SE3d& Twc, double timestamp) {
         static Sophus::SE3d Tglw = Sophus::SE3d::rotX(-M_PI/2);
         // public latest frame
         // path
@@ -223,6 +230,7 @@ public:
         Eigen::Quaterniond qwc = Tglc.so3().unit_quaternion();
         geometry_msgs::PoseStamped pose_stamped;
         pose_stamped.header.frame_id = "world";
+        pose_stamped.header.stamp.fromSec(timestamp);
         pose_stamped.pose.orientation.w = qwc.w();
         pose_stamped.pose.orientation.x = qwc.x();
         pose_stamped.pose.orientation.y = qwc.y();
@@ -241,6 +249,7 @@ public:
 
     string imu_topic;
     string img_topic[2];
+    string log_filename;
 
     mutex m_buf;
     queue<ImuConstPtr> imu_buf;
@@ -263,12 +272,32 @@ public:
     CameraPoseVisualization camera_pose_visual;
 };
 
+// global variable
+Node node;
+void sigint_handler(int s) {
+    ROS_INFO_STREAM("logging trajectory to the file");
+    std::ofstream fout(node.log_filename);
+    if(!fout.is_open())
+        exit(1);
+
+    for(auto& pose : node.path.poses) {
+        fout << pose.header.stamp << " ";
+        fout << pose.pose.position.x << " " << pose.pose.position.y << " " <<
+                pose.pose.position.z << " ";
+        fout << pose.pose.orientation.x << " " << pose.pose.orientation.y << " "
+             << pose.pose.orientation.z << " " << pose.pose.orientation.w << std::endl;
+    }
+
+    exit(1);
+}
+
 int main(int argc, char** argv) {
-    ros::init(argc, argv, "cppt_player");
+    ros::init(argc, argv, "cppt_player", ros::init_options::NoSigintHandler);
     ros::NodeHandle nh("~");
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
 
-    Node node;
+    signal(SIGINT, sigint_handler);
+
     node.ReadFromNodeHandle(nh);
 
     message_filters::Subscriber<Image> sub_img[2] {{nh, node.img_topic[0], 100},

@@ -122,7 +122,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
     }
     mpLastFrame = frame;
 
-    if(mDebugCallback) {
-        mDebugCallback(frame->mTwc);
+    if(mDebugCallback && mpBackEnd->mState == SimpleBackEnd::NON_LINEAR) {
+        mDebugCallback(frame->mTwc, frame->mTimeStamp);
     }
 }
