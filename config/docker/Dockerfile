@@ -17,8 +17,8 @@ RUN apt-get install tzdata -y\
     && apt-get install libgoogle-glog-dev libgtest-dev -y\
     && apt-get install zip -y\
     && apt-get install qtcreator -y\
-    && apt-get install apt-get install -y libyaml-cpp-dev\
-    && apt-get install -y sudo wget gedit nano
+    && apt-get install libyaml-cpp-dev -y\
+    && apt-get install sudo wget gedit nano -y
 
 WORKDIR /home/
 RUN mkdir 3rdParty
