@@ -14,26 +14,33 @@ public:
     virtual ~SimpleStereoCam();
 
     // left cam api
-    void Project2(const Eigen::Vector3d& P, Eigen::Vector2d& p) const;
-    void Project2(const Eigen::Vector3d& P, Eigen::Vector2d& p,
-                  Eigen::Matrix<double, 2, 3>& J) const;
+    template<class Scalar>
+    void Project2(const Eigen::Matrix<Scalar, 3, 1>& P,
+                  Eigen::Matrix<Scalar, 2, 1>& p,
+                  Eigen::Matrix<Scalar, 2, 3>* J = nullptr) const;
 
-    Eigen::Matrix<double, 2, 3> J2(const Eigen::Vector3d& P) const;
+    template<class Scalar>
+    Eigen::Matrix<Scalar, 2, 3> J2(const Eigen::Matrix<Scalar, 3, 1>& P) const;
 
     // P(2) = 1
-    void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
+    template<class Scalar>
+    void BackProject(const Eigen::Matrix<Scalar, 2, 1>& p,
+                     Eigen::Matrix<Scalar, 3, 1>& P) const;
 
     // stereo cam api
     // p is [u, v, ur]'
-    void Project3(const Eigen::Vector3d& P, Eigen::Vector3d& p) const;
-    // p is [u, v, ur]'
-    void Project3(const Eigen::Vector3d& P, Eigen::Vector3d& p,
-                  Eigen::Matrix3d& J) const;
+    template<class Scalar>
+    void Project3(const Eigen::Matrix<Scalar, 3, 1>& P,
+                  Eigen::Matrix<Scalar, 3, 1>& p,
+                  Eigen::Matrix<Scalar, 3, 3>* J = nullptr) const;
 
-    Eigen::Matrix3d J3(const Eigen::Vector3d& P) const;
+    template<class Scalar>
+    Eigen::Matrix<Scalar, 3, 3> J3(const Eigen::Matrix<Scalar, 3, 1>& P) const;
 
     // p is [u, v, ur]'
-    void Triangulate(const Eigen::Vector3d& p, Eigen::Vector3d& P) const;
+    template<class Scalar>
+    void Triangulate(const Eigen::Matrix<Scalar, 3, 1>& p,
+                     Eigen::Matrix<Scalar, 3, 1>& P) const;
 
 
     const int width;
@@ -51,3 +58,84 @@ public:
 };
 
 SMART_PTR(SimpleStereoCam)
+
+// left cam api
+template<class Scalar>
+void SimpleStereoCam::Project2(const Eigen::Matrix<Scalar, 3, 1>& P,
+                               Eigen::Matrix<Scalar, 2, 1>& p,
+                               Eigen::Matrix<Scalar, 2, 3>* J) const {
+    Scalar inv_z = 1.0f / P(2);
+    Scalar f_inv_z = f * inv_z;
+    p(0) = P(0) * f_inv_z + cx;
+    p(1) = P(1) * f_inv_z + cy;
+
+    if(J) {
+        Scalar f_inv_z2 = f_inv_z * inv_z;
+        *J << f_inv_z, 0, -f_inv_z2 * P(0),
+              0, f_inv_z, -f_inv_z2 * P(1);
+    }
+}
+
+template<class Scalar>
+Eigen::Matrix<Scalar, 2, 3> SimpleStereoCam::J2(const Eigen::Matrix<Scalar, 3, 1>& P) const {
+    Eigen::Matrix<Scalar, 2, 3> J;
+    Scalar inv_z = 1.0f / P(2);
+    Scalar f_inv_z = f * inv_z;
+    Scalar f_inv_z2 = f_inv_z * inv_z;
+
+    J << f_inv_z, 0, -f_inv_z2 * P(0),
+         0, f_inv_z, -f_inv_z2 * P(1);
+    return J;
+}
+
+// P(2) = 1
+template<class Scalar>
+void SimpleStereoCam::BackProject(const Eigen::Matrix<Scalar, 2, 1>& p,
+                                  Eigen::Matrix<Scalar, 3, 1>& P) const {
+    P << (p(0) - cx) * inv_f, (p(1) - cy) * inv_f, 1;
+}
+
+// stereo cam api
+// p is [u, v, ur]'
+template<class Scalar>
+void SimpleStereoCam::Project3(const Eigen::Matrix<Scalar, 3, 1>& P,
+                               Eigen::Matrix<Scalar, 3, 1>& p,
+                               Eigen::Matrix<Scalar, 3, 3>* J) const {
+    Scalar inv_z = 1.0f / P(2);
+    Scalar f_inv_z = f * inv_z;
+    p(0) = P(0) * f_inv_z + cx; // u
+    p(1) = P(1) * f_inv_z + cy; // v
+    p(2) = p(0) - bf * inv_z;   // ur
+
+    if(J) {
+        Scalar inv_z2 = inv_z * inv_z;
+        Scalar f_inv_z2 = f * inv_z2;
+        *J << f_inv_z,       0,         -f_inv_z2 * P(0),
+                    0, f_inv_z,         -f_inv_z2 * P(1),
+              f_inv_z,       0, (bf - f * P(0)) * inv_z2;
+    }
+}
+
+template<class Scalar>
+Eigen::Matrix<Scalar, 3, 3> SimpleStereoCam::J3(const Eigen::Matrix<Scalar, 3, 1>& P) const {
+    Eigen::Matrix<Scalar, 3, 3> J;
+    Scalar inv_z = 1.0f / P(2);
+    Scalar inv_z2 = inv_z * inv_z;
+    Scalar f_inv_z = f * inv_z;
+    Scalar f_inv_z2 = f * inv_z2;
+
+    J << f_inv_z,       0,         -f_inv_z2 * P(0),
+               0, f_inv_z,          -f_inv_z2 * P(1),
+         f_inv_z,       0, (bf - f * P(0)) * inv_z2;
+    return J;
+}
+
+// p is [u, v, ur]'
+template<class Scalar>
+void SimpleStereoCam::Triangulate(const Eigen::Matrix<Scalar, 3, 1>& p,
+                                  Eigen::Matrix<Scalar, 3, 1>& P) const {
+    Scalar disparity = p(0) - p(2); // ul - ur
+    Scalar z = bf / disparity;
+    P << (p(0) - cx) * inv_f, (p(1) - cy) * inv_f, 1;
+    P *= z;
+}
