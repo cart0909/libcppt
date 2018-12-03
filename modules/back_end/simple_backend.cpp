@@ -135,7 +135,7 @@ void SimpleBackEnd::CreateMapPointFromMotionTracking(const FramePtr& keyframe) {
 
         for(int i = 0; i < num_meas; ++i) {
             auto& keyframe_i = v_meas[i].first;
-            auto& uv_i = v_meas[i].second;
+            auto& uv_i = keyframe_i->mv_uv[v_meas[i].second];
             const Sophus::SE3d& Tiw = keyframe_i->mTwc.inverse();
             Sophus::SE3d Ti0 = Tiw * Tw0;
             Eigen::Matrix<double, 3, 4> P;
