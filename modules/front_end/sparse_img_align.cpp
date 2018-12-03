@@ -9,13 +9,13 @@
 const int SparseImgAlign::mPatchSize = 4, SparseImgAlign::mPatchHalfSize = 2, SparseImgAlign::mPatchArea = 16;
 
 SparseImgAlign::SparseImgAlign(const SimpleStereoCamPtr& camera)
-    : mpCamera(camera), mMaxIter(10)
+    : mpCamera(camera), mMaxIter(10), mConverge_eps(1e-5)
 {}
 SparseImgAlign::~SparseImgAlign() {}
 
 // return estimate_Tcr
 Sophus::SE3d SparseImgAlign::Run(const FramePtr& cur_frame, const FramePtr& ref_frame,
-                                 Sophus::SE3d init_Tcr) {
+                                 const Sophus::SE3d& init_Tcr) {
     mvRef_uv.clear();
     mv_x3Dr.clear();
     mImgPyrRef = ref_frame->mImgPyrL;
@@ -36,9 +36,33 @@ Sophus::SE3d SparseImgAlign::Run(const FramePtr& cur_frame, const FramePtr& ref_
 
     mTcr = init_Tcr;
     for(mLevel = mImgPyrCur.size() - 1; mLevel >= 0; --mLevel) {
-        std::cout << "-------------level " << mLevel << std::endl;
+//        std::cout << "-------------level " << mLevel << std::endl;
+        ScopedTrace st(("level" + std::to_string(mLevel)).c_str());
         Solve();
     }
+#if 0
+    // show debug
+    cv::Mat result_ref_img, result_cur_img;
+    cv::cvtColor(mImgPyrRef[0], result_ref_img, CV_GRAY2BGR);
+    cv::cvtColor(mImgPyrCur[0], result_cur_img, CV_GRAY2BGR);
+
+    for(int i = 0, n = mvRef_uv.size(); i < n; ++i) {
+        Eigen::Vector3d x3Dc = mTcr * mv_x3Dr[i];
+        Eigen::Vector2d uv;
+        mpCamera->Project2(x3Dc, uv);
+        if(uv(0) < 0 || uv(1) < 0 || uv(0) >= result_cur_img.cols || uv(1) >= result_cur_img.rows) {
+            cv::circle(result_ref_img, mvRef_uv[i], 2, cv::Scalar(0, 0, 255), -1);
+        }
+        else {
+            cv::circle(result_ref_img, mvRef_uv[i], 2, cv::Scalar(0, 255, 0), -1);
+            cv::circle(result_cur_img, cv::Point(uv(0), uv(1)), 2, cv::Scalar(0, 255, 0), -1);
+        }
+    }
+    cv::Mat result;
+    cv::hconcat(result_ref_img, result_cur_img, result);
+    cv::imshow("result", result);
+    cv::waitKey(1);
+#endif
     return mTcr;
 }
 
@@ -50,8 +74,10 @@ void SparseImgAlign::Solve() {
     PrecomputeCache();
 
     for(int iter = 0; iter < mMaxIter; ++iter) {
-        std::cout << "iter " << iter << ":" << ComputeResidual() << std::endl;
-        SolveHxbUpdate();
+//        std::cout << "iter " << iter << ":" << ComputeResidual() << std::endl;
+        ComputeResidual();
+        if(SolveHxbUpdate())
+            break;
     }
 }
 
@@ -112,7 +138,7 @@ void SparseImgAlign::PrecomputeCache() {
         }
     }
 
-    std::cout << "num_visible " << num_visible << std::endl;
+//    std::cout << "num_visible " << num_visible << std::endl;
 }
 
 double SparseImgAlign::ComputeResidual() {
@@ -149,15 +175,6 @@ double SparseImgAlign::ComputeResidual() {
         const float w_cur_br = subpix_u_cur * subpix_v_cur;
         float* ref_patch = mRefPatchCache.data() + i * mPatchArea;
 
-//        {
-//            cv::Mat debug_ref_patch(4, 4, CV_32F, ref_patch);
-////            std::cout << mRefPatchCache << std::endl;
-//            debug_ref_patch.convertTo(debug_ref_patch, CV_8U);
-//            cv::namedWindow("ref_patch", cv::WINDOW_FREERATIO);
-//            cv::imshow("ref_patch", debug_ref_patch);
-//            cv::waitKey(0);
-//        }
-
         for(int y = 0; y < mPatchSize; ++y) {
             int ubegin = u_cur_i - mPatchHalfSize;
             int vbegin = v_cur_i - mPatchHalfSize;
@@ -179,13 +196,20 @@ double SparseImgAlign::ComputeResidual() {
     return chi2/num_pixel;
 }
 
-void SparseImgAlign::SolveHxbUpdate() {
+// return true the terminate the iteration
+bool SparseImgAlign::SolveHxbUpdate() {
     // solve linear equation by QR decomposition
     Eigen::Matrix<double, 6, 1> x = mH.colPivHouseholderQr().solve(mb);
     if(std::isnan(x(0)))
-        return;
+        return true;
+
+    if(x.norm() < mConverge_eps) {
+        return true;
+    }
+
     // update by inverse compositional
     mTcr = mTcr * Sophus::SE3d::exp(x);
+    return false;
 }
 
 #undef BILINEAR
