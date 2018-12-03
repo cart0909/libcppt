@@ -130,6 +130,7 @@ camera_model/simple_stereo_camera.cpp
 front_end/frontend_config.cpp
 front_end/utility.cpp
 front_end/simple_frontend.cpp
+front_end/sparse_img_align.cpp
 # back_end/msckf.cpp
 back_end/imu_state.cpp
 back_end/imu_preintegration.cpp

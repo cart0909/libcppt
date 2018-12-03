@@ -24,10 +24,6 @@ public:
     void Set_x3Dw(const Eigen::Vector3d& x3Dw);
     void Set_x3Dw(const Eigen::Vector3d& x3Dc, const Sophus::SE3d& Twc);
 
-    // x3Dc = Tcw * x3Dw
-    // d(x3Dc)/d(Xi) = [I, -x3Dc^]
-    Eigen::Matrix<double, 3, 6> Jacobian(const Sophus::SE3d& Tcw) const;
-
     bool empty() const;
     void reset();
 

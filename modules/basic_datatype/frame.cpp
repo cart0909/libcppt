@@ -1,6 +1,7 @@
 #include "frame.h"
 #include "tracer.h"
 #include "util_datatype.h"
+#include "front_end/utility.h"
 uint64_t Frame::gNextFrameID = 0;
 uint64_t Frame::gNextKeyFrameID = 0;
 
@@ -8,9 +9,14 @@ Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp)
     : mFrameID(gNextFrameID++), mIsKeyFrame(false), mKeyFrameID(0),
       mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp)
 {
-    ScopedTrace st("build_pyr");
-    cv::buildOpticalFlowPyramid(mImgL, mImgPyrL, cv::Size(21, 21), 3);
-    cv::buildOpticalFlowPyramid(mImgR, mImgPyrR, cv::Size(21, 21), 3);
+    Tracer::TraceBegin("lk_pyr");
+    cv::buildOpticalFlowPyramid(mImgL, mImgPyrGradL, cv::Size(21, 21), 3);
+    cv::buildOpticalFlowPyramid(mImgR, mImgPyrGradR, cv::Size(21, 21), 3);
+    Tracer::TraceEnd();
+    Tracer::TraceBegin("pyr");
+    mImgPyrL = Utility::Pyramid(mImgL, 3);
+    mImgPyrR = Utility::Pyramid(mImgR, 3);
+    Tracer::TraceEnd();
 }
 
 Frame::~Frame() {}
@@ -62,7 +68,8 @@ void Frame::SparseStereoMatching(double bf) {
     std::vector<cv::Point2f> pt_r;
     std::vector<uchar> status;
     std::vector<float> err;
-    cv::calcOpticalFlowPyrLK(mImgPyrL, mImgPyrR, uv, pt_r, status, err, cv::Size(21, 21), 3);
+    cv::calcOpticalFlowPyrLK(mImgPyrGradL, mImgPyrGradR, uv,
+                             pt_r, status, err, cv::Size(21, 21), 3);
 
     const double MAX_DISPARITY = bf / 0.3;
     const double MIN_DISPARITY = 0;

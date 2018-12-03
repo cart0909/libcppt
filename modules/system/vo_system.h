@@ -5,6 +5,7 @@
 #include "basic_datatype/util_datatype.h"
 #include "camera_model/simple_stereo_camera.h"
 #include "front_end/simple_frontend.h"
+#include "front_end/sparse_img_align.h"
 #include "back_end/simple_backend.h"
 #include "basic_datatype/sliding_window.h"
 
@@ -16,6 +17,7 @@ public:
     void Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r,
                  double timestamp);
 
+    SparseImgAlignPtr  mpImgAlign;
     SimpleStereoCamPtr mpStereoCam;
     SimpleFrontEndPtr  mpFrontEnd;
     SimpleBackEndPtr   mpBackEnd;

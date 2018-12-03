@@ -48,16 +48,6 @@ void MapPoint::Set_x3Dw(const Eigen::Vector3d& x3Dc, const Sophus::SE3d& Twc) {
     }
 }
 
-Eigen::Matrix<double, 3, 6> MapPoint::Jacobian(const Sophus::SE3d& Tcw) const {
-    Eigen::Matrix<double, 3, 6> J;
-    mMutex.lock();
-    Eigen::Vector3d x3Dw = m_x3Dw;
-    mMutex.unlock();
-    Eigen::Vector3d x3Dc = Tcw * x3Dw;
-    J << Eigen::Matrix3d::Identity(), Sophus::SO3d::hat(x3Dc);
-    return J;
-}
-
 bool MapPoint::empty() const {
     std::unique_lock<std::mutex> lock(mMutex);
     return mbNeedInit;

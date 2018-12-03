@@ -95,7 +95,7 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
     std::vector<uchar> status;
     std::vector<float> err;
     Tracer::TraceBegin("Optical Flow");
-    cv::calcOpticalFlowPyrLK(ref_frame->mImgPyrL, cur_frame->mImgPyrL, ref_frame_pts,
+    cv::calcOpticalFlowPyrLK(ref_frame->mImgPyrGradL, cur_frame->mImgPyrGradL, ref_frame_pts,
                              cur_frame->mv_uv, status, err, cv::Size(21, 21), 3);
     Tracer::TraceEnd();
 
