@@ -9,6 +9,8 @@ using VecVector2d = std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen:
 using VecVector3d = std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>;
 using VecVector2f = std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f>>;
 using VecVector3f = std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>;
+using Matrix6f = Eigen::Matrix<float, 6, 6>;
+using Vector6f = Eigen::Matrix<float, 6, 1>;
 
 #define SMART_PTR(NAME) \
 using NAME##Ptr = std::shared_ptr<NAME>; \

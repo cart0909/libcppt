@@ -37,6 +37,7 @@ public:
     // image
     cv::Mat mImgL, mImgR;
     // image pyr for optical flow
+    ImagePyr mImgPyrGradL, mImgPyrGradR; // will remove when opencv LK remove
     ImagePyr mImgPyrL, mImgPyrR;
     double mTimeStamp;
     // or CLAHE img?

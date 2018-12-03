@@ -83,6 +83,7 @@ VOSystem::VOSystem(const std::string& config_file) {
     mpSlidingWindow = std::make_shared<SlidingWindow>();
     mpFrontEnd = std::make_shared<SimpleFrontEnd>(mpStereoCam, mpSlidingWindow);
     mpBackEnd  = std::make_shared<SimpleBackEnd>(mpStereoCam, mpSlidingWindow);
+    mpImgAlign = std::make_shared<SparseImgAlign>(mpStereoCam);
 
     fs.release();
 
@@ -104,6 +105,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
 
     FramePtr frame(new Frame(img_remap_l, img_remap_r, timestamp));
     if(mpLastFrame) {
+        mpImgAlign->Run(frame, mpLastFrame);
         mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
         frame->SparseStereoMatching(mpStereoCam->bf);
         mpFrontEnd->PoseOpt(frame, mpLastFrame->mTwc.inverse());
