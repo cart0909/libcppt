@@ -20,7 +20,7 @@ void Frame::SetToKeyFrame() {
     mKeyFrameID = gNextKeyFrameID++;
 
     for(int i = 0, n = mvMapPoint.size(); i < n; ++i) {
-        mvMapPoint[i]->AddMeas(shared_from_this(), mv_uv[i]);
+        mvMapPoint[i]->AddMeas(shared_from_this(), i);
     }
 }
 
