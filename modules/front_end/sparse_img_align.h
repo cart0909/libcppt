@@ -13,7 +13,7 @@ public:
 
     // return estimate_Tcr
     Sophus::SE3d Run(const FramePtr& cur_frame, const FramePtr& ref_frame,
-                     Sophus::SE3d init_Tcr = Sophus::SE3d());
+                     const Sophus::SE3d& init_Tcr = Sophus::SE3d());
 
 private:
     static const int mPatchSize, mPatchHalfSize, mPatchArea;
@@ -21,7 +21,7 @@ private:
     void Solve();
     void PrecomputeCache();
     double ComputeResidual();
-    void SolveHxbUpdate();
+    bool SolveHxbUpdate();
 
     SimpleStereoCamPtr mpCamera;
     std::vector<cv::Point2f> mvRef_uv;
@@ -36,6 +36,8 @@ private:
     Sophus::SE3d mTcr;
     Eigen::Matrix<double, 6, 6> mH;
     Eigen::Matrix<double, 6, 1> mb;
+
+    double mConverge_eps;
 };
 
 SMART_PTR(SparseImgAlign)
