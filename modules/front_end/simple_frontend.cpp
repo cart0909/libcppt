@@ -37,7 +37,7 @@ void SimpleFrontEnd::ExtractFeatures(const FramePtr& frame) {
     }
 
     std::vector<cv::KeyPoint> kps;
-    Tracer::TraceBegin("FAST");
+    Tracer::TraceBegin("FAST20");
     cv::FAST(frame->mImgL, kps, 20);
     Tracer::TraceEnd();
 
@@ -69,6 +69,51 @@ void SimpleFrontEnd::ExtractFeatures(const FramePtr& frame) {
                 frame->mvLastKFuv.emplace_back(kps[j].pt);
                 frame->mvMapPoint.emplace_back(new MapPoint);
             }
+
+    if(frame->mv_uv.size() < 150) {
+        grids.resize(grid_rows, std::vector<int>(grid_cols, empty_value));
+
+        for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
+            auto& pt = frame->mv_uv[i];
+            int grid_i = pt.y / 32;
+            int grid_j = pt.x / 32;
+            if(grids[grid_i][grid_j] != exist_value)
+                grids[grid_i][grid_j] = exist_value;
+        }
+
+        Tracer::TraceBegin("FAST7");
+        cv::FAST(frame->mImgL, kps, 7);
+        Tracer::TraceEnd();
+
+        for(int i = 0, n = kps.size(); i < n; ++i) {
+            auto& pt = kps[i].pt;
+            int grid_i = pt.y / 32;
+            int grid_j = pt.x / 32;
+            if(grid_i >= grid_rows)
+                grid_i = grid_rows - 1;
+            if(grid_j >= grid_cols)
+                grid_j = grid_cols - 1;
+            int value = grids[grid_i][grid_j];
+            if(value != exist_value) {
+                if(value == empty_value) {
+                    grids[grid_i][grid_j] = i;
+                }
+                else {
+                    if(kps[i].response > kps[value].response)
+                        grids[grid_i][grid_j] = i;
+                }
+            }
+        }
+
+        for(auto& i : grids)
+            for(auto& j : i)
+                if(j >= 0) {
+                    frame->mvPtCount.emplace_back(0);
+                    frame->mv_uv.emplace_back(kps[j].pt);
+                    frame->mvLastKFuv.emplace_back(kps[j].pt);
+                    frame->mvMapPoint.emplace_back(new MapPoint);
+                }
+    }
 }
 
 // track features by optical flow and check epipolar constrain
