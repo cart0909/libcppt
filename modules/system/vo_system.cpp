@@ -106,7 +106,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
     FramePtr frame(new Frame(img_remap_l, img_remap_r, timestamp));
     if(mpLastFrame) {
         Sophus::SE3d Tcr = mpImgAlign->Run(frame, mpLastFrame);
-        mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
+        mpFrontEnd->TrackFeatLKWithEstimateTcr(mpLastFrame, frame, Tcr);
         frame->SparseStereoMatching(mpStereoCam->bf);
         mpFrontEnd->PoseOpt(frame, Tcr * mpLastFrame->mTwc.inverse());
         if(frame->CheckKeyFrame()) {

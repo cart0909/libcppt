@@ -117,6 +117,75 @@ void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
         ++it;
 }
 
+void SimpleFrontEnd::TrackFeatLKWithEstimateTcr(const FrameConstPtr& ref_frame,
+                                                const FramePtr& cur_frame,
+                                                const Sophus::SE3d& Tcr) {
+    if(ref_frame->mv_uv.empty())
+        return;
+
+    ScopedTrace st("TrackFeatTcr");
+    const int width = mpCamera->width, height = mpCamera->height;
+    Sophus::SE3d Tcw = Tcr * ref_frame->mTwc.inverse();
+
+    // copy ref frame data for cur frame
+    std::vector<cv::Point2f> ref_frame_pts = ref_frame->mv_uv;
+    cur_frame->mvPtCount = ref_frame->mvPtCount;
+    cur_frame->mvMapPoint = ref_frame->mvMapPoint;
+    if(ref_frame->mIsKeyFrame) {
+        cur_frame->mvLastKFuv = ref_frame->mv_uv;
+    }
+    else {
+        cur_frame->mvLastKFuv = ref_frame->mvLastKFuv;
+    }
+
+    // predict the cur uv
+    for(int i = 0, n = ref_frame_pts.size(); i < n; ++i) {
+        auto& mp = cur_frame->mvMapPoint[i];
+        if(mp->empty()) { // predict consider rotation only
+            Eigen::Vector3d x3Dr;
+            mpCamera->BackProject(Eigen::Vector2d(ref_frame_pts[i].x, ref_frame_pts[i].y),
+                                  x3Dr);
+            Eigen::Vector3d x3Dc = Tcr.so3() * x3Dr;
+            Eigen::Vector2d uv;
+            mpCamera->Project2(x3Dc, uv);
+            cur_frame->mv_uv.emplace_back(uv(0), uv(1));
+        }
+        else { // predict by projection
+            Eigen::Vector3d x3Dc = mp->x3Dc(Tcw);
+            Eigen::Vector2d uv;
+            mpCamera->Project2(x3Dc, uv);
+            cur_frame->mv_uv.emplace_back(uv(0), uv(1));
+        }
+    }
+
+    // optical flow
+    std::vector<uchar> status;
+    std::vector<float> err;
+    Tracer::TraceBegin("Optical Flow");
+    cv::calcOpticalFlowPyrLK(ref_frame->mImgPyrGradL, cur_frame->mImgPyrGradL, ref_frame_pts,
+                             cur_frame->mv_uv, status, err, cv::Size(21, 21), 3,
+                             cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
+                             cv::OPTFLOW_USE_INITIAL_FLOW);
+    Tracer::TraceEnd();
+
+    for(int i = 0, n = cur_frame->mv_uv.size(); i < n; ++i)
+        if(status[i] && !InBorder(cur_frame->mv_uv[i], width, height))
+            status[i] = 0;
+
+    Tracer::TraceBegin("reduce vector");
+    ReduceVector(ref_frame_pts, status);
+    ReduceVector(cur_frame->mv_uv, status);
+    ReduceVector(cur_frame->mvPtCount, status);
+    ReduceVector(cur_frame->mvLastKFuv, status);
+    ReduceVector(cur_frame->mvMapPoint, status);
+    Tracer::TraceEnd();
+
+    RemoveOutlierFromF(ref_frame_pts, cur_frame);
+
+    for(auto& it : cur_frame->mvPtCount)
+        ++it;
+}
+
 void SimpleFrontEnd::RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
                                         const FramePtr& cur_frame) {
     if(ref_pts.size() > 8) {
