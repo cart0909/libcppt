@@ -16,6 +16,7 @@ SparseImgAlign::~SparseImgAlign() {}
 // return estimate_Tcr
 Sophus::SE3d SparseImgAlign::Run(const FramePtr& cur_frame, const FramePtr& ref_frame,
                                  const Sophus::SE3d& init_Tcr) {
+    ScopedTrace st("ImgAlign");
     mvRef_uv.clear();
     mv_x3Dr.clear();
     mImgPyrRef = ref_frame->mImgPyrL;
