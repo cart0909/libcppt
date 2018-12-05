@@ -9,13 +9,18 @@ Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp)
     : mFrameID(gNextFrameID++), mIsKeyFrame(false), mKeyFrameID(0),
       mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp)
 {
+    Tracer::TraceBegin("CLAHE");
+    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
+    clahe->apply(mImgL, mClaheL);
+    clahe->apply(mImgR, mClaheR);
+    Tracer::TraceEnd();
     Tracer::TraceBegin("lk_pyr");
-    cv::buildOpticalFlowPyramid(mImgL, mImgPyrGradL, cv::Size(21, 21), 3);
-    cv::buildOpticalFlowPyramid(mImgR, mImgPyrGradR, cv::Size(21, 21), 3);
+    cv::buildOpticalFlowPyramid(mClaheL, mImgPyrGradL, cv::Size(21, 21), 3);
+    cv::buildOpticalFlowPyramid(mClaheR, mImgPyrGradR, cv::Size(21, 21), 3);
     Tracer::TraceEnd();
     Tracer::TraceBegin("pyr");
-    mImgPyrL = Utility::Pyramid(mImgL, 3);
-    mImgPyrR = Utility::Pyramid(mImgR, 3);
+    mImgPyrL = Utility::Pyramid(mClaheL, 3);
+    mImgPyrR = Utility::Pyramid(mClaheR, 3);
     Tracer::TraceEnd();
 }
 
@@ -32,7 +37,7 @@ void Frame::SetToKeyFrame() {
 
 bool Frame::CheckKeyFrame() {
     int num_features = mv_uv.size();
-    if(num_features < 100) {
+    if(num_features < 150) {
         return true;
     }
 
@@ -89,4 +94,120 @@ void Frame::SparseStereoMatching(double bf) {
     }
 
     mNumStereo = stereo_count;
+}
+
+void Frame::ExtractFAST() {
+    ScopedTrace st("ExtractFAST");
+    // uniform the feature distribution
+//    UniformFeatureDistribution(frame); // FIXME!!!
+
+    static int empty_value = -1, exist_value = -2;
+    int grid_rows = std::ceil(static_cast<float>(mImgL.rows) / 32);
+    int grid_cols = std::ceil(static_cast<float>(mImgL.cols) / 32);
+    std::vector<std::vector<int>> grids(grid_rows, std::vector<int>(grid_cols, empty_value));
+    for(int i = 0, n = mv_uv.size(); i < n; ++i) {
+        auto& pt = mv_uv[i];
+        int grid_i = pt.y / 32;
+        int grid_j = pt.x / 32;
+        if(grids[grid_i][grid_j] != exist_value)
+            grids[grid_i][grid_j] = exist_value;
+    }
+
+    std::vector<cv::KeyPoint> kps;
+    Tracer::TraceBegin("FAST20");
+    cv::FAST(mImgL, kps, 20);
+    Tracer::TraceEnd();
+
+    for(int i = 0, n = kps.size(); i < n; ++i) {
+        auto& pt = kps[i].pt;
+        int grid_i = pt.y / 32;
+        int grid_j = pt.x / 32;
+        if(grid_i >= grid_rows)
+            grid_i = grid_rows - 1;
+        if(grid_j >= grid_cols)
+            grid_j = grid_cols - 1;
+        int value = grids[grid_i][grid_j];
+        if(value != exist_value) {
+            if(value == empty_value) {
+                grids[grid_i][grid_j] = i;
+            }
+            else {
+                if(kps[i].response > kps[value].response)
+                    grids[grid_i][grid_j] = i;
+            }
+        }
+    }
+
+    for(auto& i : grids)
+        for(auto& j : i)
+            if(j >= 0) {
+                mvPtCount.emplace_back(0);
+                mv_uv.emplace_back(kps[j].pt);
+                mvLastKFuv.emplace_back(kps[j].pt);
+                mvMapPoint.emplace_back(new MapPoint);
+            }
+
+    if(mv_uv.size() < 150) {
+        grids.resize(grid_rows, std::vector<int>(grid_cols, empty_value));
+
+        for(int i = 0, n = mv_uv.size(); i < n; ++i) {
+            auto& pt = mv_uv[i];
+            int grid_i = pt.y / 32;
+            int grid_j = pt.x / 32;
+            if(grids[grid_i][grid_j] != exist_value)
+                grids[grid_i][grid_j] = exist_value;
+        }
+
+        Tracer::TraceBegin("FAST7");
+        cv::FAST(mImgL, kps, 7);
+        Tracer::TraceEnd();
+
+        for(int i = 0, n = kps.size(); i < n; ++i) {
+            auto& pt = kps[i].pt;
+            int grid_i = pt.y / 32;
+            int grid_j = pt.x / 32;
+            if(grid_i >= grid_rows)
+                grid_i = grid_rows - 1;
+            if(grid_j >= grid_cols)
+                grid_j = grid_cols - 1;
+            int value = grids[grid_i][grid_j];
+            if(value != exist_value) {
+                if(value == empty_value) {
+                    grids[grid_i][grid_j] = i;
+                }
+                else {
+                    if(kps[i].response > kps[value].response)
+                        grids[grid_i][grid_j] = i;
+                }
+            }
+        }
+
+        for(auto& i : grids)
+            for(auto& j : i)
+                if(j >= 0) {
+                    mvPtCount.emplace_back(0);
+                    mv_uv.emplace_back(kps[j].pt);
+                    mvLastKFuv.emplace_back(kps[j].pt);
+                    mvMapPoint.emplace_back(new MapPoint);
+                }
+    }
+}
+
+void Frame::ExtractGFTT() {
+    ScopedTrace st("ExtractGFTT");
+    cv::Mat mask = cv::Mat(mImgL.rows, mImgL.cols, CV_8U, cv::Scalar(255));
+
+    for(auto& pt : mv_uv) {
+        cv::circle(mask, pt, 20, cv::Scalar(0), -1);
+    }
+
+    std::vector<cv::Point2f> pts;
+    cv::goodFeaturesToTrack(mImgL, pts, 0, 0.01, 20, mask); // 4.954 ms
+
+    for(auto& pt : pts) {
+        mvPtCount.emplace_back(0);
+        mv_uv.emplace_back(pt);
+        mvLastKFuv.emplace_back(pt);
+        mvMapPoint.emplace_back(new MapPoint);
+    }
 }
