@@ -110,10 +110,14 @@ INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
 LIBRARIES cppt_modules
 )
 
+# DBoW2
+set(DBOW2_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/reloc/3rdParty/DBoW2)
+
 # include
 include_directories(
 ${THRID_PARTY_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}
+${DBOW2_INCLUDE_DIRS}
 )
 
 add_library(cppt_modules SHARED
@@ -139,6 +143,16 @@ back_end/simple_backend.cpp
 ceres/intensity_factor.cpp
 ceres/projection_factor.cpp
 system/vo_system.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/BowVector.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/FBrief.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/FORB.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/FeatureVector.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/QueryResults.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/ScoringObject.cpp
+${DBOW2_INCLUDE_DIRS}/DUtils/Random.cpp
+${DBOW2_INCLUDE_DIRS}/DUtils/Timestamp.cpp
+${DBOW2_INCLUDE_DIRS}/DVision/BRIEF.cpp
+${DBOW2_INCLUDE_DIRS}/VocabularyBinary.cpp
 )
 target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
 
