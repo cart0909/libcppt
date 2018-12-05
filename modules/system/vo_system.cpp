@@ -109,14 +109,14 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
         mpFrontEnd->TrackFeatLKWithEstimateTcr(mpLastFrame, frame, Tcr);
         mpFrontEnd->PoseOpt(frame, Tcr * mpLastFrame->mTwc.inverse());
         if(frame->CheckKeyFrame()) {
-            mpFrontEnd->ExtractFeatures(frame);
+            frame->ExtractFAST();
             frame->SetToKeyFrame();
             frame->SparseStereoMatching(mpStereoCam->bf);
             mpBackEnd->AddKeyFrame(frame);
         }
     }
     else {
-        mpFrontEnd->ExtractFeatures(frame);
+        frame->ExtractFAST();
         frame->SetToKeyFrame();
         frame->SparseStereoMatching(mpStereoCam->bf);
         mpBackEnd->AddKeyFrame(frame);

@@ -18,6 +18,8 @@ public:
 
     // simple sparse stereo matching algorithm by optical flow
     void SparseStereoMatching(double bf);
+    void ExtractFAST();
+    void ExtractGFTT();
 
     static uint64_t gNextFrameID, gNextKeyFrameID;
     uint64_t mFrameID;
@@ -36,11 +38,12 @@ public:
 
     // image
     cv::Mat mImgL, mImgR;
+    // CLAHE img for tracking
+    cv::Mat mClaheL, mClaheR;
     // image pyr for optical flow
     ImagePyr mImgPyrGradL, mImgPyrGradR; // will remove when opencv LK remove
     ImagePyr mImgPyrL, mImgPyrR;
     double mTimeStamp;
-    // or CLAHE img?
 };
 
 SMART_PTR(Frame)
