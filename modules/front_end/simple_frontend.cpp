@@ -289,74 +289,61 @@ void SimpleFrontEnd::UniformFeatureDistribution(const FramePtr& cur_frame) {
 void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init_Tcw) {
     ScopedTrace st("poseopt");
     auto& v_uv = cur_frame->mv_uv;
-    auto& v_ur = cur_frame->mv_ur;
     auto& v_mps = cur_frame->mvMapPoint;
 
+    // align with v_uv v_mps size
     int N = v_uv.size();
     std::vector<uchar> status(N, 1);
     std::vector<ceres::CostFunction*> cost_fcuntion(N, nullptr);
 
-    double Tcw_raw[7];
-    std::memcpy(Tcw_raw, init_Tcw.data(), sizeof(double) * 7);
+    double Tcw_raw[7] = {0};
+    const double mono_chi2 = 5.991; //stereo_chi2 = 7.815;
 
-    ceres::Problem problem;
-    const double mono_chi2 = 5.991, stereo_chi2 = 7.815;
-    ceres::LossFunction* loss_function2 = new ceres::HuberLoss(std::sqrt(mono_chi2));
-    ceres::LossFunction* loss_function3 = new ceres::HuberLoss(std::sqrt(stereo_chi2));
-    ceres::LocalParameterization* pose_vertex = new Sophus::VertexSE3(true);
+    for(int iter = 0; iter < 4; ++iter) {
+        std::memcpy(Tcw_raw, init_Tcw.data(), sizeof(double) * 7);
+        ceres::Problem problem;
+        ceres::LossFunction* loss_function2 = new ceres::HuberLoss(std::sqrt(mono_chi2));
+        ceres::LocalParameterization* pose_vertex = new Sophus::VertexSE3(true);
+        problem.AddParameterBlock(Tcw_raw, 7, pose_vertex);
 
-    problem.AddParameterBlock(Tcw_raw, 7, pose_vertex);
+        for(int i = 0; i < N; ++i) {
+            if(!v_mps[i] || v_mps[i]->empty())
+                continue;
 
-    for(int i = 0; i < N; ++i) {
-        if(!v_mps[i] || v_mps[i]->empty())
-            continue;
-
-        if(1) { // mono edge
-            auto project_factor =
-            new unary::ProjectionFactor(mpCamera,
-                                        Eigen::Vector2d(v_uv[i].x, v_uv[i].y),
-                                        v_mps[i]->x3Dw());
-            problem.AddResidualBlock(project_factor, loss_function2, Tcw_raw);
-            cost_fcuntion[i] = project_factor;
-        }
-        else { // stereo edge
-            auto stereo_project_factor =
-            new unary::StereoProjectionFactor(mpCamera,
-                                              Eigen::Vector3d(v_uv[i].x, v_uv[i].y, v_ur[i]),
-                                              v_mps[i]->x3Dw());
-            problem.AddResidualBlock(stereo_project_factor, loss_function3, Tcw_raw);
-            cost_fcuntion[i] = stereo_project_factor;
-        }
-    }
-
-    ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_QR;
-    options.trust_region_strategy_type = ceres::DOGLEG;
-    options.max_num_iterations = 10;
-    ceres::Solver::Summary summary;
-
-    ceres::Solve(options, &problem, &summary);
-//    std::cout << summary.FullReport() << std::endl;
-
-    // remove outlier
-    for(int i = 0; i < N; ++i) {
-        if(cost_fcuntion[i]) {
-            if(1) { // mono
-                double* parameters[1] = {Tcw_raw};
-                Eigen::Vector2d residual;
-                cost_fcuntion[i]->Evaluate(parameters, residual.data(), nullptr);
-                if(residual.norm() > mono_chi2) {
-                    status[i] = 0;
-                }
+            if(status[i]) {
+                auto project_factor =
+                new unary::ProjectionFactor(mpCamera,
+                                            Eigen::Vector2d(v_uv[i].x, v_uv[i].y),
+                                            v_mps[i]->x3Dw());
+                if(i >= 2)
+                    problem.AddResidualBlock(project_factor, NULL, Tcw_raw);
+                else
+                    problem.AddResidualBlock(project_factor, loss_function2, Tcw_raw);
+                cost_fcuntion[i] = project_factor;
             }
-            else { // stereo
-                double* parameters[1] = {Tcw_raw};
-                Eigen::Vector3d residual;
-                cost_fcuntion[i]->Evaluate(parameters, residual.data(), nullptr);
-                if(residual.norm() > stereo_chi2) {
-                    status[i] = 0;
-                }
-            }
+        }
+
+        ceres::Solver::Options options;
+        options.linear_solver_type = ceres::DENSE_QR;
+        options.trust_region_strategy_type = ceres::DOGLEG;
+        options.max_num_iterations = 10;
+        ceres::Solver::Summary summary;
+
+        ceres::Solve(options, &problem, &summary);
+
+        // check outlier
+        Eigen::Map<Sophus::SE3d> Tcw(Tcw_raw);
+        for(int i = 0; i < N; ++i) {
+            if(!v_mps[i] || v_mps[i]->empty())
+                continue;
+            Eigen::Vector3d x3Dc = v_mps[i]->x3Dc(Tcw);
+            Eigen::Vector2d uv;
+            mpCamera->Project2(x3Dc, uv);
+            Eigen::Vector2d residual = Eigen::Vector2d(v_uv[i].x, v_uv[i].y) - uv;
+            if(residual.dot(residual) > mono_chi2)
+                status[i] = 0;
+            else
+                status[i] = 1;
         }
     }
     // set pose to cur frame
