@@ -134,13 +134,13 @@ public:
     void PubFeatureImg(const FramePtr& frame) {
         cv::Mat feature_img, feature_img_r;
         cv::cvtColor(frame->mImgL, feature_img, CV_GRAY2BGR);
-//        cv::cvtColor(frame->mImgR, feature_img_r, CV_GRAY2BGR);
         for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
             auto& pt = frame->mv_uv[i];
-//            auto& ur = frame->mv_ur[i];
-            cv::circle(feature_img, pt, 2, cv::Scalar(0, 255, 0), -1);
-//            if(ur != -1)
-//                cv::circle(feature_img_r, cv::Point(ur, pt.y), 2, cv::Scalar(0, 255, 0), -1);
+            auto& mp = frame->mvMapPoint[i];
+            if(mp->empty())
+                cv::circle(feature_img, pt, 4, cv::Scalar(0, 255, 0), -1);
+            else
+                cv::circle(feature_img, pt, 4, cv::Scalar(255, 255, 0), -1);
         }
 
         cv_bridge::CvImage feature_img_msg_l, feature_img_msg_r;
