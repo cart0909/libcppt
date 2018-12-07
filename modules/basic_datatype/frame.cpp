@@ -10,7 +10,7 @@ Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp)
       mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp)
 {
     Tracer::TraceBegin("CLAHE");
-    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
+    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0);
     clahe->apply(mImgL, mClaheL);
     clahe->apply(mImgR, mClaheR);
     Tracer::TraceEnd();
