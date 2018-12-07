@@ -140,8 +140,8 @@ back_end/imu_state.cpp
 back_end/imu_preintegration.cpp
 # back_end/isam2_backend.cpp
 back_end/simple_backend.cpp
-ceres/intensity_factor.cpp
 ceres/projection_factor.cpp
+ceres/marginalization_factor.cpp
 system/vo_system.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/BowVector.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/FBrief.cpp
