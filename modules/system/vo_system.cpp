@@ -58,14 +58,21 @@ VOSystem::VOSystem(const std::string& config_file) {
     // fix entrinsics
     Eigen::Matrix4d temp_T;
     Eigen::Matrix3d temp_R;
+    Eigen::Quaterniond temp_q;
     cv::cv2eigen(Tbc0, temp_T);
-    Sophus::SE3d sTbc0(temp_T);
+    temp_q = temp_T.block<3, 3>(0, 0);
+    temp_q.normalized();
+    Sophus::SE3d sTbc0(temp_q, temp_T.block<3, 1>(0, 3));
 
     cv::cv2eigen(Tbc1, temp_T);
-    Sophus::SE3d sTbc1(temp_T);
+    temp_q = temp_T.block<3, 3>(0, 0);
+    temp_q.normalized();
+    Sophus::SE3d sTbc1(temp_q, temp_T.block<3, 1>(0, 3));
 
     cv::cv2eigen(Tbi, temp_T);
-    Sophus::SE3d sTbi(temp_T);
+    temp_q = temp_T.block<3, 3>(0, 0);
+    temp_q.normalized();
+    Sophus::SE3d sTbi(temp_q, temp_T.block<3, 1>(0, 3));
 
     cv::cv2eigen(R0, temp_R);
     Sophus::SE3d sTcp0c0;
