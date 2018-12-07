@@ -1,0 +1,10 @@
+<launch>
+    <arg name="config_path" default = "$(find cppt_player)/../config/mynteye_config.yaml" />
+    <arg name="rviz_config_path" default = "-d $(find cppt_player)/../config/rviz_config.rviz" />
+
+    <node name="cppt_player" pkg="cppt_player" type="cppt_player" output="screen">
+        <param name="config_file" type="string" value="$(arg config_path)" />
+    </node>
+
+    <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />
+</launch>
