@@ -5,19 +5,29 @@
 
 class ResidualBlockInfo {
 public:
-    ResidualBlockInfo(ceres::CostFunction* cost_function_, ceres::LossFunction* loss_function_,
-                      const std::vector<double *>& parameter_blocks_, const std::vector<int>& drop_set_)
+
+    enum VertexType {
+        VERTEX_LINEAR,
+        VERTEX_SE3_TCW,
+        VERTEX_SE3_TWB
+    };
+
+    ResidualBlockInfo(std::shared_ptr<ceres::CostFunction> cost_function_,
+                      std::shared_ptr<ceres::LossFunction> loss_function_,
+                      const std::vector<double *>& parameter_blocks_,
+                      const std::vector<VertexType>& vertex_types_,
+                      const std::vector<int>& drop_set_)
         : cost_function(cost_function_), loss_function(loss_function_), parameter_blocks(parameter_blocks_),
-          drop_set(drop_set_) {}
+          vertex_types(vertex_types_), drop_set(drop_set_) {}
     ~ResidualBlockInfo() {}
 
     void Evaluate();
 
-    ceres::CostFunction* cost_function;
-    ceres::LossFunction* loss_function;
-    std::vector<double*> parameter_blocks; // double**
-    std::vector<int>     drop_set;
-    double **raw_jacobians;
+    std::shared_ptr<ceres::CostFunction> cost_function;
+    std::shared_ptr<ceres::LossFunction> loss_function;
+    std::vector<double*>    parameter_blocks; // double**
+    std::vector<VertexType> vertex_types;
+    std::vector<int>        drop_set;
     std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> jacobians;
     Eigen::VectorXd residuals;
 };
@@ -26,35 +36,23 @@ SMART_PTR(ResidualBlockInfo)
 
 class MarginalizationInfo {
 public:
-    enum VertexType {
-        VERTEX_LINEAR,
-        VERTEX_SE3
-    };
-    // ????
-    struct ParameterBlock {     // example SE3
-        VertexType vertex_type;
-        int size; // global size   7
-        int idx;  // local size    6
+    struct ParameterBlock {
+        ParameterBlock(ResidualBlockInfo::VertexType vertex_type_, int size_, int idx_, double* data_)
+            : vertex_type(vertex_type_), size(size_), idx(idx_), data(data_) {}
+        ResidualBlockInfo::VertexType vertex_type;
+        int size;
+        int idx;
         double* data;
     };
     SMART_PTR(ParameterBlock)
-    // ????
 
-    MarginalizationInfo() {}
-    ~MarginalizationInfo() {}
+    void AddResidualBlockInfo(ResidualBlockInfoPtr residual_block_info);
+
     std::vector<ResidualBlockInfoPtr> factors;
     int m, n;
     int sum_block_size;
-    std::map<long, int>     parameter_block_size; // global size
-    std::map<long, int>     parameter_block_idx;  // local size
-    std::map<long, double*> parameter_block_data;
-    std::map<long, ParameterBlockPtr> parameter_block; // carl?
-
-    std::vector<VertexType> keep_block_vertextype;
-    std::vector<int>        keep_block_size; // global size
-    std::vector<int>        keep_block_idx;  // local size
-    std::vector<double*>    keep_block_data;
-    std::vector<ParameterBlockPtr> keep_block; // carl?
+    std::map<double*, ParameterBlockPtr> parameter_block;
+    std::vector<ParameterBlockPtr> keep_block;
 
     Eigen::MatrixXd linearized_jacobian;
     Eigen::VectorXd linearized_residuals;
@@ -68,7 +66,8 @@ class MarginalizationFactor : public ceres::CostFunction {
 public:
     MarginalizationFactor(const MarginalizationInfoPtr& marginalization_info_)
         : marginalization_info(marginalization_info_) {}
-    virtual bool Evaluate(double const *const *parameters, double* residual, double **jacobian) const;
+    virtual bool Evaluate(double const *const *parameters_raw, double* residual_raw,
+                          double **jacobian_raw) const;
 
     MarginalizationInfoPtr marginalization_info;
 };
