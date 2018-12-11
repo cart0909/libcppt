@@ -5,15 +5,15 @@ ProjectionFactor::ProjectionFactor(const SimpleStereoCamPtr& camera, const Eigen
 
 bool ProjectionFactor::Evaluate(double const* const* parameters_raw, double *residual_raw,
                       double **jacobian_raw) const {
-    Eigen::Map<const Sophus::SE3d> Tcw(parameters_raw[0]);
+    Eigen::Map<const Sophus::SE3d> Twc(parameters_raw[0]);
     Eigen::Map<const Eigen::Matrix<double, 3, 1>> x3Dw(parameters_raw[1]);
 
     Eigen::Map<Eigen::Vector2d> residual(residual_raw);
-    Eigen::Vector3d x3Dc = Tcw * x3Dw;
+    Eigen::Vector3d x3Dc = Twc.inverse() * x3Dw;
 
     Eigen::Vector2d uv;
     mpCamera->Project2(x3Dc, uv);
-    residual = pt - uv;
+    residual = uv - pt;
 
     if(jacobian_raw) {
         Eigen::Matrix<double, 2, 3> Jpi_Xc;
@@ -21,14 +21,14 @@ bool ProjectionFactor::Evaluate(double const* const* parameters_raw, double *res
         if(jacobian_raw[0]) {
             Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jpose(jacobian_raw[0]);
             Eigen::Matrix<double, 3, 6> JXc_pose;
-            JXc_pose << Eigen::Matrix3d::Identity(), -Sophus::SO3d::hat(x3Dc);
-            Jpose.leftCols(6) = -Jpi_Xc * JXc_pose;
+            JXc_pose << -Eigen::Matrix3d::Identity(), Sophus::SO3d::hat(x3Dc);
+            Jpose.leftCols(6) = Jpi_Xc * JXc_pose;
             Jpose.rightCols(1).setZero();
         }
 
         if(jacobian_raw[1]) {
             Eigen::Map<Eigen::Matrix<double, 2, 3, Eigen::RowMajor>> Jpoint(jacobian_raw[1]);
-            Jpoint = -Jpi_Xc;
+            Jpoint = Jpi_Xc;
         }
     }
 
@@ -40,15 +40,15 @@ StereoProjectionFactor::StereoProjectionFactor(const SimpleStereoCamPtr& camera,
 
 bool StereoProjectionFactor::Evaluate(double const* const* parameters_raw, double *residual_raw,
                       double **jacobian_raw) const {
-    Eigen::Map<const Sophus::SE3d> Tcw(parameters_raw[0]);
+    Eigen::Map<const Sophus::SE3d> Twc(parameters_raw[0]);
     Eigen::Map<const Eigen::Matrix<double, 3, 1>> x3Dw(parameters_raw[1]);
 
     Eigen::Map<Eigen::Vector3d> residual(residual_raw);
-    Eigen::Vector3d x3Dc = Tcw * x3Dw;
+    Eigen::Vector3d x3Dc = Twc.inverse() * x3Dw;
 
     Eigen::Vector3d uv_ur;
     mpCamera->Project3(x3Dc, uv_ur);
-    residual = pt - uv_ur;
+    residual = uv_ur - pt;
 
     if(jacobian_raw) {
         Eigen::Matrix3d Jpi_Xc;
@@ -57,14 +57,14 @@ bool StereoProjectionFactor::Evaluate(double const* const* parameters_raw, doubl
         if(jacobian_raw[0]) {
             Eigen::Map<Eigen::Matrix<double, 3, 7, Eigen::RowMajor>> Jpose(jacobian_raw[0]);
             Eigen::Matrix<double, 3, 6> JXc_pose;
-            JXc_pose << Eigen::Matrix3d::Identity(), -Sophus::SO3d::hat(x3Dc);
-            Jpose.leftCols(6) = -Jpi_Xc * JXc_pose;
+            JXc_pose << -Eigen::Matrix3d::Identity(), Sophus::SO3d::hat(x3Dc);
+            Jpose.leftCols(6) = Jpi_Xc * JXc_pose;
             Jpose.rightCols(1).setZero();
         }
 
         if(jacobian_raw[1]) {
             Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> Jpoint(jacobian_raw[1]);
-            Jpoint = -Jpi_Xc;
+            Jpoint = Jpi_Xc;
         }
     }
 
@@ -80,13 +80,13 @@ ProjectionFactor::ProjectionFactor(const SimpleStereoCamPtr& camera_, const Eige
 
 bool ProjectionFactor::Evaluate(double const* const* parameters_raw, double *residual_raw,
                                 double **jacobian_raw) const {
-    Eigen::Map<const Sophus::SE3d> Tcw(parameters_raw[0]);
+    Eigen::Map<const Sophus::SE3d> Twc(parameters_raw[0]);
     Eigen::Map<Eigen::Vector2d> residual(residual_raw);
 
-    Eigen::Vector3d x3Dc = Tcw * x3Dw;
+    Eigen::Vector3d x3Dc = Twc.inverse() * x3Dw;
     Eigen::Vector2d uv;
     camera->Project2(x3Dc, uv);
-    residual = pt - uv;
+    residual = uv - pt;
 
     if(jacobian_raw) {
         Eigen::Matrix<double, 2, 3> Jpi_x3Dc;
@@ -94,8 +94,8 @@ bool ProjectionFactor::Evaluate(double const* const* parameters_raw, double *res
         if(jacobian_raw[0]) {
             Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jpi_pose(jacobian_raw[0]);
             Eigen::Matrix<double, 3, 6> Jx3Dc_pose;
-            Jx3Dc_pose << Eigen::Matrix3d::Identity(), -Sophus::SO3d::hat(x3Dc);
-            Jpi_pose.leftCols(6) = -Jpi_x3Dc * Jx3Dc_pose;
+            Jx3Dc_pose << -Eigen::Matrix3d::Identity(), Sophus::SO3d::hat(x3Dc);
+            Jpi_pose.leftCols(6) = Jpi_x3Dc * Jx3Dc_pose;
             Jpi_pose.rightCols(1).setZero();
         }
     }
@@ -109,13 +109,13 @@ StereoProjectionFactor::StereoProjectionFactor(const SimpleStereoCamPtr& camera_
 
 bool StereoProjectionFactor::Evaluate(double const* const* parameters_raw, double *residual_raw,
                                       double **jacobian_raw) const {
-    Eigen::Map<const Sophus::SE3d> Tcw(parameters_raw[0]);
+    Eigen::Map<const Sophus::SE3d> Twc(parameters_raw[0]);
     Eigen::Map<Eigen::Vector3d> residual(residual_raw);
 
-    Eigen::Vector3d x3Dc = Tcw * x3Dw;
+    Eigen::Vector3d x3Dc = Twc.inverse() * x3Dw;
     Eigen::Vector3d uv_ur;
     camera->Project3(x3Dc, uv_ur);
-    residual = pt - uv_ur;
+    residual = uv_ur - pt;
 
     if(jacobian_raw) {
         Eigen::Matrix3d Jpi_x3Dc;
@@ -123,8 +123,8 @@ bool StereoProjectionFactor::Evaluate(double const* const* parameters_raw, doubl
         if(jacobian_raw[0]) {
             Eigen::Map<Eigen::Matrix<double, 3, 7, Eigen::RowMajor>> Jpi_pose(jacobian_raw[0]);
             Eigen::Matrix<double, 3, 6> Jx3Dc_pose;
-            Jx3Dc_pose << Eigen::Matrix3d::Identity(), -Sophus::SO3d::hat(x3Dc);
-            Jpi_pose.leftCols(6) = -Jpi_x3Dc * Jx3Dc_pose;
+            Jx3Dc_pose << -Eigen::Matrix3d::Identity(), Sophus::SO3d::hat(x3Dc);
+            Jpi_pose.leftCols(6) = Jpi_x3Dc * Jx3Dc_pose;
             Jpi_pose.rightCols(1).setZero();
         }
     }

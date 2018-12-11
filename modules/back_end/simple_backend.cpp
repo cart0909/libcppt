@@ -164,7 +164,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     ScopedTrace st("ba");
     std::vector<FramePtr> sliding_window = mpSlidingWindow->get(); // pose vertex
     sliding_window.emplace_back(new_keyframe);
-    std::vector<double> keyframes_Tcw_raw((sliding_window.size()) * 7, 0);
+    std::vector<double> keyframes_Twc_raw((sliding_window.size()) * 7, 0);
     std::vector<MapPointPtr> mps_in_sliding_window; // point vertex
     std::vector<double> mps_x3Dw_raw;
 
@@ -174,7 +174,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     ceres::Problem problem;
     ceres::LossFunction *loss_function2 = new ceres::CauchyLoss(std::sqrt(5.991));
     ceres::LossFunction *loss_function3 = new ceres::CauchyLoss(std::sqrt(7.815));
-    ceres::LocalParameterization *pose_vertex = new Sophus::VertexSE3(true);
+    ceres::LocalParameterization *pose_vertex = new Sophus::VertexSE3();
 
     // traversal
     ++MapPoint::gTraversalId;
@@ -182,12 +182,12 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     {
         for(int kfs_idx = 0; kfs_idx < sliding_window.size(); ++kfs_idx) {
             std::vector<std::pair<size_t, size_t>> edge;
-            Sophus::SE3d Tcw = sliding_window[kfs_idx]->mTwc.inverse();
-            std::memcpy(keyframes_Tcw_raw.data() + (7 * kfs_idx), Tcw.data(), sizeof(double) * 7);
-            problem.AddParameterBlock(keyframes_Tcw_raw.data() + (7 * kfs_idx), 7, pose_vertex);
+            Sophus::SE3d Twc = sliding_window[kfs_idx]->mTwc;
+            std::memcpy(keyframes_Twc_raw.data() + (7 * kfs_idx), Twc.data(), sizeof(double) * 7);
+            problem.AddParameterBlock(keyframes_Twc_raw.data() + (7 * kfs_idx), 7, pose_vertex);
 
             if(kfs_idx == 0) {
-                problem.SetParameterBlockConstant(keyframes_Tcw_raw.data());
+                problem.SetParameterBlockConstant(keyframes_Twc_raw.data());
             }
 
             auto& v_mappoint_in_kf = sliding_window[kfs_idx]->mvMapPoint;
@@ -226,7 +226,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
 
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {
         auto& edges = v_edges[i];
-        double* pose_raw = keyframes_Tcw_raw.data() + 7 * i;
+        double* pose_raw = keyframes_Twc_raw.data() + 7 * i;
 
         for(auto& it : edges) {
             auto& uv = sliding_window[i]->mv_uv[it.first];
@@ -257,8 +257,8 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
 //    std::cout << summary.FullReport() << std::endl;
 
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {
-        Eigen::Map<Sophus::SE3d> Tcw(keyframes_Tcw_raw.data() + (7 * i));
-        sliding_window[i]->mTwc = Tcw.inverse();
+        Eigen::Map<Sophus::SE3d> Twc(keyframes_Twc_raw.data() + (7 * i));
+        sliding_window[i]->mTwc = Twc;
     }
 
     for(int i = 0, n = mps_in_sliding_window.size(); i < n; ++i) {
