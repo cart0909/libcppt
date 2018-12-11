@@ -22,7 +22,7 @@ public:
     void TrackFeatLKWithEstimateTcr(const FrameConstPtr& ref_frame,
                                     const FramePtr& cur_frame,
                                     const Sophus::SE3d& Tcr);
-    void PoseOpt(const FramePtr& frame, const Sophus::SE3d& init_Tcw);
+    void PoseOpt(const FramePtr& frame, const Sophus::SE3d& init_Twc);
 private:
     void RemoveOutlierFromF(std::vector<cv::Point2f>& ref_pts,
                             const FramePtr& cur_frame);

@@ -114,7 +114,7 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
     if(mpLastFrame) {
         Sophus::SE3d Tcr = mpImgAlign->Run(frame, mpLastFrame);
         mpFrontEnd->TrackFeatLKWithEstimateTcr(mpLastFrame, frame, Tcr);
-        mpFrontEnd->PoseOpt(frame, Tcr * mpLastFrame->mTwc.inverse());
+        mpFrontEnd->PoseOpt(frame, mpLastFrame->mTwc * Tcr.inverse());
         if(frame->CheckKeyFrame()) {
             frame->ExtractFAST();
             frame->SetToKeyFrame();

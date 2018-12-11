@@ -286,7 +286,7 @@ void SimpleFrontEnd::UniformFeatureDistribution(const FramePtr& cur_frame) {
     cur_frame->mvMapPoint = std::move(temp_mps);
 }
 
-void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init_Tcw) {
+void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init_Twc) {
     ScopedTrace st("poseopt");
     auto& v_uv = cur_frame->mv_uv;
     auto& v_mps = cur_frame->mvMapPoint;
@@ -296,15 +296,15 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
     std::vector<uchar> status(N, 1);
     std::vector<ceres::CostFunction*> cost_fcuntion(N, nullptr);
 
-    double Tcw_raw[7] = {0};
+    double Twc_raw[7] = {0};
     const double mono_chi2 = 5.991; //stereo_chi2 = 7.815;
 
     for(int iter = 0; iter < 4; ++iter) {
-        std::memcpy(Tcw_raw, init_Tcw.data(), sizeof(double) * 7);
+        std::memcpy(Twc_raw, init_Twc.data(), sizeof(double) * 7);
         ceres::Problem problem;
         ceres::LossFunction* loss_function2 = new ceres::HuberLoss(std::sqrt(mono_chi2));
-        ceres::LocalParameterization* pose_vertex = new Sophus::VertexSE3(true);
-        problem.AddParameterBlock(Tcw_raw, 7, pose_vertex);
+        ceres::LocalParameterization* pose_vertex = new Sophus::VertexSE3();
+        problem.AddParameterBlock(Twc_raw, 7, pose_vertex);
 
         for(int i = 0; i < N; ++i) {
             if(!v_mps[i] || v_mps[i]->empty())
@@ -316,9 +316,9 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
                                             Eigen::Vector2d(v_uv[i].x, v_uv[i].y),
                                             v_mps[i]->x3Dw());
                 if(i >= 2)
-                    problem.AddResidualBlock(project_factor, NULL, Tcw_raw);
+                    problem.AddResidualBlock(project_factor, NULL, Twc_raw);
                 else
-                    problem.AddResidualBlock(project_factor, loss_function2, Tcw_raw);
+                    problem.AddResidualBlock(project_factor, loss_function2, Twc_raw);
                 cost_fcuntion[i] = project_factor;
             }
         }
@@ -332,7 +332,8 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
         ceres::Solve(options, &problem, &summary);
 
         // check outlier
-        Eigen::Map<Sophus::SE3d> Tcw(Tcw_raw);
+        Eigen::Map<Sophus::SE3d> Twc(Twc_raw);
+        Sophus::SE3d Tcw = Twc.inverse();
         for(int i = 0; i < N; ++i) {
             if(!v_mps[i] || v_mps[i]->empty())
                 continue;
@@ -347,8 +348,8 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
         }
     }
     // set pose to cur frame
-    Eigen::Map<Sophus::SE3d> opt_Tcw(Tcw_raw);
-    cur_frame->mTwc = opt_Tcw.inverse();
+    Eigen::Map<Sophus::SE3d> opt_Twc(Twc_raw);
+    cur_frame->mTwc = opt_Twc;
 
     ReduceVector(cur_frame->mv_uv, status);
     ReduceVector(cur_frame->mv_ur, status);
