@@ -44,6 +44,9 @@ public:
     ImagePyr mImgPyrGradL, mImgPyrGradR; // will remove when opencv LK remove
     ImagePyr mImgPyrL, mImgPyrR;
     double mTimeStamp;
+
+    // ceres
+    double vertex_data[7];
 };
 
 SMART_PTR(Frame)
