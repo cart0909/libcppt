@@ -15,7 +15,7 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     MapPoint();
-    MapPoint(const FrameConstPtr& keyframe, size_t idx);
+    MapPoint(const FramePtr& keyframe, size_t idx);
     ~MapPoint();
 
     const uint64_t mID;
@@ -28,8 +28,8 @@ public:
     void reset();
 
     // for mono feature create stereo
-    void AddMeas(const FrameConstPtr& keyframe, size_t idx);
-    std::vector<std::pair<FrameConstPtr, size_t>> GetMeas();
+    void AddMeas(const FramePtr& keyframe, size_t idx);
+    std::vector<std::pair<FramePtr, size_t>> GetMeas();
 
     // help us to traversal graph
     static uint64_t gTraversalId;
@@ -45,7 +45,7 @@ private:
     mutable std::mutex mMutex;
 
     // these data will using to triangulate to 3d mappoint
-    std::deque<std::pair<FrameConstWPtr, size_t>> mvMeas;
+    std::deque<std::pair<FrameWPtr, size_t>> mvMeas;
     mutable std::mutex mMeasMutex;
 };
 
