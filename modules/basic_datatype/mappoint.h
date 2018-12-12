@@ -35,6 +35,9 @@ public:
     static uint64_t gTraversalId;
     uint64_t mTraversalId;
     uint64_t mVectorIdx;
+
+    // ceres
+    double vertex_data[3];
 private:
     static uint64_t gNextID;
     bool mbNeedInit;

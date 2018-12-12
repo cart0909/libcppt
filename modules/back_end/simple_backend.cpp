@@ -38,7 +38,7 @@ void SimpleBackEnd::Process() {
                 SlidingWindowBA(keyframe);
 
                 // add to sliding window
-                mpSlidingWindow->push_back(keyframe);
+                mpSlidingWindow->push_kf(keyframe);
             }
             else {
                 ROS_ERROR_STREAM("back end error state!!! exit the program.");
@@ -68,7 +68,7 @@ void SimpleBackEnd::SetDebugCallback(
 void SimpleBackEnd::ShowResultGUI() const {
     if(!mDebugCallback)
         return;
-    auto v_keyframes = mpSlidingWindow->get();
+    auto v_keyframes = mpSlidingWindow->get_kfs();
     std::vector<Sophus::SE3d> v_Twc;
     VecVector3d v_x3Dw;
     ++MapPoint::gTraversalId;
@@ -91,7 +91,7 @@ bool SimpleBackEnd::InitSystem(const FramePtr& keyframe) {
         return false;
     keyframe->mTwc = Sophus::SE3d();
     CreateMapPointFromStereoMatching(keyframe);
-    mpSlidingWindow->push_back(keyframe);
+    mpSlidingWindow->push_kf(keyframe);
     return true;
 }
 
@@ -111,7 +111,7 @@ void SimpleBackEnd::CreateMapPointFromStereoMatching(const FramePtr& keyframe) {
         Eigen::Vector3d x3Dc;
         mpCamera->Triangulate(p, x3Dc);
         v_mp[i]->Set_x3Dw(x3Dc, Twc);
-        mpSlidingWindow->push_back(v_mp[i]);
+        mpSlidingWindow->push_mp(v_mp[i]);
     }
 }
 
@@ -156,13 +156,13 @@ void SimpleBackEnd::CreateMapPointFromMotionTracking(const FramePtr& keyframe) {
             continue;
 
         mp->Set_x3Dw(X.head(3), Tw0);
-        mpSlidingWindow->push_back(mp);
+        mpSlidingWindow->push_mp(mp);
     }
 }
 
 void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     ScopedTrace st("ba");
-    std::vector<FramePtr> sliding_window = mpSlidingWindow->get(); // pose vertex
+    std::vector<FramePtr> sliding_window = mpSlidingWindow->get_kfs(); // pose vertex
     sliding_window.emplace_back(new_keyframe);
     std::vector<double> keyframes_Twc_raw((sliding_window.size()) * 7, 0);
     std::vector<MapPointPtr> mps_in_sliding_window; // point vertex

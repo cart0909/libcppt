@@ -1,63 +1,53 @@
 #include "sliding_window.h"
 
-SlidingWindow::SlidingWindow(int max_lens)
-    : mMaxLens(max_lens) {}
-SlidingWindow::~SlidingWindow() {}
+SlidingWindow::SlidingWindow(int max_len_)
+    : max_len(max_len_) {}
 
-void SlidingWindow::clear() {
-    std::unique_lock<std::mutex> lock(mDequeueMutex);
-    mdKeyFrames.clear();
+void SlidingWindow::clear_all() {
+    std::unique_lock<std::mutex> lock0(kfs_mutex), lock1(mps_mutex);
+    kfs_buffer.clear();
+    mps_buffer.clear();
 }
 
-void SlidingWindow::push_back(const FramePtr& keyframe) {
-    std::unique_lock<std::mutex> lock(mDequeueMutex);
-    if(mdKeyFrames.size() == mMaxLens) {
-        mdKeyFrames.pop_front();
+void SlidingWindow::push_kf(FramePtr keyframe) {
+    std::unique_lock<std::mutex> lock(kfs_mutex);
+    while(kfs_buffer.size() >= max_len) {
+        kfs_buffer.pop_front();
     }
-    mdKeyFrames.emplace_back(keyframe);
+    kfs_buffer.push_back(keyframe);
 }
 
-std::vector<FramePtr> SlidingWindow::get() const {
-    std::unique_lock<std::mutex> lock(mDequeueMutex);
-    return std::vector<FramePtr>(mdKeyFrames.begin(), mdKeyFrames.end());
+void SlidingWindow::push_mp(MapPointPtr mappoint) {
+    std::unique_lock<std::mutex> lock(mps_mutex);
+    mps_buffer.push_back(mappoint);
 }
 
-size_t SlidingWindow::size() const {
-    std::unique_lock<std::mutex> lock(mDequeueMutex);
-    return mdKeyFrames.size();
+size_t SlidingWindow::size_kfs() const {
+    std::unique_lock<std::mutex> lock(kfs_mutex);
+    return kfs_buffer.size();
 }
 
-bool SlidingWindow::empty() const {
-    std::unique_lock<std::mutex> lock(mDequeueMutex);
-    return mdKeyFrames.empty();
+size_t SlidingWindow::size_mps() const {
+    std::unique_lock<std::mutex> lock(mps_mutex);
+    return mps_buffer.size();
 }
 
-FramePtr SlidingWindow::back() const {
-    std::unique_lock<std::mutex> lock(mDequeueMutex);
-    return mdKeyFrames.back();
-}
-
-void SlidingWindow::push_back(const MapPointPtr& mp) {
-    std::unique_lock<std::mutex> lock(mVecMapPtsMutex);
-    mdMapPoints.emplace_back(mp);
+std::vector<FramePtr> SlidingWindow::get_kfs() const {
+    std::unique_lock<std::mutex> lock(kfs_mutex);
+    return std::vector<FramePtr>(kfs_buffer.begin(), kfs_buffer.end());
 }
 
 std::vector<MapPointPtr> SlidingWindow::get_mps() {
-    std::vector<MapPointPtr> v_mps;
-    std::unique_lock<std::mutex> lock(mVecMapPtsMutex);
-
-    for(auto it = mdMapPoints.begin(); it != mdMapPoints.end();) {
-        if(it->expired())
-            it = mdMapPoints.erase(it);
+    std::vector<MapPointPtr> temp;
+    std::unique_lock<std::mutex> lock(mps_mutex);
+    for(auto it = mps_buffer.begin(); it != mps_buffer.end();) {
+        if(it->expired()) {
+            it = mps_buffer.erase(it);
+        }
         else {
-            auto mp = it->lock();
-            if(mp->empty())
-                it = mdMapPoints.erase(it);
-            else {
-                v_mps.emplace_back(mp);
-                ++it;
-            }
+            temp.emplace_back(it->lock());
+            ++it;
         }
     }
-    return v_mps;
+    return temp;
 }
