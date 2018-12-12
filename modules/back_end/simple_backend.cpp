@@ -71,8 +71,8 @@ void SimpleBackEnd::ShowResultGUI() const {
     auto v_keyframes = mpSlidingWindow->get_kfs();
     std::vector<Sophus::SE3d> v_Twc;
     VecVector3d v_x3Dw;
-    ++MapPoint::gTraversalId;
 
+    ++MapPoint::gTraversalId;
     for(auto& keyframe : v_keyframes) {
         v_Twc.emplace_back(keyframe->mTwc);
         for(auto& mp : keyframe->mvMapPoint) {
@@ -164,84 +164,48 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     ScopedTrace st("ba");
     std::vector<FramePtr> sliding_window = mpSlidingWindow->get_kfs(); // pose vertex
     sliding_window.emplace_back(new_keyframe);
-    std::vector<double> keyframes_Twc_raw((sliding_window.size()) * 7, 0);
-    std::vector<MapPointPtr> mps_in_sliding_window; // point vertex
-    std::vector<double> mps_x3Dw_raw;
-
-    // edges
-    std::vector<std::vector<std::pair<size_t, size_t>>> v_edges; // vector<uv_idx, mappointidx>
+    std::vector<MapPointPtr> mps_in_sliding_window = mpSlidingWindow->get_mps(); // point vertex
 
     ceres::Problem problem;
     ceres::LossFunction *loss_function2 = new ceres::CauchyLoss(std::sqrt(5.991));
     ceres::LossFunction *loss_function3 = new ceres::CauchyLoss(std::sqrt(7.815));
     ceres::LocalParameterization *pose_vertex = new Sophus::VertexSE3();
 
-    // traversal
-    ++MapPoint::gTraversalId;
-    int mps_idx = 0;
-    {
-        for(int kfs_idx = 0; kfs_idx < sliding_window.size(); ++kfs_idx) {
-            std::vector<std::pair<size_t, size_t>> edge;
-            Sophus::SE3d Twc = sliding_window[kfs_idx]->mTwc;
-            std::memcpy(keyframes_Twc_raw.data() + (7 * kfs_idx), Twc.data(), sizeof(double) * 7);
-            problem.AddParameterBlock(keyframes_Twc_raw.data() + (7 * kfs_idx), 7, pose_vertex);
+    // set pose vertex
+    for(auto& kf : sliding_window) {
+        std::memcpy(kf->vertex_data, kf->mTwc.data(), sizeof(double) * 7);
+        problem.AddParameterBlock(kf->vertex_data, 7, pose_vertex);
 
-            if(kfs_idx == 0) {
-                problem.SetParameterBlockConstant(keyframes_Twc_raw.data());
-            }
-
-            auto& v_mappoint_in_kf = sliding_window[kfs_idx]->mvMapPoint;
-
-            for(int i = 0, n = v_mappoint_in_kf.size(); i < n; ++i) {
-                auto& mp = v_mappoint_in_kf[i];
-                if(!mp || mp->empty())
-                    continue;
-
-                if(mp->mTraversalId != MapPoint::gTraversalId) {
-                    mp->mTraversalId = MapPoint::gTraversalId;
-                    mps_in_sliding_window.emplace_back(mp);
-                    mp->mVectorIdx = mps_idx++;
-                }
-
-                edge.emplace_back(i, mp->mVectorIdx);
-            }
-
-            v_edges.emplace_back(edge);
-        }
-
-        mps_x3Dw_raw.resize(mps_idx * 3, 0);
-        for(int i = 0, n = mps_in_sliding_window.size(); i < n; ++i) {
-            auto& mp = mps_in_sliding_window[i];
-            auto x3Dw = mp->x3Dw();
-            std::memcpy(mps_x3Dw_raw.data() + (i * 3), x3Dw.data(), sizeof(double) * 3);
-            problem.AddParameterBlock(mps_x3Dw_raw.data() + (i * 3), 3);
-//            problem.SetParameterBlockConstant(mps_x3Dw_raw.data() + (i * 3));
-        }
+        if(kf == sliding_window[0]) // TODO will remove???
+            problem.SetParameterBlockConstant(kf->vertex_data);
     }
 
-//    for(auto& edge : v_edges) {
-//        std::cout << edge.size() << " ";
-//    }
-//    std::cout << "total: " << mps_idx << std::endl;
+    for(auto& mp : mps_in_sliding_window) {
+        if(mp->empty())
+            continue;
+        std::memcpy(mp->vertex_data, mp->x3Dw().data(), sizeof(double) * 3);
+        problem.AddParameterBlock(mp->vertex_data, 3); // (optional)
 
-    for(int i = 0, n = sliding_window.size(); i < n; ++i) {
-        auto& edges = v_edges[i];
-        double* pose_raw = keyframes_Twc_raw.data() + 7 * i;
-
-        for(auto& it : edges) {
-            auto& uv = sliding_window[i]->mv_uv[it.first];
-            double ur = sliding_window[i]->mv_ur[it.first];
-            auto& mp = mps_in_sliding_window[it.second];
-            double* point_raw = mps_x3Dw_raw.data() + 3 * it.second;
-            if(ur < 0) { // mono constrain
-                ProjectionFactor* project_factor =
-                        new ProjectionFactor(mpCamera, Eigen::Vector2d(uv.x, uv.y));
-                problem.AddResidualBlock(project_factor, loss_function2, pose_raw, point_raw);
+        auto observations = mp->GetMeas();
+        for(auto& obs : observations) {
+            FramePtr kf = obs.first;
+            if(kf->mKeyFrameID > new_keyframe->mKeyFrameID) {
+                // this will occur when frontend is faster than backend
+                continue;
             }
-            else { // stereo constrain
-                StereoProjectionFactor* project_factor =
-                        new StereoProjectionFactor(mpCamera, Eigen::Vector3d(uv.x, uv.y, ur));
-                problem.AddResidualBlock(project_factor, loss_function3, pose_raw, point_raw);
+            size_t idx = obs.second;
+            double ur = kf->mv_ur[idx];
+            if(ur < 0) { // mono
+                if(observations.size() == 1)
+                    continue;
+                Eigen::Vector2d pt(kf->mv_uv[idx].x, kf->mv_uv[idx].y);
+                auto factor = new ProjectionFactor(mpCamera, pt);
+                problem.AddResidualBlock(factor, loss_function2, kf->vertex_data, mp->vertex_data);
+            }
+            else { // stereo
+                Eigen::Vector3d pt(kf->mv_uv[idx].x, kf->mv_uv[idx].y, ur);
+                auto factor = new StereoProjectionFactor(mpCamera, pt);
+                problem.AddResidualBlock(factor, loss_function3, kf->vertex_data, mp->vertex_data);
             }
         }
     }
@@ -257,12 +221,14 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
 //    std::cout << summary.FullReport() << std::endl;
 
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {
-        Eigen::Map<Sophus::SE3d> Twc(keyframes_Twc_raw.data() + (7 * i));
+        Eigen::Map<Sophus::SE3d> Twc(sliding_window[i]->vertex_data);
         sliding_window[i]->mTwc = Twc;
     }
 
     for(int i = 0, n = mps_in_sliding_window.size(); i < n; ++i) {
-        Eigen::Map<Eigen::Vector3d> x3Dw(mps_x3Dw_raw.data() + (3 * i));
+        if(mps_in_sliding_window[i]->empty())
+            continue;
+        Eigen::Map<Eigen::Vector3d> x3Dw(mps_in_sliding_window[i]->vertex_data);
         mps_in_sliding_window[i]->Set_x3Dw(x3Dw);
     }
 }

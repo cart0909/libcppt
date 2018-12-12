@@ -8,7 +8,7 @@ MapPoint::MapPoint()
 {
 }
 
-MapPoint::MapPoint(const FrameConstPtr& keyframe, size_t idx)
+MapPoint::MapPoint(const FramePtr& keyframe, size_t idx)
     : mID(0), mbNeedInit(true)
 {
     AddMeas(keyframe, idx);
@@ -58,13 +58,13 @@ void MapPoint::reset() {
     mbNeedInit = true;
 }
 
-void MapPoint::AddMeas(const FrameConstPtr& keyframe, size_t idx) {
+void MapPoint::AddMeas(const FramePtr& keyframe, size_t idx) {
     std::unique_lock<std::mutex> lock(mMeasMutex);
     mvMeas.emplace_back(keyframe, idx);
 }
 
-std::vector<std::pair<FrameConstPtr, size_t>> MapPoint::GetMeas() {
-    std::vector<std::pair<FrameConstPtr, size_t>> meas;
+std::vector<std::pair<FramePtr, size_t>> MapPoint::GetMeas() {
+    std::vector<std::pair<FramePtr, size_t>> meas;
     std::unique_lock<std::mutex> lock(mMeasMutex);
     for(auto it = mvMeas.begin(); it != mvMeas.end();) {
         if(it->first.expired()) {
