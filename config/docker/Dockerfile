@@ -95,7 +95,7 @@ RUN git clone https://ceres-solver.googlesource.com/ceres-solver && mkdir -p cer
 WORKDIR ceres-solver
 RUN git checkout b040970
 WORKDIR build
-RUN cmake .. && make -j12 && make install
+RUN cmake .. -DCERES_THREADING_MODEL=OPENMP && make -j12 && make install
 WORKDIR /home/3rdParty
 RUN rm -rf ceres-solver/build/
 
