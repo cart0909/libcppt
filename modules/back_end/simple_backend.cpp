@@ -36,7 +36,7 @@ void SimpleBackEnd::Process() {
 
                 // solve the sliding window BA
                 SlidingWindowBA(keyframe);
-//                Marginalization();
+                Marginalization();
 
                 // add to sliding window
                 mpSlidingWindow->push_kf(keyframe);
@@ -243,7 +243,6 @@ void SimpleBackEnd::Marginalization() {
                                        std::make_shared<SE3BlockInfo>());
 
     if(mpMarginInfo) { // last_marginalization_info
-        ROS_ERROR_STREAM("inQQ");
         std::vector<int> drop_set;
         for(int i = 0, n = mvMarginParameterBlock.size(); i < n; ++i) {
             if(mvMarginParameterBlock[i] == margin_out_kf->vertex_data) {
@@ -255,7 +254,6 @@ void SimpleBackEnd::Marginalization() {
                                                                        mvMarginParameterBlock,
                                                                        drop_set);
         margin_info->AddResidualBlockInfo(residual_block_info);
-        ROS_ERROR_STREAM("outQQ");
     }
 
     const double mono_chi2 = 5.991, stereo_chi2 = 7.815;
