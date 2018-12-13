@@ -69,8 +69,6 @@ void MarginalizationInfo::AddResidualBlockInfo(ResidualBlockInfoPtr residual_blo
     auto& parameter_block_info = residual_block_info->parameter_block_info; // size 0
     auto parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
 
-    ROS_ERROR_STREAM(parameter_block_sizes.size());
-
     for(int i = 0, n = parameter_blocks.size(); i < n; ++i) {
         double* addr = parameter_blocks[i];
         auto it = m_parameter_block_info.find(addr);
@@ -78,6 +76,7 @@ void MarginalizationInfo::AddResidualBlockInfo(ResidualBlockInfoPtr residual_blo
             auto temp = std::make_shared<ParameterBlockInfo>(parameter_block_sizes[i]);
             m_parameter_block_info[addr] = temp;
             parameter_block_info.emplace_back(temp);
+            ROS_ERROR_STREAM("auto create parameter block: " << temp.get());
         }
         else {
             parameter_block_info.emplace_back(it->second);
@@ -146,8 +145,19 @@ void MarginalizationInfo::Marginalize() {
     // TODO fill the matrix A and vector b using multi-thread
     for(auto& factor : factors) {
         for(int i = 0; i < factor->parameter_blocks.size(); ++i) {
+            ROS_ERROR_STREAM("i:" << i << " size:" << factor->parameter_blocks.size());
             int idx_i = factor->parameter_block_info[i]->idx;
             int local_size_i = factor->parameter_block_info[i]->local_size;
+            ROS_ERROR_STREAM("idx_i:" << idx_i << " local_size_i:" << local_size_i);
+            if(idx_i == -1) {
+                auto it = m_parameter_block_info.find(factor->parameter_blocks[i]);
+                if(it != m_parameter_block_info.end()) {
+                    ROS_ERROR_STREAM(factor->parameter_block_info[i].get() << " " << it->second.get());
+                }
+                else {
+                    ROS_ERROR_STREAM("nofind");
+                }
+            }
             Eigen::MatrixXd jacobian_i = factor->jacobians[i].leftCols(local_size_i);
 
             // fill bi
