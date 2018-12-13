@@ -1,4 +1,4 @@
-FROM osrf/ros:melodic-desktop-full
+FROM nvidia/cuda:9.2-cudnn7-devel-ubuntu18.04
 MAINTAINER Yi-Ren Liu
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -40,6 +40,38 @@ ENV NVIDIA_VISIBLE_DEVICES \
 ENV NVIDIA_DRIVER_CAPABILITIES \
     ${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
 
+# install ROS
+# install packages
+RUN apt-get update && apt-get install -q -y \
+    dirmngr \
+    gnupg2 \
+    lsb-release
+
+# setup keys
+RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 421C365BD9FF1F717815A3895523BAEEB01FA116
+
+# setup sources.list
+RUN echo "deb http://packages.ros.org/ros/ubuntu `lsb_release -sc` main" > /etc/apt/sources.list.d/ros-latest.list
+
+# install bootstrap tools
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    python-rosdep \
+    python-rosinstall \
+    python-vcstools
+
+# setup environment
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+
+# bootstrap rosdep
+RUN rosdep init \
+    && rosdep update
+
+# install ros packages
+ENV ROS_DISTRO melodic
+RUN apt-get update && apt-get install -y \
+    ros-melodic-desktop-full
+
 # install eigen (eigen 3.3.5) eigen-eigen-b3f3d4950030
 WORKDIR /home/3rdParty
 RUN wget http://bitbucket.org/eigen/eigen/get/3.3.5.zip && mv 3.3.5.zip eigen3.3.5.zip
@@ -72,7 +104,7 @@ RUN wget https://github.com/opencv/opencv/archive/3.4.4.zip && mv 3.4.4.zip open
 RUN wget https://github.com/opencv/opencv_contrib/archive/3.4.4.zip && mv 3.4.4.zip opencv_contrib-3.4.4.zip
 RUN unzip opencv-3.4.4.zip && unzip opencv_contrib-3.4.4.zip && mkdir -p opencv-3.4.4/build
 WORKDIR opencv-3.4.4/build
-RUN cmake .. -DCMAKE_BUILD_TYPE=Release -DOPENCV_EXTRA_MODULES_PATH=/home/3rdParty/opencv_contrib-3.4.4/modules && make -j12 && make install
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release -DOPENCV_EXTRA_MODULES_PATH=/home/3rdParty/opencv_contrib-3.4.4/modules -DWITH_CUDA=ON && make -j12 && make install
 WORKDIR /home/3rdParty
 RUN rm -rf opencv-3.4.4/ && rm -rf opencv_contrib-3.4.4/
 
@@ -89,10 +121,18 @@ RUN source /opt/ros/$ROS_DISTRO/setup.bash \
 WORKDIR /home/3rdParty
 RUN rm -rf vision_opencv-1.13.0/
 
+# install mynt driver
+RUN git clone https://github.com/slightech/MYNT-EYE-SDK-2
+WORKDIR MYNT-EYE-SDK-2
+RUN make init && make build && make install && make samples
 RUN mkdir -p wrappers/ros/src/mynt_eye_ros_wrapper/build
 WORKDIR wrappers/ros/src/mynt_eye_ros_wrapper/build
 RUN source /opt/ros/melodic/setup.bash && cmake .. -DCMAKE_INSTALL_PREFIX="/opt/ros/melodic/"\
 && make -j8 && make install && mv /opt/ros/melodic/include/mynt_eye_ros_wrapper/launch /opt/ros/melodic/share/mynt_eye_ros_wrapper
+
+# download arrayfire (must install by manual)
+#WORKDIR /usr/local
+#RUN wget http://arrayfire.s3.amazonaws.com/3.6.1/ArrayFire-v3.6.1_Linux_x86_64.sh && chmod +x ArrayFire-v3.6.1_Linux_x86_64.sh
 
 # install evo
 RUN pip install evo --upgrade --no-binary evo
@@ -109,3 +149,10 @@ RUN rm -rf brisk/build/
 RUN rm -rf /var/lib/apt/lists/*
 
 WORKDIR /
+
+# setup entrypoint
+COPY ./ros_entrypoint.sh /
+RUN chmod +x ros_entrypoint.sh
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]
