@@ -37,6 +37,11 @@ std::vector<FramePtr> SlidingWindow::get_kfs() const {
     return std::vector<FramePtr>(kfs_buffer.begin(), kfs_buffer.end());
 }
 
+FramePtr SlidingWindow::front_kf() const {
+    std::unique_lock<std::mutex> lock(kfs_mutex);
+    return  kfs_buffer.front();
+}
+
 std::vector<MapPointPtr> SlidingWindow::get_mps() {
     std::vector<MapPointPtr> temp;
     std::unique_lock<std::mutex> lock(mps_mutex);

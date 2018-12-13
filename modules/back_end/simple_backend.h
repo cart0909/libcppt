@@ -1,12 +1,13 @@
 #pragma once
 #include <vector>
 #include <mutex>
+#include <functional>
 #include <condition_variable>
 #include "basic_datatype/frame.h"
 #include "basic_datatype/sliding_window.h"
 #include "camera_model/simple_stereo_camera.h"
 #include "basic_datatype/util_datatype.h"
-#include <functional>
+#include "ceres/marginalization_factor.h"
 
 class SimpleBackEnd {
 public:
@@ -30,6 +31,7 @@ private:
     void CreateMapPointFromMotionTracking(const FramePtr& keyframe);
     void ShowResultGUI() const;
     void SlidingWindowBA(const FramePtr& new_keyframe);
+    void Marginalization();
 
     SimpleStereoCamPtr mpCamera;
     SlidingWindowPtr mpSlidingWindow;
@@ -43,6 +45,9 @@ private:
     std::function<void(const std::vector<Sophus::SE3d>&,
                        const VecVector3d&)> mDebugCallback;
 
+    // marginalization
+    MarginalizationInfoPtr mpMarginInfo;
+    std::vector<double*> mvMarginParameterBlock;
 };
 
 SMART_PTR(SimpleBackEnd)

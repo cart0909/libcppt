@@ -2,7 +2,7 @@
     <arg name="config_path" default = "$(find cppt_player)/../config/calib/euroc_config.yaml" />
     <arg name="rviz_config_path" default = "-d $(find cppt_player)/../config/rviz_config.rviz" />
 
-    <node name="cppt_player" pkg="cppt_player" type="cppt_player" output="screen" launch-prefix="xterm -e gdb -ex run --args ">
+    <node name="cppt_player" pkg="cppt_player" type="cppt_player" output="screen" launch-prefix="gdb -ex run --args ">
         <param name="config_file" type="string" value="$(arg config_path)" />
     </node>
 
