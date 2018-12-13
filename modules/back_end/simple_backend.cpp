@@ -36,6 +36,7 @@ void SimpleBackEnd::Process() {
 
                 // solve the sliding window BA
                 SlidingWindowBA(keyframe);
+//                Marginalization();
 
                 // add to sliding window
                 mpSlidingWindow->push_kf(keyframe);
@@ -220,6 +221,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     ceres::Solve(options, &problem, &summary);
 //    std::cout << summary.FullReport() << std::endl;
 
+    // restore the optimization data to pose and point
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {
         Eigen::Map<Sophus::SE3d> Twc(sliding_window[i]->vertex_data);
         sliding_window[i]->mTwc = Twc;
@@ -231,4 +233,69 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
         Eigen::Map<Eigen::Vector3d> x3Dw(mps_in_sliding_window[i]->vertex_data);
         mps_in_sliding_window[i]->Set_x3Dw(x3Dw);
     }
+}
+
+void SimpleBackEnd::Marginalization() {
+    Tracer::TraceBegin("prepare");
+    MarginalizationInfoPtr margin_info(new MarginalizationInfo);
+    FramePtr margin_out_kf = mpSlidingWindow->front_kf();
+    margin_info->AddParameterBlockInfo(margin_out_kf->vertex_data,
+                                       std::make_shared<SE3BlockInfo>());
+
+    if(mpMarginInfo) { // last_marginalization_info
+        ROS_ERROR_STREAM("inQQ");
+        std::vector<int> drop_set;
+        for(int i = 0, n = mvMarginParameterBlock.size(); i < n; ++i) {
+            if(mvMarginParameterBlock[i] == margin_out_kf->vertex_data) {
+                drop_set.emplace_back(i);
+            }
+        }
+        auto factor = std::make_shared<MarginalizationFactor>(mpMarginInfo);
+        auto residual_block_info = std::make_shared<ResidualBlockInfo>(factor, nullptr,
+                                                                       mvMarginParameterBlock,
+                                                                       drop_set);
+        margin_info->AddResidualBlockInfo(residual_block_info);
+        ROS_ERROR_STREAM("outQQ");
+    }
+
+    const double mono_chi2 = 5.991, stereo_chi2 = 7.815;
+    std::shared_ptr<ceres::LossFunction> loss_function2(new ceres::CauchyLoss(std::sqrt(mono_chi2))),
+            loss_function3(new ceres::CauchyLoss(std::sqrt(stereo_chi2)));
+
+    for(auto &mp : margin_out_kf->mvMapPoint) {
+        if(mp->empty())
+            continue;
+        margin_info->AddParameterBlockInfo(mp->vertex_data, std::make_shared<ParameterBlockInfo>(3));
+
+        std::vector<int> drop_set{0};
+
+        auto obs = mp->GetMeas();
+
+        assert(margin_out_kf == obs[0].first);
+        if(obs.size() == 1) { // only margin_out kf see it
+            drop_set.emplace_back(1);
+        }
+
+        size_t idx = obs[0].second;
+        Eigen::Vector3d pt(margin_out_kf->mv_uv[idx].x, margin_out_kf->mv_uv[idx].y, margin_out_kf->mv_ur[idx]);
+        if(margin_out_kf->mv_ur[idx] < 0) { // mono
+            auto factor = std::make_shared<ProjectionFactor>(mpCamera, pt.head(2));
+            auto residual_block_info = std::make_shared<ResidualBlockInfo>(factor, loss_function2,
+                                                                           std::vector<double*>{margin_out_kf->vertex_data, mp->vertex_data},
+                                                                           drop_set);
+            margin_info->AddResidualBlockInfo(residual_block_info);
+        }
+        else { // stereo
+            auto factor = std::make_shared<StereoProjectionFactor>(mpCamera, pt);
+            auto residual_block_info = std::make_shared<ResidualBlockInfo>(factor, loss_function3,
+                                                                           std::vector<double*>{margin_out_kf->vertex_data, mp->vertex_data},
+                                                                           drop_set);
+            margin_info->AddResidualBlockInfo(residual_block_info);
+        }
+    }
+    Tracer::TraceEnd();
+    margin_info->PreMarginalize();
+    margin_info->Marginalize();
+    mvMarginParameterBlock = margin_info->GetParameterBlocks();
+    mpMarginInfo = margin_info;
 }

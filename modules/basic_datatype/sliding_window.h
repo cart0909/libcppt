@@ -18,6 +18,7 @@ public:
     size_t size_mps() const;
 
     std::vector<FramePtr> get_kfs() const;
+    FramePtr front_kf() const;
     std::vector<MapPointPtr> get_mps();
 
     std::mutex big_mutex;
