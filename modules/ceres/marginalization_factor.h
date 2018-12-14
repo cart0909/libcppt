@@ -1,80 +1,78 @@
 #pragma once
-// this code is reference from vins marginalization
-#include <sophus/se3.hpp>
+// reference: https://github.com/HKUST-Aerial-Robotics/VINS-Mono/blob/master/vins_estimator/src/factor/marginalization_factor.h
+#include <ros/ros.h>
+#include <ros/console.h>
+#include <cstdlib>
+#include <pthread.h>
 #include <ceres/ceres.h>
-#include "basic_datatype/util_datatype.h"
+#include <unordered_map>
 
-class ParameterBlockInfo {
-public:
-    ParameterBlockInfo(int size_, int local_size_)
-        : size(size_), local_size(local_size_), idx(-1), data(nullptr) {}
-    ParameterBlockInfo(int size_)
-        : ParameterBlockInfo(size_, size_) {}
-    virtual void linearOMinus(const double* x, const double* x0, double* delx) const;
+const int NUM_THREADS = 4;
 
-    const int size;
-    const int local_size;
-    int idx;
-    std::unique_ptr<double[]> data;
-};
-SMART_PTR(ParameterBlockInfo)
-
-class SE3BlockInfo : public ParameterBlockInfo {
-public:
-    SE3BlockInfo()
-        : ParameterBlockInfo(Sophus::SE3d::num_parameters, Sophus::SE3d::DoF) {}
-    void linearOMinus(const double* x, const double* x0, double* delx) const override;
-};
-SMART_PTR(SE3BlockInfo)
-
-class ResidualBlockInfo {
-public:
-    ResidualBlockInfo(std::shared_ptr<ceres::CostFunction> cost_function_,
-                      std::shared_ptr<ceres::LossFunction> loss_function_,
-                      const std::vector<double *>& parameter_blocks_,
-                      const std::vector<int>& drop_set_)
-        : cost_function(cost_function_), loss_function(loss_function_), parameter_blocks(parameter_blocks_),
-          drop_set(drop_set_) {}
-    ~ResidualBlockInfo() {}
+struct ResidualBlockInfo
+{
+    ResidualBlockInfo(ceres::CostFunction *_cost_function, ceres::LossFunction *_loss_function, std::vector<double *> _parameter_blocks, std::vector<int> _drop_set)
+        : cost_function(_cost_function), loss_function(_loss_function), parameter_blocks(_parameter_blocks), drop_set(_drop_set) {}
 
     void Evaluate();
 
-    std::shared_ptr<ceres::CostFunction> cost_function;
-    std::shared_ptr<ceres::LossFunction> loss_function;
-    std::vector<double*>    parameter_blocks;
-    std::vector<ParameterBlockInfoPtr> parameter_block_info;
-    std::vector<int>        drop_set;
+    ceres::CostFunction *cost_function;
+    ceres::LossFunction *loss_function;
+    std::vector<double *> parameter_blocks;
+    std::vector<int> drop_set;
+
+    double **raw_jacobians;
     std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> jacobians;
     Eigen::VectorXd residuals;
+
+    int localSize(int size)
+    {
+        return size == 7 ? 6 : size;
+    }
 };
-SMART_PTR(ResidualBlockInfo)
 
-class MarginalizationInfo {
-public:
-    void AddResidualBlockInfo(ResidualBlockInfoPtr residual_block_info);
-    void AddParameterBlockInfo(double* vertex_data, ParameterBlockInfoPtr parameter_block_info);
-    void PreMarginalize();
-    void Marginalize();
-    std::vector<double*> GetParameterBlocks();
+struct ThreadsStruct
+{
+    std::vector<ResidualBlockInfo *> sub_factors;
+    Eigen::MatrixXd A;
+    Eigen::VectorXd b;
+    std::unordered_map<long, int> parameter_block_size; //global size
+    std::unordered_map<long, int> parameter_block_idx; //local size
+};
 
-    std::vector<ResidualBlockInfoPtr> factors;
+class MarginalizationInfo
+{
+  public:
+    ~MarginalizationInfo();
+    int localSize(int size) const;
+    int globalSize(int size) const;
+    void addResidualBlockInfo(ResidualBlockInfo *residual_block_info);
+    void preMarginalize();
+    void marginalize();
+    std::vector<double *> getParameterBlocks();
+
+    std::vector<ResidualBlockInfo *> factors;
     int m, n;
+    std::unordered_map<long, int> parameter_block_size; //global size
     int sum_block_size;
-    std::map<double*, ParameterBlockInfoPtr> m_parameter_block_info;
-    std::vector<ParameterBlockInfoPtr> keep_block;
+    std::unordered_map<long, int> parameter_block_idx; //local size
+    std::unordered_map<long, double *> parameter_block_data;
 
-    Eigen::MatrixXd linearized_jacobian;
+    std::vector<int> keep_block_size; //global size
+    std::vector<int> keep_block_idx;  //local size
+    std::vector<double *> keep_block_data;
+
+    Eigen::MatrixXd linearized_jacobians;
     Eigen::VectorXd linearized_residuals;
     const double eps = 1e-8;
+
 };
-SMART_PTR(MarginalizationInfo)
 
-// prior
-class MarginalizationFactor : public ceres::CostFunction {
-public:
-    MarginalizationFactor(const MarginalizationInfoPtr& marginalization_info_);
-    virtual bool Evaluate(double const *const *parameters_raw, double* residual_raw,
-                          double **jacobian_raw) const;
+class MarginalizationFactor : public ceres::CostFunction
+{
+  public:
+    MarginalizationFactor(MarginalizationInfo* _marginalization_info);
+    virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const;
 
-    MarginalizationInfoWPtr marginalization_info;
+    MarginalizationInfo* marginalization_info;
 };

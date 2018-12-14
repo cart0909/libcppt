@@ -46,7 +46,7 @@ private:
                        const VecVector3d&)> mDebugCallback;
 
     // marginalization
-    MarginalizationInfoPtr mpMarginInfo;
+    MarginalizationInfo* mpMarginInfo = nullptr;
     std::vector<double*> mvMarginParameterBlock;
 };
 
