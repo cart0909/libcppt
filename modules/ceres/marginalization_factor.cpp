@@ -1,42 +1,51 @@
+// reference: https://github.com/HKUST-Aerial-Robotics/VINS-Mono/blob/master/vins_estimator/src/factor/marginalization_factor.cpp
 #include "marginalization_factor.h"
+#include <sophus/se3.hpp>
 #include <tracer.h>
-#include <ros/ros.h>
 
-void ParameterBlockInfo::linearOMinus(const double* x_raw, const double* x0_raw, double* delx_raw) const {
-    Eigen::Map<const Eigen::VectorXd> x(x_raw, size), x0(x0_raw, size);
-    Eigen::Map<Eigen::VectorXd> delx(delx_raw, size);
-    delx = x - x0;
-}
-
-void SE3BlockInfo::linearOMinus(const double* x_raw, const double* x0_raw, double* delx_raw) const {
-    // example, Twc, Twc0
-    // Twc = Twc0 * delT
-    // delT = Tc0c = Twc0.inv() * Twc
-    Eigen::Map<const Sophus::SE3d> T(x_raw), T0(x0_raw);
-    Eigen::Map<Sophus::SE3d> delT(delx_raw);
-    delT = T0.inverse() * T;
-}
-
-void ResidualBlockInfo::Evaluate() {
+void ResidualBlockInfo::Evaluate()
+{
     residuals.resize(cost_function->num_residuals());
 
     std::vector<int> block_sizes = cost_function->parameter_block_sizes();
-    std::vector<double*> tmp_jacobians(block_sizes.size());
+    raw_jacobians = new double *[block_sizes.size()];
     jacobians.resize(block_sizes.size());
-    for(int i = 0, n = block_sizes.size(); i < n; ++i) {
+
+    for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
+    {
         jacobians[i].resize(cost_function->num_residuals(), block_sizes[i]);
-        tmp_jacobians[i] = jacobians[i].data();
+        raw_jacobians[i] = jacobians[i].data();
+        //dim += block_sizes[i] == 7 ? 6 : block_sizes[i];
     }
+    cost_function->Evaluate(parameter_blocks.data(), residuals.data(), raw_jacobians);
 
-    cost_function->Evaluate(parameter_blocks.data(), residuals.data(), tmp_jacobians.data());
+    //std::vector<int> tmp_idx(block_sizes.size());
+    //Eigen::MatrixXd tmp(dim, dim);
+    //for (int i = 0; i < static_cast<int>(parameter_blocks.size()); i++)
+    //{
+    //    int size_i = localSize(block_sizes[i]);
+    //    Eigen::MatrixXd jacobian_i = jacobians[i].leftCols(size_i);
+    //    for (int j = 0, sub_idx = 0; j < static_cast<int>(parameter_blocks.size()); sub_idx += block_sizes[j] == 7 ? 6 : block_sizes[j], j++)
+    //    {
+    //        int size_j = localSize(block_sizes[j]);
+    //        Eigen::MatrixXd jacobian_j = jacobians[j].leftCols(size_j);
+    //        tmp_idx[j] = sub_idx;
+    //        tmp.block(tmp_idx[i], tmp_idx[j], size_i, size_j) = jacobian_i.transpose() * jacobian_j;
+    //    }
+    //}
+    //Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(tmp);
+    //std::cout << saes.eigenvalues() << std::endl;
+    //ROS_ASSERT(saes.eigenvalues().minCoeff() >= -1e-6);
 
-    // from ceres source code
-    if(loss_function) {
+    if (loss_function)
+    {
         double residual_scaling_, alpha_sq_norm_;
+
         double sq_norm, rho[3];
 
         sq_norm = residuals.squaredNorm();
         loss_function->Evaluate(sq_norm, rho);
+        //printf("sq_norm: %f, rho[0]: %f, rho[1]: %f, rho[2]: %f\n", sq_norm, rho[0], rho[1], rho[2]);
 
         double sqrt_rho1_ = sqrt(rho[1]);
 
@@ -62,230 +71,321 @@ void ResidualBlockInfo::Evaluate() {
     }
 }
 
-void MarginalizationInfo::AddResidualBlockInfo(ResidualBlockInfoPtr residual_block_info) {
+MarginalizationInfo::~MarginalizationInfo()
+{
+    //ROS_WARN("release marginlizationinfo");
+    for (auto it = parameter_block_data.begin(); it != parameter_block_data.end(); ++it) {
+        delete[] it->second;
+    }
+
+    for (int i = 0; i < (int)factors.size(); i++)
+    {
+
+        delete[] factors[i]->raw_jacobians;
+        
+        delete factors[i]->cost_function;
+
+        delete factors[i];
+    }
+}
+
+void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block_info)
+{
     factors.emplace_back(residual_block_info);
 
-    auto& parameter_blocks = residual_block_info->parameter_blocks;
-    auto& parameter_block_info = residual_block_info->parameter_block_info; // size 0
-    auto parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
+    std::vector<double *> &parameter_blocks = residual_block_info->parameter_blocks;
+    std::vector<int> parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
 
-    for(int i = 0, n = parameter_blocks.size(); i < n; ++i) {
-        double* addr = parameter_blocks[i];
-        auto it = m_parameter_block_info.find(addr);
-        if(it == m_parameter_block_info.end()) {
-            auto temp = std::make_shared<ParameterBlockInfo>(parameter_block_sizes[i]);
-            m_parameter_block_info[addr] = temp;
-            parameter_block_info.emplace_back(temp);
-            ROS_ERROR_STREAM("auto create parameter block: " << temp.get());
-        }
-        else {
-            parameter_block_info.emplace_back(it->second);
-        }
+    for (int i = 0; i < static_cast<int>(residual_block_info->parameter_blocks.size()); i++)
+    {
+        double *addr = parameter_blocks[i];
+        int size = parameter_block_sizes[i];
+        parameter_block_size[reinterpret_cast<long>(addr)] = size;
     }
 
-    for(auto& idx : residual_block_info->drop_set) {
-        if(parameter_block_info[idx]->idx != 0)
-            parameter_block_info[idx]->idx = 0;
+    for (int i = 0; i < static_cast<int>(residual_block_info->drop_set.size()); i++)
+    {
+        double *addr = parameter_blocks[residual_block_info->drop_set[i]];
+        parameter_block_idx[reinterpret_cast<long>(addr)] = 0;
     }
 }
 
-void MarginalizationInfo::AddParameterBlockInfo(double* vertex_data, ParameterBlockInfoPtr parameter_block_) {
-    m_parameter_block_info[vertex_data] = parameter_block_;
-}
-
-void MarginalizationInfo::PreMarginalize() {
-    ScopedTrace st("pre_margin");
-    for(auto& it : factors) {
+void MarginalizationInfo::preMarginalize()
+{
+    ScopedTrace st("pre");
+    for (auto it : factors)
+    {
         it->Evaluate();
 
         std::vector<int> block_sizes = it->cost_function->parameter_block_sizes();
-        for(int i = 0, n = block_sizes.size(); i < n; ++i) {
+        for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
+        {
+            long addr = reinterpret_cast<long>(it->parameter_blocks[i]);
             int size = block_sizes[i];
-            if(!it->parameter_block_info[i]->data) {
-                it->parameter_block_info[i]->data = std::unique_ptr<double[]>(new double[size]);
-                std::memcpy(it->parameter_block_info[i]->data.get(),
-                            it->parameter_blocks[i], sizeof(double) * size);
+            if (parameter_block_data.find(addr) == parameter_block_data.end())
+            {
+                double *data = new double[size];
+                memcpy(data, it->parameter_blocks[i], sizeof(double) * size);
+                parameter_block_data[addr] = data;
             }
         }
     }
 }
 
-void MarginalizationInfo::Marginalize() {
+int MarginalizationInfo::localSize(int size) const
+{
+    return size == 7 ? 6 : size;
+}
+
+int MarginalizationInfo::globalSize(int size) const
+{
+    return size == 6 ? 7 : size;
+}
+
+void* ThreadsConstructA(void* threadsstruct)
+{
+    ThreadsStruct* p = ((ThreadsStruct*)threadsstruct);
+    for (auto it : p->sub_factors)
+    {
+        for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
+        {
+            int idx_i = p->parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
+            int size_i = p->parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])];
+            if (size_i == 7)
+                size_i = 6;
+            Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
+            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++)
+            {
+                int idx_j = p->parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
+                int size_j = p->parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])];
+                if (size_j == 7)
+                    size_j = 6;
+                Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
+                if (i == j)
+                    p->A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
+                else
+                {
+                    p->A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
+                    p->A.block(idx_j, idx_i, size_j, size_i) = p->A.block(idx_i, idx_j, size_i, size_j).transpose();
+                }
+            }
+            p->b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals;
+        }
+    }
+    return threadsstruct;
+}
+
+void MarginalizationInfo::marginalize()
+{
     ScopedTrace st("margin");
-    m = 0; // marginal size
-    n = 0; // non marginal size
-    for(auto& it : m_parameter_block_info) {
-        auto& block = it.second;
-        if(block->idx == 0) { // marginal
-            block->idx = m;
-            m += block->local_size;
+    int pos = 0;
+    for (auto &it : parameter_block_idx)
+    {
+        it.second = pos;
+        pos += localSize(parameter_block_size[it.first]);
+    }
+
+    m = pos;
+
+    for (const auto &it : parameter_block_size)
+    {
+        if (parameter_block_idx.find(it.first) == parameter_block_idx.end())
+        {
+            parameter_block_idx[it.first] = pos;
+            pos += localSize(it.second);
         }
     }
 
-    for(auto& it : m_parameter_block_info) {
-        auto& block = it.second;
-        if(block->idx == -1) { // non marginal
-            block->idx = m + n;
-            n += block->local_size;
-        }
-    }
-    int total_size = m + n;
-    ROS_ERROR_STREAM("m " << m << " n " << n);
-    /*
-     * A = [Amm Amr   b = [bmm
-     *      Arm Arr]       brr]
-     */
+    n = pos - m;
 
-    Eigen::MatrixXd A(total_size, total_size);
-    Eigen::VectorXd b(total_size);
+    //ROS_DEBUG("marginalization, pos: %d, m: %d, n: %d, size: %d", pos, m, n, (int)parameter_block_idx.size());
+
+    Tracer::TraceBegin("fill");
+    Eigen::MatrixXd A(pos, pos);
+    Eigen::VectorXd b(pos);
     A.setZero();
     b.setZero();
-
-    Tracer::TraceBegin("fillA");
-    // TODO fill the matrix A and vector b using multi-thread
-    for(auto& factor : factors) {
-        for(int i = 0; i < factor->parameter_blocks.size(); ++i) {
-            ROS_ERROR_STREAM("i:" << i << " size:" << factor->parameter_blocks.size());
-            int idx_i = factor->parameter_block_info[i]->idx;
-            int local_size_i = factor->parameter_block_info[i]->local_size;
-            ROS_ERROR_STREAM("idx_i:" << idx_i << " local_size_i:" << local_size_i);
-            if(idx_i == -1) {
-                auto it = m_parameter_block_info.find(factor->parameter_blocks[i]);
-                if(it != m_parameter_block_info.end()) {
-                    ROS_ERROR_STREAM(factor->parameter_block_info[i].get() << " " << it->second.get());
-                }
-                else {
-                    ROS_ERROR_STREAM("nofind");
+    /*
+    for (auto it : factors)
+    {
+        for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
+        {
+            int idx_i = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
+            int size_i = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])]);
+            Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
+            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++)
+            {
+                int idx_j = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
+                int size_j = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])]);
+                Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
+                if (i == j)
+                    A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
+                else
+                {
+                    A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
+                    A.block(idx_j, idx_i, size_j, size_i) = A.block(idx_i, idx_j, size_i, size_j).transpose();
                 }
             }
-            Eigen::MatrixXd jacobian_i = factor->jacobians[i].leftCols(local_size_i);
-
-            // fill bi
-            b.segment(idx_i, local_size_i) = jacobian_i.transpose() * factor->residuals;
-
-            // fill Aij
-            for(int j = i; j < factor->parameter_blocks.size(); ++j) {
-                int idx_j = factor->parameter_block_info[j]->idx;
-                int local_size_j = factor->parameter_block_info[j]->local_size;
-                Eigen::MatrixXd jacobian_j = factor->jacobians[j].leftCols(local_size_j);
-                A.block(idx_i, idx_j, local_size_i, local_size_j) += jacobian_i.transpose() * jacobian_j;
-                if(i != j)
-                    A.block(idx_j, idx_i, local_size_j, local_size_i) =
-                            A.block(idx_i, idx_j, local_size_i, local_size_j).transpose();
-            }
+            b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals;
         }
     }
+    ROS_INFO("summing up costs %f ms", t_summing.toc());
+    */
+    //multi thread
+
+    pthread_t tids[NUM_THREADS];
+    ThreadsStruct threadsstruct[NUM_THREADS];
+    int i = 0;
+    for (auto it : factors)
+    {
+        threadsstruct[i].sub_factors.push_back(it);
+        i++;
+        i = i % NUM_THREADS;
+    }
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        threadsstruct[i].A = Eigen::MatrixXd::Zero(pos,pos);
+        threadsstruct[i].b = Eigen::VectorXd::Zero(pos);
+        threadsstruct[i].parameter_block_size = parameter_block_size;
+        threadsstruct[i].parameter_block_idx = parameter_block_idx;
+        int ret = pthread_create( &tids[i], NULL, ThreadsConstructA ,(void*)&(threadsstruct[i]));
+        if (ret != 0)
+        {
+            ROS_WARN("pthread_create error");
+            ROS_BREAK();
+        }
+    }
+    for( int i = NUM_THREADS - 1; i >= 0; i--)  
+    {
+        pthread_join( tids[i], NULL ); 
+        A += threadsstruct[i].A;
+        b += threadsstruct[i].b;
+    }
     Tracer::TraceEnd();
-    /*
-     * Solve Ax = b and Amn = Anm^t
-     *
-     *      [Amm Amn [xm  = [bm
-     *       Anm Ann] xn]    bn]
-     *
-     * Using Schur complement
-     *      [ Amm                   Amn  [xm   = [                  bm
-     *          0   Ann-Anm*Amm_inv*Amn]  xn]     bn - Anm*Amm_inv*Amn]
-     *    =>(Ann-Anm*Amm_inv*Amn)xn = bn - Anm*Amm_inv*bm
-     */
-    Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose()); // ensure the Amm is symmetry
-    // https://eigen.tuxfamily.org/dox/classEigen_1_1SelfAdjointEigenSolver.html
-    Tracer::TraceBegin("VDVt");
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm); // Amm = VDV^t
+    //ROS_DEBUG("thread summing up costs %f ms", t_thread_summing.toc());
+    //ROS_INFO("A diff %f , b diff %f ", (A - tmp_A).sum(), (b - tmp_b).sum());
+
+
+    //TODO
+    Tracer::TraceBegin("Amminv");
+    Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
+
+    //ROS_ASSERT_MSG(saes.eigenvalues().minCoeff() >= -1e-4, "min eigenvalue %f", saes.eigenvalues().minCoeff());
+
+    Eigen::MatrixXd Amm_inv = saes.eigenvectors() * Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0)).asDiagonal() * saes.eigenvectors().transpose();
+    //printf("error1: %f\n", (Amm * Amm_inv - Eigen::MatrixXd::Identity(m, m)).sum());
     Tracer::TraceEnd();
+
     Tracer::TraceBegin("shur");
-    // Amm_inv = VD^-1V^t
-    Eigen::VectorXd D_inv = Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0));
-    Eigen::MatrixXd Amm_inv = saes.eigenvectors() * D_inv.asDiagonal() * saes.eigenvectors().transpose();
-
-    Eigen::MatrixXd Ann = A.block(m, m, n, n);
-    Eigen::MatrixXd Anm = A.block(m, 0, n, m);
-    Eigen::MatrixXd Amn = A.block(0, m, m, n);
-    Eigen::VectorXd bm = b.segment(0, m);
-    Eigen::VectorXd bn = b.segment(m, n);
-
-    A = Ann - Anm * Amm_inv * Amn;
-    b = bn - Anm * Amm_inv * bm;
+    Eigen::VectorXd bmm = b.segment(0, m);
+    Eigen::MatrixXd Amr = A.block(0, m, m, n);
+    Eigen::MatrixXd Arm = A.block(m, 0, n, m);
+    Eigen::MatrixXd Arr = A.block(m, m, n, n);
+    Eigen::VectorXd brr = b.segment(m, n);
+    A = Arr - Arm * Amm_inv * Amr;
+    b = brr - Arm * Amm_inv * bmm;
     Tracer::TraceEnd();
-    // Ax = b
-    // J^tJ x = J^te
-    // try to find J
-    // decomposition A = VSV^t = J^tJ
-    // then J = sqrt(D)*V^t
-    //      e = (sqrt(D))^-1 * V^t * b
 
-    Tracer::TraceBegin("VDVt");
+    Tracer::TraceBegin("FEJ");
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(A);
-    Tracer::TraceEnd();
-    Eigen::VectorXd D = (saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array(), 0);
-    D_inv = (saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0);
-    Eigen::VectorXd D_sqrt = D.cwiseSqrt();
-    Eigen::VectorXd D_inv_sqrt = D_inv.cwiseSqrt();
+    Eigen::VectorXd S = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array(), 0));
+    Eigen::VectorXd S_inv = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0));
 
-    linearized_jacobian = D_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
-    linearized_residuals = D_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
+    Eigen::VectorXd S_sqrt = S.cwiseSqrt();
+    Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
+
+    linearized_jacobians = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
+    linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
+    Tracer::TraceEnd();
+    //std::cout << A << std::endl
+    //          << std::endl;
+    //std::cout << linearized_jacobians << std::endl;
+    //printf("error2: %f %f\n", (linearized_jacobians.transpose() * linearized_jacobians - A).sum(),
+    //      (linearized_jacobians.transpose() * linearized_residuals - b).sum());
 }
 
-std::vector<double*> MarginalizationInfo::GetParameterBlocks() {
-    std::vector<double*> keep_block_addr;
-    keep_block.clear();
-    for(auto& it : m_parameter_block_info) {
-        if(it.second->idx >= m) {
-            keep_block.emplace_back(it.second);
-            keep_block_addr.emplace_back(it.first);
+std::vector<double *> MarginalizationInfo::getParameterBlocks()
+{
+    std::vector<double *> keep_block_addr;
+    keep_block_size.clear();
+    keep_block_idx.clear();
+    keep_block_data.clear();
+
+    for (const auto &it : parameter_block_idx)
+    {
+        if (it.second >= m)
+        {
+            keep_block_size.push_back(parameter_block_size[it.first]);
+            keep_block_idx.push_back(parameter_block_idx[it.first]);
+            keep_block_data.push_back(parameter_block_data[it.first]);
+            keep_block_addr.push_back(reinterpret_cast<double*>(it.first));
         }
     }
-    // keep_block_addr is correspondence to keep_block
+    sum_block_size = std::accumulate(std::begin(keep_block_size), std::end(keep_block_size), 0);
+
     return keep_block_addr;
 }
 
-MarginalizationFactor::MarginalizationFactor(const MarginalizationInfoPtr& marginalization_info_)
-    : marginalization_info(marginalization_info_)
+MarginalizationFactor::MarginalizationFactor(MarginalizationInfo* _marginalization_info):marginalization_info(_marginalization_info)
 {
-    for(auto& it : marginalization_info_->keep_block) {
-        mutable_parameter_block_sizes()->push_back(it->size);
+    int cnt = 0;
+    for (auto it : marginalization_info->keep_block_size)
+    {
+        mutable_parameter_block_sizes()->push_back(it);
+        cnt += it;
     }
-    set_num_residuals(marginalization_info_->n);
-}
+    //printf("residual size: %d, %d\n", cnt, n);
+    set_num_residuals(marginalization_info->n);
+};
 
-bool MarginalizationFactor::Evaluate(double const *const *parameters_raw,
-                                     double* residual_raw, double **jacobian_raw) const {
-    /*
-     *  <----m----> <-----n----->
-     *  0 ... (m-1) m ... (m+n-1)
-     * [           |               ^
-     *             |               | m
-     *             |               v
-     *  -------------------------  ^
-     *             |               | n
-     *             |               |
-     *             |             ] v
-     */
-    if(marginalization_info.expired())
-        return false;
-    auto info = marginalization_info.lock();
-    int n = info->n;
-    int m = info->m;
+bool MarginalizationFactor::Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
+{
+    //printf("internal addr,%d, %d\n", (int)parameter_block_sizes().size(), num_residuals());
+    //for (int i = 0; i < static_cast<int>(keep_block_size.size()); i++)
+    //{
+    //    //printf("unsigned %x\n", reinterpret_cast<unsigned long>(parameters[i]));
+    //    //printf("signed %x\n", reinterpret_cast<long>(parameters[i]));
+    //printf("jacobian %x\n", reinterpret_cast<long>(jacobians));
+    //printf("residual %x\n", reinterpret_cast<long>(residuals));
+    //}
+    int n = marginalization_info->n;
+    int m = marginalization_info->m;
     Eigen::VectorXd dx(n);
-
-    auto& keep_block = info->keep_block;
-    for(int i = 0; i < static_cast<int>(keep_block.size()); ++i) {
-        int size = keep_block[i]->size; // global size
-        int idx = keep_block[i]->idx - m;
-        keep_block[i]->linearOMinus(parameters_raw[i], keep_block[i]->data.get(), dx.data() + idx);
+    for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
+    {
+        int size = marginalization_info->keep_block_size[i];
+        int idx = marginalization_info->keep_block_idx[i] - m;
+        if (size != 7) {
+            Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);
+            Eigen::VectorXd x0 = Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);
+            dx.segment(idx, size) = x - x0;
+        }
+        else
+        {
+            // Twb Twb0
+            // Twb = Twb0 * delT
+            // delT = Twb0.inv() * Twb
+            Eigen::Map<const Sophus::SE3d> T(parameters[i]);
+            Eigen::Map<const Sophus::SE3d> T0(marginalization_info->keep_block_data[i]);
+            Eigen::Map<Sophus::SE3d> dT(dx.data() + idx);
+            dT = T0.inverse() * T;
+        }
     }
+    Eigen::Map<Eigen::VectorXd>(residuals, n) = marginalization_info->linearized_residuals + marginalization_info->linearized_jacobians * dx;
+    if (jacobians)
+    {
 
-    Eigen::Map<Eigen::VectorXd> residuals(residual_raw, n);
-    residuals = info->linearized_residuals + info->linearized_jacobian * dx;
-
-    if(jacobian_raw) {
-        for(int i = 0; i < static_cast<int>(info->keep_block.size()); ++i) {
-            int size = info->keep_block[i]->size;
-            int local_size = info->keep_block[i]->local_size;
-            int idx = info->keep_block[i]->idx - m;
-            Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
-                    Eigen::RowMajor>> jacobian(jacobian_raw[i], n, size);
-            jacobian.setZero();
-            jacobian.leftCols(local_size) = info->linearized_jacobian.middleCols(idx, local_size);
+        for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
+        {
+            if (jacobians[i])
+            {
+                int size = marginalization_info->keep_block_size[i], local_size = marginalization_info->localSize(size);
+                int idx = marginalization_info->keep_block_idx[i] - m;
+                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> jacobian(jacobians[i], n, size);
+                jacobian.setZero();
+                jacobian.leftCols(local_size) = marginalization_info->linearized_jacobians.middleCols(idx, local_size);
+            }
         }
     }
     return true;
