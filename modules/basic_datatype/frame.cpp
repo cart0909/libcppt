@@ -5,9 +5,10 @@
 uint64_t Frame::gNextFrameID = 0;
 uint64_t Frame::gNextKeyFrameID = 0;
 
-Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp)
+Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp, SimpleStereoCamPtr camera)
     : mFrameID(gNextFrameID++), mIsKeyFrame(false), mKeyFrameID(0),
-      mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp)
+      mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp),
+      mpCamera(camera)
 {
     Tracer::TraceBegin("CLAHE");
     cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0);
@@ -24,15 +25,43 @@ Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp)
     Tracer::TraceEnd();
 }
 
-Frame::~Frame() {}
+Frame::~Frame() {
 
-void Frame::SetToKeyFrame() {
+}
+
+void Frame::set_bad() {
+    for(auto& mp : mvMapPoint) {
+        if(mp->is_bad())
+            continue;
+        if(mp->get_parent().first == shared_from_this()) {
+            mp->set_bad();
+        }
+    }
+}
+
+std::vector<MapPointPtr> Frame::SetToKeyFrame() {
+    std::vector<MapPointPtr> temp;
     mIsKeyFrame = true;
     mKeyFrameID = gNextKeyFrameID++;
 
     for(int i = 0, n = mvMapPoint.size(); i < n; ++i) {
-        mvMapPoint[i]->AddMeas(shared_from_this(), i);
+        if(mvMapPoint[i]->is_bad()) { // red point
+            if(mvMapPoint[i]->is_init()) { // exist 3D
+                Eigen::Vector3d x3Dc = mvMapPoint[i]->x3Dc(mTwc.inverse());
+                mvMapPoint[i] = std::make_shared<MapPoint>();
+                mvMapPoint[i]->add_meas(shared_from_this(), i);
+                mvMapPoint[i]->inv_z(1.0 / x3Dc(2));
+            }
+            else { // only 2d
+                mvMapPoint[i] = std::make_shared<MapPoint>();
+                mvMapPoint[i]->add_meas(shared_from_this(), i);
+            }
+            temp.emplace_back(mvMapPoint[i]);
+        }
+        else // yellow or green
+            mvMapPoint[i]->add_meas(shared_from_this(), i);
     }
+    return temp;
 }
 
 bool Frame::CheckKeyFrame() {

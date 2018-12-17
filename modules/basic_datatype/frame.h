@@ -4,17 +4,20 @@
 #include <sophus/se3.hpp>
 #include "util_datatype.h"
 #include "mappoint.h"
+#include "camera_model/simple_stereo_camera.h"
 
 class MapPoint;
 SMART_PTR(MapPoint)
 
 class Frame : public std::enable_shared_from_this<Frame> {
 public:
-    Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
+    Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp,
+          SimpleStereoCamPtr camera);
     ~Frame();
 
+    void set_bad();
     bool CheckKeyFrame();
-    void SetToKeyFrame();
+    std::vector<MapPointPtr> SetToKeyFrame();
 
     // simple sparse stereo matching algorithm by optical flow
     void SparseStereoMatching(double bf);
@@ -47,6 +50,8 @@ public:
 
     // ceres
     double vertex_data[7];
+
+    SimpleStereoCamPtr mpCamera;
 };
 
 SMART_PTR(Frame)

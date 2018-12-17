@@ -110,21 +110,23 @@ void VOSystem::Process(const cv::Mat& img_raw_l, const cv::Mat& img_raw_r, doubl
     cv::remap(img_raw_l, img_remap_l, mpStereoCam->M1l, mpStereoCam->M2l, cv::INTER_LINEAR);
     cv::remap(img_raw_r, img_remap_r, mpStereoCam->M1r, mpStereoCam->M2r, cv::INTER_LINEAR);
 
-    FramePtr frame(new Frame(img_remap_l, img_remap_r, timestamp));
+    FramePtr frame(new Frame(img_remap_l, img_remap_r, timestamp, mpStereoCam));
     if(mpLastFrame) {
         Sophus::SE3d Tcr = mpImgAlign->Run(frame, mpLastFrame);
         mpFrontEnd->TrackFeatLKWithEstimateTcr(mpLastFrame, frame, Tcr);
         mpFrontEnd->PoseOpt(frame, mpLastFrame->mTwc * Tcr.inverse());
+//        mpFrontEnd->TrackFeaturesByOpticalFlow(mpLastFrame, frame);
+//        frame->mTwc = mpLastFrame->mTwc;
         if(frame->CheckKeyFrame()) {
             frame->ExtractFAST();
-            frame->SetToKeyFrame();
+            mpSlidingWindow->push_mps(frame->SetToKeyFrame());
             frame->SparseStereoMatching(mpStereoCam->bf);
             mpBackEnd->AddKeyFrame(frame);
         }
     }
     else {
         frame->ExtractFAST();
-        frame->SetToKeyFrame();
+        mpSlidingWindow->push_mps(frame->SetToKeyFrame());
         frame->SparseStereoMatching(mpStereoCam->bf);
         mpBackEnd->AddKeyFrame(frame);
     }

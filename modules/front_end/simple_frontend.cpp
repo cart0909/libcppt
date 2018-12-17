@@ -17,105 +17,6 @@ SimpleFrontEnd::~SimpleFrontEnd() {
 
 }
 
-// with frame without any feature extract by FAST corner detector
-// if exist some features extract FAST corner in empty grid.
-void SimpleFrontEnd::ExtractFeatures(const FramePtr& frame) {
-    ScopedTrace st("EFeat");
-    // uniform the feature distribution
-//    UniformFeatureDistribution(frame); // FIXME!!!
-
-    static int empty_value = -1, exist_value = -2;
-    int grid_rows = std::ceil(static_cast<float>(mpCamera->height) / 32);
-    int grid_cols = std::ceil(static_cast<float>(mpCamera->width) / 32);
-    std::vector<std::vector<int>> grids(grid_rows, std::vector<int>(grid_cols, empty_value));
-    for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
-        auto& pt = frame->mv_uv[i];
-        int grid_i = pt.y / 32;
-        int grid_j = pt.x / 32;
-        if(grids[grid_i][grid_j] != exist_value)
-            grids[grid_i][grid_j] = exist_value;
-    }
-
-    std::vector<cv::KeyPoint> kps;
-    Tracer::TraceBegin("FAST20");
-    cv::FAST(frame->mImgL, kps, 20);
-    Tracer::TraceEnd();
-
-    for(int i = 0, n = kps.size(); i < n; ++i) {
-        auto& pt = kps[i].pt;
-        int grid_i = pt.y / 32;
-        int grid_j = pt.x / 32;
-        if(grid_i >= grid_rows)
-            grid_i = grid_rows - 1;
-        if(grid_j >= grid_cols)
-            grid_j = grid_cols - 1;
-        int value = grids[grid_i][grid_j];
-        if(value != exist_value) {
-            if(value == empty_value) {
-                grids[grid_i][grid_j] = i;
-            }
-            else {
-                if(kps[i].response > kps[value].response)
-                    grids[grid_i][grid_j] = i;
-            }
-        }
-    }
-
-    for(auto& i : grids)
-        for(auto& j : i)
-            if(j >= 0) {
-                frame->mvPtCount.emplace_back(0);
-                frame->mv_uv.emplace_back(kps[j].pt);
-                frame->mvLastKFuv.emplace_back(kps[j].pt);
-                frame->mvMapPoint.emplace_back(new MapPoint);
-            }
-
-    if(frame->mv_uv.size() < 150) {
-        grids.resize(grid_rows, std::vector<int>(grid_cols, empty_value));
-
-        for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
-            auto& pt = frame->mv_uv[i];
-            int grid_i = pt.y / 32;
-            int grid_j = pt.x / 32;
-            if(grids[grid_i][grid_j] != exist_value)
-                grids[grid_i][grid_j] = exist_value;
-        }
-
-        Tracer::TraceBegin("FAST7");
-        cv::FAST(frame->mImgL, kps, 7);
-        Tracer::TraceEnd();
-
-        for(int i = 0, n = kps.size(); i < n; ++i) {
-            auto& pt = kps[i].pt;
-            int grid_i = pt.y / 32;
-            int grid_j = pt.x / 32;
-            if(grid_i >= grid_rows)
-                grid_i = grid_rows - 1;
-            if(grid_j >= grid_cols)
-                grid_j = grid_cols - 1;
-            int value = grids[grid_i][grid_j];
-            if(value != exist_value) {
-                if(value == empty_value) {
-                    grids[grid_i][grid_j] = i;
-                }
-                else {
-                    if(kps[i].response > kps[value].response)
-                        grids[grid_i][grid_j] = i;
-                }
-            }
-        }
-
-        for(auto& i : grids)
-            for(auto& j : i)
-                if(j >= 0) {
-                    frame->mvPtCount.emplace_back(0);
-                    frame->mv_uv.emplace_back(kps[j].pt);
-                    frame->mvLastKFuv.emplace_back(kps[j].pt);
-                    frame->mvMapPoint.emplace_back(new MapPoint);
-                }
-    }
-}
-
 // track features by optical flow and check epipolar constrain
 void SimpleFrontEnd::TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
                                                 const FramePtr& cur_frame) {
@@ -186,7 +87,7 @@ void SimpleFrontEnd::TrackFeatLKWithEstimateTcr(const FrameConstPtr& ref_frame,
     // predict the cur uv
     for(int i = 0, n = ref_frame_pts.size(); i < n; ++i) {
         auto& mp = cur_frame->mvMapPoint[i];
-        if(mp->empty()) { // predict consider rotation only
+        if(!mp->is_init()) { // predict consider rotation only
             Eigen::Vector3d x3Dr;
             mpCamera->BackProject(Eigen::Vector2d(ref_frame_pts[i].x, ref_frame_pts[i].y),
                                   x3Dr);
@@ -307,7 +208,7 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
         problem.AddParameterBlock(Twc_raw, 7, pose_vertex);
 
         for(int i = 0; i < N; ++i) {
-            if(!v_mps[i] || v_mps[i]->empty())
+            if(!v_mps[i]->is_init())
                 continue;
 
             if(status[i]) {
@@ -335,7 +236,7 @@ void SimpleFrontEnd::PoseOpt(const FramePtr& cur_frame, const Sophus::SE3d& init
         Eigen::Map<Sophus::SE3d> Twc(Twc_raw);
         Sophus::SE3d Tcw = Twc.inverse();
         for(int i = 0; i < N; ++i) {
-            if(!v_mps[i] || v_mps[i]->empty())
+            if(!v_mps[i]->is_init())
                 continue;
             Eigen::Vector3d x3Dc = v_mps[i]->x3Dc(Tcw);
             Eigen::Vector2d uv;

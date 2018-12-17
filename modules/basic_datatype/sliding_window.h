@@ -13,6 +13,7 @@ public:
 
     void push_kf(FramePtr keyframe);
     void push_mp(MapPointPtr mappoint);
+    void push_mps(const std::vector<MapPointPtr>& mps);
 
     size_t size_kfs() const;
     size_t size_mps() const;
@@ -22,8 +23,8 @@ public:
     std::vector<MapPointPtr> get_mps();
 
     std::mutex big_mutex;
+    const int max_len;
 private:
-    int max_len;
     mutable std::mutex kfs_mutex;
     mutable std::mutex mps_mutex;
     std::deque<FramePtr> kfs_buffer;

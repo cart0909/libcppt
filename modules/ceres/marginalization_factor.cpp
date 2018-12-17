@@ -297,6 +297,7 @@ void MarginalizationInfo::marginalize()
 
     linearized_jacobians = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
     linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
+
     Tracer::TraceEnd();
     //std::cout << A << std::endl
     //          << std::endl;
@@ -356,6 +357,7 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
     {
         int size = marginalization_info->keep_block_size[i];
         int idx = marginalization_info->keep_block_idx[i] - m;
+
         if (size != 7) {
             Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);
             Eigen::VectorXd x0 = Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);
@@ -368,14 +370,18 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
             // delT = Twb0.inv() * Twb
             Eigen::Map<const Sophus::SE3d> T(parameters[i]);
             Eigen::Map<const Sophus::SE3d> T0(marginalization_info->keep_block_data[i]);
-            Eigen::Map<Sophus::SE3d> dT(dx.data() + idx);
-            dT = T0.inverse() * T;
+//            Sophus::SE3d dT = T0.inverse() * T;
+//            dx.segment<6>(idx) = dT.log();
+            dx.segment<3>(idx) = T.translation() - T0.translation();
+            dx.segment<3>(idx + 3) = (T0.so3().inverse() * T.so3()).log();
         }
     }
-    Eigen::Map<Eigen::VectorXd>(residuals, n) = marginalization_info->linearized_residuals + marginalization_info->linearized_jacobians * dx;
+
+    Eigen::Map<Eigen::VectorXd> res(residuals, n);
+    res = marginalization_info->linearized_residuals + marginalization_info->linearized_jacobians * dx;
+
     if (jacobians)
     {
-
         for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
         {
             if (jacobians[i])
