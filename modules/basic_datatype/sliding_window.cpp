@@ -1,4 +1,4 @@
-#include "sliding_window.h"
+﻿#include "sliding_window.h"
 
 SlidingWindow::SlidingWindow(int max_len_)
     : max_len(max_len_) {}
@@ -20,6 +20,11 @@ void SlidingWindow::push_kf(FramePtr keyframe) {
 void SlidingWindow::push_mp(MapPointPtr mappoint) {
     std::unique_lock<std::mutex> lock(mps_mutex);
     mps_buffer.push_back(mappoint);
+}
+
+void SlidingWindow::push_mps(const std::vector<MapPointPtr>& mps) {
+    std::unique_lock<std::mutex> lock(mps_mutex);
+    mps_buffer.insert(mps_buffer.end(), mps.begin(), mps.end());
 }
 
 size_t SlidingWindow::size_kfs() const {

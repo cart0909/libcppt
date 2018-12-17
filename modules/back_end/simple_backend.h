@@ -27,11 +27,10 @@ public:
     BackEndState mState;
 private:
     bool InitSystem(const FramePtr& keyframe);
-    void CreateMapPointFromStereoMatching(const FramePtr& keyframe);
-    void CreateMapPointFromMotionTracking(const FramePtr& keyframe);
+    void CreateMapPoint(const FramePtr& keyframe);
     void ShowResultGUI() const;
     void SlidingWindowBA(const FramePtr& new_keyframe);
-    void Marginalization();
+    void Marginalization(const FramePtr& new_keyframe);
 
     SimpleStereoCamPtr mpCamera;
     SlidingWindowPtr mpSlidingWindow;

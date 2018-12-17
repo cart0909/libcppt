@@ -12,10 +12,6 @@ public:
                    const SlidingWindowPtr& sliding_window);
     ~SimpleFrontEnd();
 
-    // with frame without any feature extract by FAST corner detector
-    // if exist some features extract FAST corner in empty grid.
-    void ExtractFeatures(const FramePtr& frame);
-
     // track features by optical flow and check epipolar constrain
     void TrackFeaturesByOpticalFlow(const FrameConstPtr& ref_frame,
                                     const FramePtr& cur_frame);

@@ -137,8 +137,10 @@ public:
         for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
             auto& pt = frame->mv_uv[i];
             auto& mp = frame->mvMapPoint[i];
-            if(mp->empty())
+            if(!mp->is_init())
                 cv::circle(feature_img, pt, 4, cv::Scalar(0, 255, 0), -1);
+            else if(mp->is_bad())
+                cv::circle(feature_img, pt, 4, cv::Scalar(255, 0, 0), -1);
             else
                 cv::circle(feature_img, pt, 4, cv::Scalar(255, 255, 0), -1);
         }

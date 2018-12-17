@@ -23,10 +23,14 @@ Sophus::SE3d SparseImgAlign::Run(const FramePtr& cur_frame, const FramePtr& ref_
     mImgPyrCur = cur_frame->mImgPyrL;
     Sophus::SE3d Trw = ref_frame->mTwc.inverse();
 
+    double inv_f = mpCamera->inv_f;
+    double cx = mpCamera->cx;
+    double cy = mpCamera->cy;
+
     for(int i = 0, n = ref_frame->mv_uv.size(); i < n; ++i) {
         const auto& uv = ref_frame->mv_uv[i];
         const auto& mp = ref_frame->mvMapPoint[i];
-        if(mp->empty())
+        if(!mp->is_init())
             continue;
         mvRef_uv.emplace_back(uv);
         mv_x3Dr.emplace_back(mp->x3Dc(Trw));
