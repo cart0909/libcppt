@@ -2,6 +2,7 @@
 #include <Eigen/Dense>
 #include <sophus/so3.hpp>
 #include <vector>
+#include "basic_datatype/util_datatype.h"
 
 class ImuPreintegration {
 public:
@@ -20,8 +21,8 @@ public:
     void Repropagate(const Eigen::Vector3d& bg, const Eigen::Vector3d& ba);
 
     std::vector<double> mvdt;
-    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > mvMeasGyr;
-    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > mvMeasAcc;
+    VecVector3d mvMeasGyr;
+    VecVector3d mvMeasAcc;
 
     Eigen::Matrix<double, 6, 6> mGyrAccCov; // gyro and acc covariance Sigma_eta
     Eigen::Vector3d mbg, mba;
