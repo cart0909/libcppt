@@ -178,7 +178,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
         std::memcpy(kf->vertex_data, kf->mTwc.data(), sizeof(double) * 7);
         problem.AddParameterBlock(kf->vertex_data, 7, pose_vertex);
 
-        if(kf->mKeyFrameID == 0)
+        if(kf == sliding_window[0])
             problem.SetParameterBlockConstant(kf->vertex_data);
     }
 
@@ -239,7 +239,7 @@ void SimpleBackEnd::SlidingWindowBA(const FramePtr& new_keyframe) {
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-    std::cout << summary.FullReport() << std::endl;
+//    std::cout << summary.FullReport() << std::endl;
 
     // restore the optimization data to pose and point
     for(int i = 0, n = sliding_window.size(); i < n; ++i) {

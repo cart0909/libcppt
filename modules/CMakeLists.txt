@@ -143,6 +143,7 @@ back_end/simple_backend.cpp
 ceres/projection_factor.cpp
 ceres/marginalization_factor.cpp
 system/vo_system.cpp
+system/vio_system.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/BowVector.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/FBrief.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/FORB.cpp

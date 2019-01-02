@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.11)
-project(cppt_player)
+project(cppt_vio)
 
 # Cross Compile
 if ("$ENV{CROSS_COMPILE_FLAG}" STREQUAL "XU4")
@@ -80,13 +80,12 @@ catkin_package()
 include_directories(${catkin_INCLUDE_DIRS})
 include_directories(src)
 
-add_executable(cppt_player
-player_node.cpp
+add_executable(cppt_vio
+vio_node.cpp
 src/CameraPoseVisualization.cpp
 )
 
-target_link_libraries(cppt_player
+target_link_libraries(cppt_vio
 ${catkin_LIBRARIES}
 )
-
 
