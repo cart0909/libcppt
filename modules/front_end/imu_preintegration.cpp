@@ -1,10 +1,6 @@
 #include "imu_preintegration.h"
 #include "basic_datatype/so3_extent.h"
 
-ImuPreintegration::ImuPreintegration() {
-    Init();
-}
-
 ImuPreintegration::ImuPreintegration(const Eigen::Vector3d& bg, const Eigen::Vector3d& ba,
                     const Eigen::Matrix<double, 6, 6>& noise_cov) {
     Init();

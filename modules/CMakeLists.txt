@@ -126,6 +126,7 @@ basic_datatype/frame.cpp
 basic_datatype/sliding_window.cpp
 basic_datatype/mappoint.cpp
 basic_datatype/util_datatype.cpp
+basic_datatype/basic_sensor.cpp
 camera_model/camera.cpp
 camera_model/pinhole_camera.cpp
 camera_model/stereo_camera.cpp
@@ -137,9 +138,10 @@ front_end/simple_frontend.cpp
 front_end/sparse_img_align.cpp
 # back_end/msckf.cpp
 back_end/imu_state.cpp
-back_end/imu_preintegration.cpp
+front_end/imu_preintegration.cpp
 # back_end/isam2_backend.cpp
 back_end/simple_backend.cpp
+back_end/backend.cpp
 ceres/projection_factor.cpp
 ceres/marginalization_factor.cpp
 system/vo_system.cpp

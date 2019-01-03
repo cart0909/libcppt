@@ -5,6 +5,7 @@
 #include "util_datatype.h"
 #include "mappoint.h"
 #include "camera_model/simple_stereo_camera.h"
+#include "front_end/imu_preintegration.h"
 
 class MapPoint;
 SMART_PTR(MapPoint)
@@ -49,9 +50,19 @@ public:
     double mTimeStamp;
 
     // ceres
-    double vertex_data[7];
+    double vertex_data[16];
 
     SimpleStereoCamPtr mpCamera;
+
+    // imu
+    Eigen::Vector3d Pw;
+    Sophus::SO3d Rwb;
+    Eigen::Vector3d Vw;
+    Eigen::Vector3d ba;
+    Eigen::Vector3d bg;
+
+    // integrate from last kf to this frame
+    ImuPreintegrationPtr imu_preintegration;
 };
 
 SMART_PTR(Frame)

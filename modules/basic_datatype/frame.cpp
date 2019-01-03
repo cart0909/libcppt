@@ -8,7 +8,8 @@ uint64_t Frame::gNextKeyFrameID = 0;
 Frame::Frame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp, SimpleStereoCamPtr camera)
     : mFrameID(gNextFrameID++), mIsKeyFrame(false), mKeyFrameID(0),
       mImgL(img_l), mImgR(img_r), mNumStereo(0), mTimeStamp(timestamp),
-      mpCamera(camera)
+      mpCamera(camera), Pw(Eigen::Vector3d::Zero()), Vw(Eigen::Vector3d::Zero()),
+      ba(Eigen::Vector3d::Zero()), bg(Eigen::Vector3d::Zero())
 {
     Tracer::TraceBegin("CLAHE");
     cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0);

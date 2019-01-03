@@ -3,12 +3,11 @@
 #include <sophus/so3.hpp>
 #include <vector>
 #include "basic_datatype/util_datatype.h"
+#include "basic_datatype/imu_data.h"
 
 class ImuPreintegration {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-    ImuPreintegration();
     ImuPreintegration(const Eigen::Vector3d& bg, const Eigen::Vector3d& ba,
                       const Eigen::Matrix<double, 6, 6>& noise_cov);
     ~ImuPreintegration();
@@ -43,3 +42,4 @@ public:
 private:
     void Init();
 };
+SMART_PTR(ImuPreintegration)
