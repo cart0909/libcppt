@@ -20,6 +20,7 @@
 #include "ros_utility.h"
 #include "src/CameraPoseVisualization.h"
 #include "basic_datatype/util_datatype.h"
+#include "system/vio_system.h"
 using namespace std;
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -43,6 +44,8 @@ public:
         fs["image_topic"] >> img_topic[0];
         fs["image_r_topic"] >> img_topic[1];
         fs["output_path"] >> log_filename;
+
+        mpSystem = std::make_shared<VIOSystem>(config_file);
 
 //        mpSystem = std::make_shared<VOSystem>(config_file);
 //        mpSystem->mpBackEnd->SetDebugCallback(std::bind(&Node::PubSlidingWindow, this,
@@ -123,7 +126,15 @@ public:
                 cv::Mat img_left, img_right;
                 img_left = cv_bridge::toCvCopy(img_msg, "mono8")->image;
                 img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
-//                mpSystem->Process(img_left, img_right, timestamp);
+
+                vector<ImuData> v_imu_data;
+
+                for(auto& it : v_imu_msg)
+                    v_imu_data.emplace_back(it->linear_acceleration.x, it->linear_acceleration.y, it->linear_acceleration.z,
+                                            it->angular_velocity.x,it->angular_velocity.y,it->angular_velocity.z,
+                                            it->header.stamp.toSec());
+
+                mpSystem->Process(img_left, img_right, timestamp, v_imu_data);
 
 //                auto& frame = mpSystem->mpLastFrame;
 //                PubFeatureImg(frame);
@@ -260,7 +271,7 @@ public:
     condition_variable cv_system;
     thread t_system;
 
-//    VOSystemPtr mpSystem;
+    VIOSystemPtr mpSystem;
 
     ros::Publisher pub_track_img;
     ros::Publisher pub_track_img_r;
