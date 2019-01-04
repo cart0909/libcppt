@@ -112,7 +112,7 @@ VIOSystem::VIOSystem(const std::string& config_file) {
 
     sliding_window = std::make_shared<SlidingWindow>();
     front_end = std::make_shared<SimpleFrontEnd>(camera, sliding_window);
-    back_end = std::make_shared<BackEnd>();
+    back_end = std::make_shared<BackEnd>(camera, sliding_window);
     t_backend = std::thread(&BackEnd::Process, back_end);
 
     // log information
