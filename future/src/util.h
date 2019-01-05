@@ -25,9 +25,17 @@ using ImagePyr = std::vector<cv::Mat>;
 using VecVector##SIZE##f = std::vector<Eigen::Vector##SIZE##f, Eigen::aligned_allocator<Eigen::Vector##SIZE##f>>; \
 using VecVector##SIZE##d = std::vector<Eigen::Vector##SIZE##d, Eigen::aligned_allocator<Eigen::Vector##SIZE##d>>;
 
+// eigen extra matrix
+#define EIGEN_EXTRA_MATRIX(SIZE1, SIZE2) \
+using Matrix##SIZE1##SIZE2##d = Eigen::Matrix<double, SIZE1, SIZE2>; \
+using Matrix##SIZE1##SIZE2##f = Eigen::Matrix<float, SIZE1, SIZE2>;
+
+namespace Eigen {
+EIGEN_EXTRA_MATRIX(2, 3)
 STD_EIGEN_VECTOR(2)
 STD_EIGEN_VECTOR(3)
 STD_EIGEN_VECTOR(4)
+}
 
 #define SMART_PTR(NAME) \
 using NAME##Ptr = std::shared_ptr<NAME>; \
