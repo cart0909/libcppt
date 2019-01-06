@@ -21,6 +21,8 @@ public:
     const uint height;
 };
 
+SMART_PTR(Camera);
+
 class IdealPinhole : public Camera {
 public:
     IdealPinhole(uint width, uint height, double fx_, double fy_, double cx_, double cy_);
@@ -44,6 +46,8 @@ public:
     const double cy;
 };
 
+SMART_PTR(IdealPinhole);
+
 class Pinhole : public IdealPinhole {
 public:
     Pinhole(uint width, uint height, double fx, double fy, double cx, double cy,
@@ -65,3 +69,5 @@ public:
     const double p1;
     const double p2;
 };
+
+SMART_PTR(Pinhole);
