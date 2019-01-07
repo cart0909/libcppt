@@ -19,8 +19,7 @@
 
 #include "ros_utility.h"
 #include "src/CameraPoseVisualization.h"
-#include "basic_datatype/util_datatype.h"
-#include "system/vio_system.h"
+#include "feature_tracker.h"
 using namespace std;
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -45,7 +44,10 @@ public:
         fs["image_r_topic"] >> img_topic[1];
         fs["output_path"] >> log_filename;
 
-        mpSystem = std::make_shared<VIOSystem>(config_file);
+        CameraPtr camera(new Pinhole(752, 480, 458.654, 457.296, 367.215, 248.375,
+                                     -0.28340811, 0.07395907, 0.00019359, 1.76187114e-05));
+
+        feature_tracker = std::make_shared<FeatureTracker>(camera);
 
 //        mpSystem = std::make_shared<VOSystem>(config_file);
 //        mpSystem->mpBackEnd->SetDebugCallback(std::bind(&Node::PubSlidingWindow, this,
@@ -127,14 +129,32 @@ public:
                 img_left = cv_bridge::toCvCopy(img_msg, "mono8")->image;
                 img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
 
-                vector<ImuData> v_imu_data;
+                static bool first_frame = true;
+                FeatureTracker::FramePtr frame;
+                if(first_frame) {
+                    frame = feature_tracker->InitFirstFrame(img_left, img_right, timestamp);
+                    first_frame = false;
+                }
+                else {
+                    frame = feature_tracker->Process(img_left, img_right, timestamp);
+                }
 
-                for(auto& it : v_imu_msg)
-                    v_imu_data.emplace_back(it->linear_acceleration.x, it->linear_acceleration.y, it->linear_acceleration.z,
-                                            it->angular_velocity.x,it->angular_velocity.y,it->angular_velocity.z,
-                                            it->header.stamp.toSec());
+                cv::Mat result;
+                cv::cvtColor(frame->img_l, result, CV_GRAY2BGR);
 
-                mpSystem->Process(img_left, img_right, timestamp, v_imu_data);
+                for(auto& pt : frame->pt_l) {
+                    cv::circle(result, pt, 4, cv::Scalar(0, 255, 0), -1);
+                }
+
+                PubTrackImg(result, frame->id, frame->timestamp);
+//                vector<ImuData> v_imu_data;
+
+//                for(auto& it : v_imu_msg)
+//                    v_imu_data.emplace_back(it->linear_acceleration.x, it->linear_acceleration.y, it->linear_acceleration.z,
+//                                            it->angular_velocity.x,it->angular_velocity.y,it->angular_velocity.z,
+//                                            it->header.stamp.toSec());
+
+//                mpSystem->Process(img_left, img_right, timestamp, v_imu_data);
 
 //                auto& frame = mpSystem->mpLastFrame;
 //                PubFeatureImg(frame);
@@ -142,38 +162,19 @@ public:
         }
     }
 
-//    void PubFeatureImg(const FramePtr& frame) {
-//        cv::Mat feature_img, feature_img_r;
-//        cv::cvtColor(frame->mImgL, feature_img, CV_GRAY2BGR);
-//        for(int i = 0, n = frame->mv_uv.size(); i < n; ++i) {
-//            auto& pt = frame->mv_uv[i];
-//            auto& mp = frame->mvMapPoint[i];
-//            if(!mp->is_init())
-//                cv::circle(feature_img, pt, 4, cv::Scalar(0, 255, 0), -1);
-//            else if(mp->is_bad())
-//                cv::circle(feature_img, pt, 4, cv::Scalar(255, 0, 0), -1);
-//            else
-//                cv::circle(feature_img, pt, 4, cv::Scalar(255, 255, 0), -1);
-//        }
 
-//        cv_bridge::CvImage feature_img_msg_l, feature_img_msg_r;
-//        feature_img_msg_l.header.seq = frame->mFrameID;
-//        feature_img_msg_l.header.frame_id = "world";
-//        feature_img_msg_l.header.stamp.fromSec(frame->mTimeStamp);
-//        feature_img_msg_l.image = feature_img;
-//        feature_img_msg_l.encoding = sensor_msgs::image_encodings::RGB8;
-//        pub_track_img.publish(feature_img_msg_l.toImageMsg());
-
-////        feature_img_msg_r.header.seq = frame->mFrameID;
-////        feature_img_msg_r.header.frame_id = "world";
-////        feature_img_msg_r.header.stamp.fromSec(frame->mTimeStamp);
-////        feature_img_msg_r.image = feature_img_r;
-////        feature_img_msg_r.encoding = sensor_msgs::image_encodings::RGB8;
-////        pub_track_img_r.publish(feature_img_msg_r.toImageMsg());
-//    }
+    void PubTrackImg(const cv::Mat& track_img, uint64_t seq, double timestamp) {
+        cv_bridge::CvImage track_cvimage;
+        track_cvimage.header.seq = seq;
+        track_cvimage.header.frame_id = "world";
+        track_cvimage.header.stamp.fromSec(timestamp);
+        track_cvimage.image = track_img;
+        track_cvimage.encoding = sensor_msgs::image_encodings::BGR8;
+        pub_track_img.publish(track_cvimage.toImageMsg());
+    }
 
     void PubSlidingWindow(const std::vector<Sophus::SE3d>& v_Twc,
-                          const VecVector3d& v_x3Dw) {
+                          const Eigen::VecVector3d& v_x3Dw) {
         if(v_Twc.empty())
             return;
 
@@ -271,7 +272,7 @@ public:
     condition_variable cv_system;
     thread t_system;
 
-    VIOSystemPtr mpSystem;
+    FeatureTrackerPtr feature_tracker;
 
     ros::Publisher pub_track_img;
     ros::Publisher pub_track_img_r;
