@@ -117,10 +117,9 @@ ${PROJECT_SOURCE_DIR}/src
 add_library(${PROJECT_NAME} SHARED
 src/util.cpp
 src/camera.cpp
-src/feature.cpp
-src/frame.cpp
 src/feature_tracker.cpp
 src/pose_estimator.cpp
+src/imu_preintegration.cpp
 src/ceres/local_parameterization_se3.cpp
 src/ceres/projection_factor.cpp
 src/ceres/marginalization_factor.cpp

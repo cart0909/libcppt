@@ -73,7 +73,7 @@ sensor_msgs
 image_transport
 cv_bridge
 tf
-cppt_modules
+cppt_future
 )
 catkin_package()
 
