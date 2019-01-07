@@ -26,6 +26,7 @@ public:
 
     FramePtr InitFirstFrame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
     FramePtr Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
+    void SparseStereoMatching(FramePtr frame);
 private:
 
     FramePtr InitFrame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
