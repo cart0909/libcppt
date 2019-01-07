@@ -11,25 +11,21 @@ public:
         uint64_t id;
         std::vector<uint> pt_track_count;
         std::vector<uint64_t> pt_id;
-        std::vector<cv::Point2f> pt_l;
-        std::vector<cv::Point2f> pt_r; // if pt_r[i][0] == -1 -> pt[i] is mono meas.
-        uint num_stereo;
+        std::vector<cv::Point2f> pt;
 
-        cv::Mat img_l, img_r;
-        cv::Mat clahe_l, clahe_r;
-        ImagePyr img_pyr_grad_l, img_pyr_grad_r;
+        cv::Mat img;
+        cv::Mat clahe;
+        ImagePyr img_pyr_grad;
         double timestamp;
 
         bool b_keyframe = false;
     };
     SMART_PTR(Frame)
 
-    FramePtr InitFirstFrame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
-    FramePtr Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
-    void SparseStereoMatching(FramePtr frame);
+    FramePtr InitFirstFrame(const cv::Mat& img, double timestamp);
+    FramePtr Process(const cv::Mat& img, double timestamp);
 private:
-
-    FramePtr InitFrame(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
+    FramePtr InitFrame(const cv::Mat& img, double timestamp);
     void ExtractFAST(FramePtr frame);
     void TrackFeatures(FramePtr ref_frame, FramePtr cur_frame);
 
@@ -41,6 +37,7 @@ private:
 
     int fast_threshold = 20;
     int feat_min_dist = 32;
+    float reproj_threshold = 3.0f;
 };
 
 SMART_PTR(FeatureTracker)

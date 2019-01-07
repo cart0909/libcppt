@@ -132,28 +132,19 @@ public:
                 static bool first_frame = true;
                 FeatureTracker::FramePtr frame;
                 if(first_frame) {
-                    frame = feature_tracker->InitFirstFrame(img_left, img_right, timestamp);
+                    frame = feature_tracker->InitFirstFrame(img_left, timestamp);
                     first_frame = false;
                 }
                 else {
-                    frame = feature_tracker->Process(img_left, img_right, timestamp);
+                    frame = feature_tracker->Process(img_left, timestamp);
                 }
 
-                cv::Mat result, result_r;
-                cv::cvtColor(frame->img_l, result, CV_GRAY2BGR);
-                cv::cvtColor(frame->img_r, result_r, CV_GRAY2BGR);
+                cv::Mat result;
+                cv::cvtColor(frame->img, result, CV_GRAY2BGR);
 
-                for(auto& pt : frame->pt_l) {
+                for(auto& pt : frame->pt) {
                     cv::circle(result, pt, 4, cv::Scalar(0, 255, 0), -1);
                 }
-
-                for(auto& pt : frame->pt_r) {
-                    if(pt.x != -1) {
-                        cv::circle(result_r, pt, 4, cv::Scalar(0, 255, 0), -1);
-                    }
-                }
-
-                cv::hconcat(result, result_r, result);
 
                 PubTrackImg(result, frame->id, frame->timestamp);
 //                vector<ImuData> v_imu_data;
