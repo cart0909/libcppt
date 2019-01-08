@@ -120,6 +120,8 @@ src/camera.cpp
 src/feature_tracker.cpp
 src/pose_estimator.cpp
 src/imu_preintegration.cpp
+src/stereo_matcher.cpp
+src/config_loader.cpp
 src/ceres/local_parameterization_se3.cpp
 src/ceres/projection_factor.cpp
 src/ceres/marginalization_factor.cpp
