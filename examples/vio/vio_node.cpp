@@ -48,18 +48,21 @@ public:
 
         ConfigLoader::Param param = ConfigLoader::Load(config_file);
 
-        CameraPtr camera(new Pinhole(752, 480, 458.654, 457.296, 367.215, 248.375,
-                                     -0.28340811, 0.07395907, 0.00019359, 1.76187114e-05));
+        CameraPtr camera_master, camera_slave;
 
-        feature_tracker = std::make_shared<FeatureTracker>(camera);
+        camera_master = CameraPtr(new Pinhole(param.width[0], param.height[0], param.intrinsic_master[0][0],
+                param.intrinsic_master[0][1], param.intrinsic_master[0][2], param.intrinsic_master[0][3],
+                param.distortion_master[0][0], param.distortion_master[0][1], param.distortion_master[0][2],
+                param.distortion_master[0][3]));
 
-//        mpSystem = std::make_shared<VOSystem>(config_file);
-//        mpSystem->mpBackEnd->SetDebugCallback(std::bind(&Node::PubSlidingWindow, this,
-//                                                        std::placeholders::_1,
-//                                                        std::placeholders::_2));
-//        mpSystem->mDebugCallback = std::bind(&Node::PubCurPose, this,
-//                                             std::placeholders::_1,
-//                                             std::placeholders::_2);
+        camera_slave = CameraPtr(new Pinhole(param.width[0], param.height[0], param.intrinsic_slave[0][0],
+                param.intrinsic_slave[0][1], param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
+                param.distortion_slave[0][0], param.distortion_slave[0][1], param.distortion_slave[0][2],
+                param.distortion_slave[0][3]));
+
+
+        feature_tracker = std::make_shared<FeatureTracker>(camera_master);
+        stereo_matcher = std::make_shared<StereoMatcher>(camera_master, camera_slave, param.p_rl[0], param.q_rl[0]);
         fs.release();
     }
 
@@ -134,23 +137,35 @@ public:
                 img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
 
                 static bool first_frame = true;
-                FeatureTracker::FramePtr frame;
+                FeatureTracker::FramePtr feat_frame;
+                StereoMatcher::FramePtr stereo_frame;
                 if(first_frame) {
-                    frame = feature_tracker->InitFirstFrame(img_left, timestamp);
+                    feat_frame = feature_tracker->InitFirstFrame(img_left, timestamp);
                     first_frame = false;
                 }
                 else {
-                    frame = feature_tracker->Process(img_left, timestamp);
+                    feat_frame = feature_tracker->Process(img_left, timestamp);
                 }
 
-                cv::Mat result;
-                cv::cvtColor(frame->img, result, CV_GRAY2BGR);
+                stereo_frame = stereo_matcher->Process(feat_frame, img_right);
 
-                for(auto& pt : frame->pt) {
+                cv::Mat result, result_r;
+                cv::cvtColor(feat_frame->img, result, CV_GRAY2BGR);
+                cv::cvtColor(stereo_frame->img_r, result_r, CV_GRAY2BGR);
+
+                for(auto& pt : feat_frame->pt) {
                     cv::circle(result, pt, 4, cv::Scalar(0, 255, 0), -1);
                 }
 
-                PubTrackImg(result, frame->id, frame->timestamp);
+                for(auto& pt : stereo_frame->pt_r) {
+                    if(pt.x == -1)
+                        continue;
+                    cv::circle(result_r, pt, 4, cv::Scalar(0, 255, 0), -1);
+                }
+
+                cv::hconcat(result, result_r, result);
+
+                PubTrackImg(result, feat_frame->id, feat_frame->timestamp);
 //                vector<ImuData> v_imu_data;
 
 //                for(auto& it : v_imu_msg)
@@ -277,6 +292,7 @@ public:
     thread t_system;
 
     FeatureTrackerPtr feature_tracker;
+    StereoMatcherPtr stereo_matcher;
 
     ros::Publisher pub_track_img;
     ros::Publisher pub_track_img_r;

@@ -1,4 +1,5 @@
 #include "stereo_matcher.h"
+#include <glog/logging.h>
 
 StereoMatcher::StereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_, Eigen::Vector3d prl_, Sophus::SO3d qrl_)
     : cam_l(cam_l_), cam_r(cam_r_), prl(prl_), qrl(qrl_)
@@ -40,7 +41,7 @@ StereoMatcher::FramePtr StereoMatcher::Process(FeatureTracker::FrameConstPtr fea
     K << f, 0, cx,
          0, f, cy,
          0, 0,  1;
-    Eigen::Matrix3d F = K.transpose().inverse() * E * K.transpose();
+    Eigen::Matrix3d F = K.transpose().inverse() * E * K.inverse();
     F /= F(2, 2);
 
     // check epipolar constrain
