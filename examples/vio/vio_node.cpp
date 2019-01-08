@@ -20,6 +20,8 @@
 #include "ros_utility.h"
 #include "src/CameraPoseVisualization.h"
 #include "feature_tracker.h"
+#include "stereo_matcher.h"
+#include "config_loader.h"
 using namespace std;
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -43,6 +45,8 @@ public:
         fs["image_topic"] >> img_topic[0];
         fs["image_r_topic"] >> img_topic[1];
         fs["output_path"] >> log_filename;
+
+        ConfigLoader::Param param = ConfigLoader::Load(config_file);
 
         CameraPtr camera(new Pinhole(752, 480, 458.654, 457.296, 367.215, 248.375,
                                      -0.28340811, 0.07395907, 0.00019359, 1.76187114e-05));
