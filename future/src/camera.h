@@ -6,7 +6,7 @@ public:
     Camera(uint width_, uint height_);
     virtual ~Camera();
 
-    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix23d* J = nullptr) const = 0;
+    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const = 0;
     virtual Eigen::Vector2d Project(const Eigen::Vector3d& P) const = 0;
 
     virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const = 0;
@@ -28,7 +28,7 @@ public:
     IdealPinhole(uint width, uint height, double fx_, double fy_, double cx_, double cy_);
     virtual ~IdealPinhole();
 
-    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix23d* J = nullptr) const;
+    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const;
     virtual Eigen::Vector2d Project(const Eigen::Vector3d& P) const;
 
     virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
@@ -54,7 +54,7 @@ public:
             double k1_, double k2_, double p1_, double p2_);
     virtual ~Pinhole();
 
-    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix23d* J = nullptr) const;
+    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const;
     virtual Eigen::Vector2d Project(const Eigen::Vector3d& P) const;
 
     virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
