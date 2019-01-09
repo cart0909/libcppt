@@ -135,20 +135,6 @@ public:
     }
 };
 
-// simple excpetion
-class cppt_exception : public std::exception {
-public:
-    inline cppt_exception(const std::string& error_)
-        : error_code(error_) {}
-
-    const char* what() const throw() {
-        return error_code.c_str();
-    }
-
-private:
-    std::string error_code;
-};
-
 namespace Sophus {
 
 Eigen::Matrix3d JacobianR(const Eigen::Vector3d& w);
