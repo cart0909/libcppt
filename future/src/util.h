@@ -27,14 +27,19 @@ using VecVector##SIZE##d = std::vector<Eigen::Vector##SIZE##d, Eigen::aligned_al
 
 // eigen extra matrix
 #define EIGEN_EXTRA_MATRIX(SIZE1, SIZE2) \
-using Matrix##SIZE1##SIZE2##d = Eigen::Matrix<double, SIZE1, SIZE2>; \
-using Matrix##SIZE1##SIZE2##f = Eigen::Matrix<float, SIZE1, SIZE2>;
+using Matrix##SIZE1##_##SIZE2##d = Eigen::Matrix<double, SIZE1, SIZE2>; \
+using Matrix##SIZE1##_##SIZE2##f = Eigen::Matrix<float, SIZE1, SIZE2>;
+
+#define EIGEN_EXTRA_SQUARE_MATRIX(SIZE) \
+using Matrix##SIZE##d = Eigen::Matrix<double, SIZE, SIZE>; \
+using Matrix##SIZE##f = Eigen::Matrix<float, SIZE, SIZE>;
 
 namespace Eigen {
 EIGEN_EXTRA_MATRIX(2, 3)
 STD_EIGEN_VECTOR(2)
 STD_EIGEN_VECTOR(3)
 STD_EIGEN_VECTOR(4)
+EIGEN_EXTRA_SQUARE_MATRIX(6)
 }
 
 #define SMART_PTR(NAME) \

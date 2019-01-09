@@ -7,7 +7,7 @@ IdealPinhole::IdealPinhole(uint width, uint height, double fx_, double fy_, doub
     : Camera(width, height), fx(fx_), fy(fy_), cx(cx_), cy(cy_) {}
 IdealPinhole::~IdealPinhole() {}
 
-void IdealPinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix23d* J) const {
+void IdealPinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
     const double inv_z = 1.0f / P(2);
     p << fx * P(0) * inv_z + cx,
          fy * P(1) * inv_z + cy;
@@ -61,7 +61,7 @@ Pinhole::Pinhole(uint width, uint height, double fx, double fy, double cx, doubl
     : IdealPinhole(width, height, fx, fy, cx, cy), k1(k1_), k2(k2_), p1(p1_), p2(p2_) {}
 Pinhole::~Pinhole() {}
 
-void Pinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix23d* J) const {
+void Pinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
     Eigen::Vector2d p_u, p_d;
 
     if(J) {
@@ -72,7 +72,7 @@ void Pinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matri
 
         Eigen::Vector2d d_u;
         Eigen::Matrix2d Jd;
-        Eigen::Matrix23d Jinvz;
+        Eigen::Matrix2_3d Jinvz;
         Jinvz << inv_z, 0, - P(0) * inv_z2,
                  0, inv_z, - P(1) * inv_z2;
         Distortion(p_u, d_u, &Jd);

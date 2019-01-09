@@ -34,7 +34,10 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
 {
     if(reset_flag) {
         LOG(WARNING) << "reset the system...";
+        reset_flag = false;
         b_first_frame = true;
+        m_id_history.clear();
+        m_id_optical_flow.clear();
     }
 
     FeatureTracker::FramePtr feat_frame;

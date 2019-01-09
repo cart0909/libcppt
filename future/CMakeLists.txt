@@ -122,6 +122,7 @@ src/imu_preintegration.cpp
 src/stereo_matcher.cpp
 src/config_loader.cpp
 src/system.cpp
+src/backend.cpp
 src/ceres/local_parameterization_se3.cpp
 src/ceres/projection_factor.cpp
 src/ceres/marginalization_factor.cpp
