@@ -13,7 +13,7 @@ StereoMatcher::~StereoMatcher() {
 
 StereoMatcher::FramePtr StereoMatcher::Process(FeatureTracker::FrameConstPtr feat_frame, const cv::Mat& img_r) {
     if(img_r.empty() || img_r.type() != CV_8U) {
-        throw cppt_exception("img_r empty or type error!");
+        throw std::runtime_error("img_r empty or type error!");
     }
 
     FramePtr frame = InitFrame(img_r);

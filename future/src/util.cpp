@@ -50,7 +50,7 @@ Eigen::Matrix3d JacobianLInv(const Eigen::Vector3d& w) {
 namespace util {
 ImagePyr Pyramid(const cv::Mat& img, int num_levels) {
     if(num_levels <= 1)
-        throw cppt_exception("num_levels must > 1");
+        throw std::runtime_error("num_levels must > 1");
 
     ImagePyr image_pyr;
     image_pyr.resize(num_levels);

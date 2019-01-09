@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "util.h"
 #include "camera.h"
 
@@ -17,8 +17,6 @@ public:
         cv::Mat clahe;
         ImagePyr img_pyr_grad;
         double timestamp;
-
-        bool b_keyframe = false;
     };
     SMART_PTR(Frame)
 
@@ -39,5 +37,4 @@ private:
     int feat_min_dist = 32;
     float reproj_threshold = 3.0f;
 };
-
 SMART_PTR(FeatureTracker)

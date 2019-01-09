@@ -19,9 +19,7 @@
 
 #include "ros_utility.h"
 #include "src/CameraPoseVisualization.h"
-#include "feature_tracker.h"
-#include "stereo_matcher.h"
-#include "config_loader.h"
+#include "system.h"
 using namespace std;
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -45,30 +43,28 @@ public:
         fs["image_topic"] >> img_topic[0];
         fs["image_r_topic"] >> img_topic[1];
         fs["output_path"] >> log_filename;
-
-        ConfigLoader::Param param = ConfigLoader::Load(config_file);
-
-        CameraPtr camera_master, camera_slave;
-
-        camera_master = CameraPtr(new Pinhole(param.width[0], param.height[0], param.intrinsic_master[0][0],
-                param.intrinsic_master[0][1], param.intrinsic_master[0][2], param.intrinsic_master[0][3],
-                param.distortion_master[0][0], param.distortion_master[0][1], param.distortion_master[0][2],
-                param.distortion_master[0][3]));
-
-        camera_slave = CameraPtr(new Pinhole(param.width[0], param.height[0], param.intrinsic_slave[0][0],
-                param.intrinsic_slave[0][1], param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
-                param.distortion_slave[0][0], param.distortion_slave[0][1], param.distortion_slave[0][2],
-                param.distortion_slave[0][3]));
-
-
-        feature_tracker = std::make_shared<FeatureTracker>(camera_master);
-        stereo_matcher = std::make_shared<StereoMatcher>(camera_master, camera_slave, param.p_rl[0], param.q_rl[0]);
         fs.release();
+
+        system = std::make_shared<System>(config_file);
+        system->SetDrawTrackingImgCallback(std::bind(&Node::PubTrackImg, this, std::placeholders::_1,
+                                                     std::placeholders::_2, std::placeholders::_3));
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
         unique_lock<mutex> lock(m_buf);
+        if(image_timestamp != -1.0f && std::abs(img_msg->header.stamp.toSec() - image_timestamp) > 10) { // 10 ms
+            // reset system
+            ROS_WARN_STREAM("System detect different image flow, trying to reset the system.");
+            while(!img_buf.empty())
+                img_buf.pop();
+
+            while(!imu_buf.empty())
+                imu_buf.pop();
+
+            system->Reset();
+        }
         img_buf.emplace(img_msg, img_r_msg);
+        image_timestamp = img_msg->header.stamp.toSec();
         cv_system.notify_one();
     }
 
@@ -136,47 +132,15 @@ public:
                 img_left = cv_bridge::toCvCopy(img_msg, "mono8")->image;
                 img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
 
-                static bool first_frame = true;
-                FeatureTracker::FramePtr feat_frame;
-                StereoMatcher::FramePtr stereo_frame;
-                if(first_frame) {
-                    feat_frame = feature_tracker->InitFirstFrame(img_left, timestamp);
-                    first_frame = false;
-                }
-                else {
-                    feat_frame = feature_tracker->Process(img_left, timestamp);
+                Eigen::VecVector3d v_gyr, v_acc;
+                std::vector<double> v_imu_t;
+                for(auto& imu_msg : v_imu_msg) {
+                    v_imu_t.emplace_back(imu_msg->header.stamp.toSec());
+                    v_gyr.emplace_back(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
+                    v_acc.emplace_back(imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z);
                 }
 
-                stereo_frame = stereo_matcher->Process(feat_frame, img_right);
-
-                cv::Mat result, result_r;
-                cv::cvtColor(feat_frame->img, result, CV_GRAY2BGR);
-                cv::cvtColor(stereo_frame->img_r, result_r, CV_GRAY2BGR);
-
-                for(auto& pt : feat_frame->pt) {
-                    cv::circle(result, pt, 4, cv::Scalar(0, 255, 0), -1);
-                }
-
-                for(auto& pt : stereo_frame->pt_r) {
-                    if(pt.x == -1)
-                        continue;
-                    cv::circle(result_r, pt, 4, cv::Scalar(0, 255, 0), -1);
-                }
-
-                cv::hconcat(result, result_r, result);
-
-                PubTrackImg(result, feat_frame->id, feat_frame->timestamp);
-//                vector<ImuData> v_imu_data;
-
-//                for(auto& it : v_imu_msg)
-//                    v_imu_data.emplace_back(it->linear_acceleration.x, it->linear_acceleration.y, it->linear_acceleration.z,
-//                                            it->angular_velocity.x,it->angular_velocity.y,it->angular_velocity.z,
-//                                            it->header.stamp.toSec());
-
-//                mpSystem->Process(img_left, img_right, timestamp, v_imu_data);
-
-//                auto& frame = mpSystem->mpLastFrame;
-//                PubFeatureImg(frame);
+                system->Process(img_left, img_right, timestamp, v_gyr, v_acc, v_imu_t);
             }
         }
     }
@@ -291,8 +255,7 @@ public:
     condition_variable cv_system;
     thread t_system;
 
-    FeatureTrackerPtr feature_tracker;
-    StereoMatcherPtr stereo_matcher;
+    SystemPtr system;
 
     ros::Publisher pub_track_img;
     ros::Publisher pub_track_img_r;
@@ -304,6 +267,8 @@ public:
     ros::Publisher pub_mappoints;
 
     CameraPoseVisualization camera_pose_visual;
+
+    double image_timestamp = -1.0f;
 };
 
 // global variable

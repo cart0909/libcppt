@@ -9,7 +9,6 @@ FeatureTracker::FramePtr FeatureTracker::InitFirstFrame(const cv::Mat& img, doub
     next_frame_id = 0;
     next_pt_id = 0;
     FramePtr frame = InitFrame(img, timestamp);
-    frame->b_keyframe = true;
     ExtractFAST(frame);
     last_frame = frame;
     return frame;
@@ -24,55 +23,6 @@ FeatureTracker::FramePtr FeatureTracker::Process(const cv::Mat& img, double time
     last_frame = frame;
     return frame;
 }
-
-//void FeatureTracker::SparseStereoMatching(FramePtr frame) {
-//    if(frame->img_r.empty())
-//        return;
-
-//    std::vector<uchar> status;
-//    std::vector<float> err;
-//    cv::calcOpticalFlowPyrLK(frame->img_pyr_grad_l, frame->img_pyr_grad_r,
-//                             frame->pt_l, frame->pt_r, status, err,
-//                             cv::Size(21, 21), 3);
-
-//    for(int i = 0, n = frame->pt_r.size(); i < n; ++i) {
-//        if(status[i] && !util::InBorder(frame->pt_r[i], camera->width, camera->height)) {
-//            status[i] = 0;
-//        }
-//    }
-
-//    std::vector<size_t> idx;
-//    std::vector<cv::Point2f> un_pt_l, un_pt_r;
-
-//    float f = camera->f();
-//    float cx = camera->width / 2;
-//    float cy = camera->height / 2;
-//    for(int i = 0, n = frame->pt_l.size(); i < n; ++i) {
-//        if(status[i]) {
-//            idx.emplace_back(i);
-//            Eigen::Vector3d P;
-//            camera->BackProject(Eigen::Vector2d(frame->pt_l[i].x, frame->pt_l[i].y), P);
-//            un_pt_l.emplace_back(f * P(0) + cx, f * P(1) + cy);
-
-//            camera->BackProject(Eigen::Vector2d(frame->pt_r[i].x, frame->pt_r[i].y), P);
-//            un_pt_r.emplace_back(f * P(0) + cx, f * P(1) + cy);
-//        }
-//        else {
-//            frame->pt_r[i] = cv::Point2f(-1, -1);
-//        }
-//    }
-
-//    // check fundamental matrix FIXME
-//    if(idx.size() > 8) {
-//        status.clear();
-//        cv::findFundamentalMat(un_pt_l, un_pt_r, cv::FM_RANSAC, reproj_threshold, 0.99, status);
-//        for(int i = 0, n = idx.size(); i < n; ++i) {
-//            if(status[i] == 0) {
-//                frame->pt_r[idx[i]] = cv::Point2f(-1, -1);
-//            }
-//        }
-//    }
-//}
 
 FeatureTracker::FramePtr FeatureTracker::InitFrame(const cv::Mat& img, double timestamp) {
     FramePtr frame(new Frame);
