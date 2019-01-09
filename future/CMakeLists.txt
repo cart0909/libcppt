@@ -118,7 +118,6 @@ add_library(${PROJECT_NAME} SHARED
 src/util.cpp
 src/camera.cpp
 src/feature_tracker.cpp
-src/pose_estimator.cpp
 src/imu_preintegration.cpp
 src/stereo_matcher.cpp
 src/config_loader.cpp
