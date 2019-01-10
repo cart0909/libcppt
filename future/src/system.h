@@ -4,6 +4,7 @@
 #include "config_loader.h"
 #include "feature_tracker.h"
 #include "stereo_matcher.h"
+#include "backend.h"
 
 class System {
 public:
@@ -26,6 +27,7 @@ private:
     CameraPtr cam_s; // camera slave
     FeatureTrackerPtr feature_tracker;
     StereoMatcherPtr stereo_matcher;
+    BackEndPtr backend;
 
     std::map<uint64_t, cv::Point2f> m_id_history;
     std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow;
