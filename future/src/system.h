@@ -34,5 +34,7 @@ private:
 
     std::function<void(const cv::Mat&, uint64_t, double)> draw_tracking_img;
 
+    Eigen::VecVector3d v_cache_gyr, v_cache_acc;
+    std::vector<double> v_cache_imu_timestamps;
 };
 SMART_PTR(System)

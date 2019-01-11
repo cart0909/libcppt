@@ -1,4 +1,5 @@
 #include "system.h"
+#include "converter.h"
 #include <glog/logging.h>
 
 System::System(const std::string& config_file) {
@@ -18,6 +19,9 @@ System::System(const std::string& config_file) {
 
     feature_tracker = std::make_shared<FeatureTracker>(cam_m);
     stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.p_rl[0], param.q_rl[0]);
+    backend = std::make_shared<BackEnd>(cam_m->f(), param.gyr_noise, param.acc_noise,
+                                        param.gyr_bias_noise, param.acc_bias_noise,
+                                        param.p_rl[0], param.p_bc[0], param.q_rl[0], param.q_bc[0]);
 }
 
 System::~System() {}
@@ -47,6 +51,20 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
     }
     else {
         feat_frame = feature_tracker->Process(img_l, timestamp);
+    }
+
+    if(feat_frame->id % 2 == 0) {
+        v_cache_gyr.insert(v_cache_gyr.end(), v_gyr.begin(), v_gyr.end());
+        v_cache_acc.insert(v_cache_acc.end(), v_acc.begin(), v_acc.end());
+        v_cache_imu_timestamps.insert(v_cache_imu_timestamps.end(), v_imu_timestamp.begin(), v_imu_timestamp.end());
+        StereoMatcher::FramePtr stereo_frame = stereo_matcher->Process(feat_frame, img_r);
+        backend->PushFrame(Converter::Convert(feat_frame, cam_m, stereo_frame, cam_s,
+                                              v_cache_gyr, v_cache_acc, v_cache_imu_timestamps));
+    }
+    else {
+        v_cache_gyr = v_gyr;
+        v_cache_acc = v_acc;
+        v_cache_imu_timestamps = v_imu_timestamp;
     }
 
     {

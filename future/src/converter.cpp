@@ -2,7 +2,8 @@
 
 BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, CameraPtr cam_master,
                                      StereoMatcher::FramePtr stereo_frame, CameraPtr cam_slave,
-                                     const Eigen::VecVector3d& v_gyr, const Eigen::VecVector3d& v_acc)
+                                     const Eigen::VecVector3d& v_gyr, const Eigen::VecVector3d& v_acc,
+                                     const std::vector<double>& v_imu_timestamp)
 {
     BackEnd::FramePtr backend_frame(new BackEnd::Frame);
     backend_frame->timestamp = feat_frame->timestamp;
@@ -24,5 +25,6 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
 
     backend_frame->v_gyr = v_gyr;
     backend_frame->v_acc = v_acc;
+    backend_frame->v_imu_timestamp = v_imu_timestamp;
     return backend_frame;
 }

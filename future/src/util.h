@@ -25,6 +25,10 @@ using ImagePyr = std::vector<cv::Mat>;
 using VecVector##SIZE##f = std::vector<Eigen::Vector##SIZE##f, Eigen::aligned_allocator<Eigen::Vector##SIZE##f>>; \
 using VecVector##SIZE##d = std::vector<Eigen::Vector##SIZE##d, Eigen::aligned_allocator<Eigen::Vector##SIZE##d>>;
 
+#define STD_EIGEN_DEQUE(SIZE) \
+using DeqVector##SIZE##f = std::deque<Eigen::Vector##SIZE##f, Eigen::aligned_allocator<Eigen::Vector##SIZE##f>>; \
+using DeqVector##SIZE##d = std::deque<Eigen::Vector##SIZE##d, Eigen::aligned_allocator<Eigen::Vector##SIZE##d>>;
+
 // eigen extra matrix
 #define EIGEN_EXTRA_MATRIX(SIZE1, SIZE2) \
 using Matrix##SIZE1##_##SIZE2##d = Eigen::Matrix<double, SIZE1, SIZE2>; \
@@ -39,6 +43,7 @@ EIGEN_EXTRA_MATRIX(2, 3)
 STD_EIGEN_VECTOR(2)
 STD_EIGEN_VECTOR(3)
 STD_EIGEN_VECTOR(4)
+STD_EIGEN_DEQUE(3)
 EIGEN_EXTRA_SQUARE_MATRIX(6)
 }
 

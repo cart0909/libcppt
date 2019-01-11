@@ -5,6 +5,8 @@
 
 class StereoMatcher {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     StereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_, Eigen::Vector3d prl_, Sophus::SO3d qrl_);
     ~StereoMatcher();
 

@@ -8,5 +8,6 @@ class Converter {
 public:
     static BackEnd::FramePtr Convert(FeatureTracker::FramePtr feat_frame, CameraPtr cam_master,
                                      StereoMatcher::FramePtr stereo_frame, CameraPtr cam_slave,
-                                     const Eigen::VecVector3d& v_gyr, const Eigen::VecVector3d& v_acc);
+                                     const Eigen::VecVector3d& v_gyr, const Eigen::VecVector3d& v_acc,
+                                     const std::vector<double>& v_imu_timestamp);
 };
