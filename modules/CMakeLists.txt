@@ -141,11 +141,9 @@ back_end/imu_state.cpp
 front_end/imu_preintegration.cpp
 # back_end/isam2_backend.cpp
 back_end/simple_backend.cpp
-back_end/backend.cpp
 ceres/projection_factor.cpp
 ceres/marginalization_factor.cpp
 system/vo_system.cpp
-system/vio_system.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/BowVector.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/FBrief.cpp
 ${DBOW2_INCLUDE_DIRS}/DBoW2/FORB.cpp
