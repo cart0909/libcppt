@@ -69,7 +69,7 @@ public:
             double gyr_w, double acc_w,
             const Eigen::Vector3d& p_rl_, const Eigen::Vector3d& p_bc_,
             const Sophus::SO3d& q_rl_, const Sophus::SO3d& q_bc_,
-            uint window_size_ = 10);
+            uint window_size_ = 10, double min_parallax_ = 10.0f);
     ~BackEnd();
 
     void PushFrame(FramePtr frame);
@@ -77,10 +77,13 @@ public:
 private:
     void Process();
     void ProcessFrame(FramePtr frame);
+    MarginType AddFeaturesCheckParallax(FramePtr frame);
+    void SlidingWindow();
+
     std::thread thread_;
     std::mutex  m_buffer;
     std::condition_variable cv_buffer;
-    std::deque<FramePtr> frame_buffer;
+    std::deque<FramePtr> frame_buffer; // [0, 1, ... ,9 | 10] size 11
 
     double focal_length;
     Eigen::Vector3d p_rl, p_bc;
@@ -98,5 +101,8 @@ private:
 
     uint64_t next_frame_id;
     State state;
+
+    double min_parallax;
+    MarginType marginalization_flag;
 };
 SMART_PTR(BackEnd)
