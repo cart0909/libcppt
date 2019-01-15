@@ -121,10 +121,10 @@ private:
     // ceres data
     void data2double();
     void double2data();
-    double* vertex_pose; // Twb
-    double* vertex_speed_bias; // vwb bg ba
-    size_t vertex_features_capacity = 1000;
-    double* vertex_features; // inv_z
+    double* para_pose; // Twb
+    double* para_speed_bias; // vwb bg ba
+    size_t  para_features_capacity = 1000;
+    double* para_features; // inv_z
 
     // maintain system
     std::atomic<bool> request_reset_flag;

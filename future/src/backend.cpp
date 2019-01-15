@@ -1,4 +1,6 @@
 #include "backend.h"
+#include "ceres/local_parameterization_se3.h"
+#include <ceres/ceres.h>
 #include <glog/logging.h>
 
 BackEnd::BackEnd(double focal_length_,
@@ -15,9 +17,9 @@ BackEnd::BackEnd(double focal_length_,
     gyr_bias_cov = gyr_w * gyr_w * Eigen::Matrix3d::Identity();
     acc_bias_cov = acc_w * acc_w * Eigen::Matrix3d::Identity();
 
-    vertex_pose = new double[(window_size + 1) * 7];
-    vertex_speed_bias = new double[(window_size + 1) * 7];
-    vertex_features = new double[vertex_features_capacity * 1];
+    para_pose = new double[(window_size + 1) * 7];
+    para_speed_bias = new double[(window_size + 1) * 7];
+    para_features = new double[para_features_capacity * 1];
 
     request_reset_flag = false;
 
@@ -25,9 +27,9 @@ BackEnd::BackEnd(double focal_length_,
 }
 
 BackEnd::~BackEnd() {
-    delete [] vertex_pose;
-    delete [] vertex_speed_bias;
-    delete [] vertex_features;
+    delete [] para_pose;
+    delete [] para_speed_bias;
+    delete [] para_features;
 }
 
 void BackEnd::PushFrame(FramePtr frame) {
@@ -276,18 +278,18 @@ void BackEnd::data2double() {
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         size_t idx_pose = i * 7;
         size_t idx_vb = i * 9;
-        std::memcpy(vertex_pose + idx_pose, d_frames[i]->p_wb.data(), sizeof(double) * 3);
-        std::memcpy(vertex_pose + idx_pose + 3, d_frames[i]->q_wb.data(), sizeof(double) * Sophus::SO3d::num_parameters);
-        std::memcpy(vertex_speed_bias + idx_vb, d_frames[i]->v_wb.data(), sizeof(double) * 3);
-        std::memcpy(vertex_speed_bias + idx_vb + 3, d_frames[i]->ba.data(), sizeof(double) * 3);
-        std::memcpy(vertex_speed_bias + idx_vb + 6, d_frames[i]->bg.data(), sizeof(double) * 3);
+        std::memcpy(para_pose + idx_pose, d_frames[i]->p_wb.data(), sizeof(double) * 3);
+        std::memcpy(para_pose + idx_pose + 3, d_frames[i]->q_wb.data(), sizeof(double) * Sophus::SO3d::num_parameters);
+        std::memcpy(para_speed_bias + idx_vb, d_frames[i]->v_wb.data(), sizeof(double) * 3);
+        std::memcpy(para_speed_bias + idx_vb + 3, d_frames[i]->ba.data(), sizeof(double) * 3);
+        std::memcpy(para_speed_bias + idx_vb + 6, d_frames[i]->bg.data(), sizeof(double) * 3);
     }
 
     // ensure the feature array size can be filled by track features.
-    if(vertex_features_capacity <= m_features.size()) {
-        vertex_features_capacity *= 2;
-        delete [] vertex_features;
-        vertex_features = new double[vertex_features_capacity * 1];
+    if(para_features_capacity <= m_features.size()) {
+        para_features_capacity *= 2;
+        delete [] para_features;
+        para_features = new double[para_features_capacity * 1];
     }
 
     size_t num_mps = 0;
@@ -296,7 +298,7 @@ void BackEnd::data2double() {
         if(feat.num_meas < 2 || feat.inv_depth < 0) {
             continue;
         }
-        vertex_features[num_mps++] = feat.inv_depth;
+        para_features[num_mps++] = feat.inv_depth;
     }
 }
 
@@ -304,11 +306,11 @@ void BackEnd::double2data() {
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         size_t idx_pose = i * 7;
         size_t idx_vb = i * 9;
-        std::memcpy(d_frames[i]->p_wb.data(), vertex_pose + idx_pose, sizeof(double) * 3);
-        std::memcpy(d_frames[i]->q_wb.data(), vertex_pose + idx_pose + 3 , sizeof(double) * Sophus::SO3d::num_parameters);
-        std::memcpy(d_frames[i]->v_wb.data(), vertex_speed_bias + idx_vb , sizeof(double) * 3);
-        std::memcpy(d_frames[i]->ba.data(), vertex_speed_bias + idx_vb + 3 , sizeof(double) * 3);
-        std::memcpy(d_frames[i]->bg.data(), vertex_speed_bias + idx_vb + 6 , sizeof(double) * 3);
+        std::memcpy(d_frames[i]->p_wb.data(), para_pose + idx_pose, sizeof(double) * 3);
+        std::memcpy(d_frames[i]->q_wb.data(), para_pose + idx_pose + 3 , sizeof(double) * Sophus::SO3d::num_parameters);
+        std::memcpy(d_frames[i]->v_wb.data(), para_speed_bias + idx_vb , sizeof(double) * 3);
+        std::memcpy(d_frames[i]->ba.data(), para_speed_bias + idx_vb + 3 , sizeof(double) * 3);
+        std::memcpy(d_frames[i]->bg.data(), para_speed_bias + idx_vb + 6 , sizeof(double) * 3);
     }
 
     size_t num_mps = 0;
@@ -317,11 +319,41 @@ void BackEnd::double2data() {
         if(feat.num_meas < 2 || feat.inv_depth < 0) {
             continue;
         }
-        feat.inv_depth = vertex_features[num_mps++];
+        feat.inv_depth = para_features[num_mps++];
     }
 }
 
 void BackEnd::SolveBA() {
     data2double();
+    ceres::Problem problem;
+    ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
+    ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
+
+    for(int i = 0, n = d_frames.size(); i < n; ++i) {
+        problem.AddParameterBlock(para_pose + i * 7, 7, local_para_se3);
+
+        if(i == 0)
+            problem.SetParameterBlockConstant(para_pose + i * 7);
+    }
+
+    size_t mp_idx = 0;
+    for(auto& it : m_features) {
+        auto& feat = it.second;
+        if(feat.num_meas < 2 || feat.inv_depth < 0) {
+            continue;
+        }
+        size_t id_i = feat.start_id;
+    }
+
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.trust_region_strategy_type = ceres::DOGLEG;
+    options.max_num_iterations = 10;
+    options.num_threads = 4;
+    ceres::Solver::Summary summary;
+
+    ceres::Solve(options, &problem, &summary);
+    LOG(INFO) << summary.FullReport();
+
     double2data();
 }

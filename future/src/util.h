@@ -40,6 +40,7 @@ using Matrix##SIZE##f = Eigen::Matrix<float, SIZE, SIZE>;
 
 namespace Eigen {
 EIGEN_EXTRA_MATRIX(2, 3)
+EIGEN_EXTRA_MATRIX(3, 6)
 STD_EIGEN_VECTOR(2)
 STD_EIGEN_VECTOR(3)
 STD_EIGEN_VECTOR(4)
