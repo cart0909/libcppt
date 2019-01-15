@@ -1,5 +1,6 @@
 #pragma once
 #include <thread>
+#include <atomic>
 #include <condition_variable>
 #include "util.h"
 #include "imu_preintegration.h"
@@ -48,12 +49,12 @@ public:
             FAIL
         };
 
-        Feature(uint64_t feat_id_, uint sliding_window_id_)
-            : feat_id(feat_id_), sliding_window_id(sliding_window_id_),
+        Feature(uint64_t feat_id_, uint start_id_)
+            : feat_id(feat_id_), start_id(start_id_),
               num_meas(0), mappoint_state(NEED_INIT), inv_depth(-1.0f) {}
 
         uint64_t feat_id;
-        uint sliding_window_id;
+        uint start_id;
 
         uint num_meas; // num_mono * 1 + num_stereo * 2
         Eigen::DeqVector3d pt_n_per_frame;
@@ -73,12 +74,22 @@ public:
     ~BackEnd();
 
     void PushFrame(FramePtr frame);
+    inline void SetDrawMapPointCallback(std::function<void(const Eigen::VecVector3d&)> callback) {
+        draw_mps = callback;
+    }
+
+    inline void ResetRequest() {
+        request_reset_flag = true;
+    }
 
 private:
     void Process();
     void ProcessFrame(FramePtr frame);
     MarginType AddFeaturesCheckParallax(FramePtr frame);
     void SlidingWindow();
+    uint Triangulate();
+    void Reset();
+    void SolveBA();
 
     std::thread thread_;
     std::mutex  m_buffer;
@@ -97,12 +108,25 @@ private:
     std::map<uint64_t, Feature> m_features;
     uint window_size;
     uint frame_count;
-    std::deque<FramePtr> v_frames;
+    std::deque<FramePtr> d_frames;
 
     uint64_t next_frame_id;
     State state;
 
     double min_parallax;
     MarginType marginalization_flag;
+
+    std::function<void(const Eigen::VecVector3d&)> draw_mps;
+
+    // ceres data
+    void data2double();
+    void double2data();
+    double* vertex_pose; // Twb
+    double* vertex_speed_bias; // vwb bg ba
+    size_t vertex_features_capacity = 1000;
+    double* vertex_features; // inv_z
+
+    // maintain system
+    std::atomic<bool> request_reset_flag;
 };
 SMART_PTR(BackEnd)

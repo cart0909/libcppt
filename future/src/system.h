@@ -18,6 +18,9 @@ public:
                  const std::vector<double>& v_imu_timestamp);
 
     void SetDrawTrackingImgCallback(std::function<void(const cv::Mat&, uint64_t, double)> callback);
+    inline void SetDrawMapPointCallback(std::function<void(const Eigen::VecVector3d&)> callback) {
+        backend->SetDrawMapPointCallback(callback);
+    }
 
 private:
     std::atomic<bool> reset_flag;

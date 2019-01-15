@@ -48,6 +48,7 @@ public:
         system = std::make_shared<System>(config_file);
         system->SetDrawTrackingImgCallback(std::bind(&Node::PubTrackImg, this, std::placeholders::_1,
                                                      std::placeholders::_2, std::placeholders::_3));
+        system->SetDrawMapPointCallback(std::bind(&Node::PubMapPoint, this, std::placeholders::_1));
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
@@ -154,6 +155,35 @@ public:
         track_cvimage.image = track_img;
         track_cvimage.encoding = sensor_msgs::image_encodings::BGR8;
         pub_track_img.publish(track_cvimage.toImageMsg());
+    }
+
+    void PubMapPoint(const Eigen::VecVector3d& mps) {
+        static Sophus::SE3d Tglw = Sophus::SE3d::rotX(-M_PI/2);
+
+        visualization_msgs::Marker msgs_points;
+        msgs_points.header.frame_id = "world";
+        msgs_points.ns = "mappoint";
+        msgs_points.type = visualization_msgs::Marker::SPHERE_LIST;
+        msgs_points.action = visualization_msgs::Marker::ADD;
+        msgs_points.pose.orientation.w = 1.0;
+        msgs_points.lifetime = ros::Duration();
+
+        msgs_points.id = 0;
+        msgs_points.scale.x = 0.01;
+        msgs_points.scale.y = 0.01;
+        msgs_points.scale.z = 0.01;
+        msgs_points.color.g = 1.0;
+        msgs_points.color.a = 1.0;
+
+        for(auto& x3Dw : mps) {
+            geometry_msgs::Point point_marker;
+            Eigen::Vector3d X = Tglw * x3Dw;
+            point_marker.x = X(0);
+            point_marker.y = X(1);
+            point_marker.z = X(2);
+            msgs_points.points.emplace_back(point_marker);
+        }
+        pub_mappoints.publish(msgs_points);
     }
 
     void PubSlidingWindow(const std::vector<Sophus::SE3d>& v_Twc,
