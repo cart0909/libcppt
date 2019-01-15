@@ -42,6 +42,7 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
         b_first_frame = true;
         m_id_history.clear();
         m_id_optical_flow.clear();
+        backend->ResetRequest();
     }
 
     FeatureTracker::FramePtr feat_frame;
