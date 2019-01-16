@@ -74,8 +74,13 @@ public:
     ~BackEnd();
 
     void PushFrame(FramePtr frame);
+
     inline void SetDrawMapPointCallback(std::function<void(const Eigen::VecVector3d&)> callback) {
         draw_mps = callback;
+    }
+
+    inline void SetDrawPoseCallback(std::function<void(uint, double, const Sophus::SE3d&)> callback) {
+        draw_pose = callback;
     }
 
     inline void ResetRequest() {
@@ -128,5 +133,7 @@ private:
 
     // maintain system
     std::atomic<bool> request_reset_flag;
+
+    std::function<void(uint, double, const Sophus::SE3d&)> draw_pose;
 };
 SMART_PTR(BackEnd)
