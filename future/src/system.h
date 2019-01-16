@@ -21,7 +21,9 @@ public:
     inline void SetDrawMapPointCallback(std::function<void(const Eigen::VecVector3d&)> callback) {
         backend->SetDrawMapPointCallback(callback);
     }
-
+    inline void SetDrawPoseCallback(std::function<void(uint, double, const Sophus::SE3d&)> callback) {
+        backend->SetDrawPoseCallback(callback);
+    }
 private:
     std::atomic<bool> reset_flag;
     bool b_first_frame = true;

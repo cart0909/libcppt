@@ -49,6 +49,7 @@ public:
         system->SetDrawTrackingImgCallback(std::bind(&Node::PubTrackImg, this, std::placeholders::_1,
                                                      std::placeholders::_2, std::placeholders::_3));
         system->SetDrawMapPointCallback(std::bind(&Node::PubMapPoint, this, std::placeholders::_1));
+        system->SetDrawPoseCallback(std::bind(&Node::PubCurPose, this, std::placeholders::_1, std::placeholders::_2,std::placeholders::_3));
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
@@ -248,7 +249,7 @@ public:
         }
     }
 
-    void PubCurPose(const Sophus::SE3d& Twc, double timestamp) {
+    void PubCurPose(uint seq, double timestamp, const Sophus::SE3d& Twc) {
         static Sophus::SE3d Tglw = Sophus::SE3d::rotX(-M_PI/2);
         // public latest frame
         // path
@@ -256,6 +257,7 @@ public:
         Eigen::Vector3d twc = Tglc.translation();
         Eigen::Quaterniond qwc = Tglc.so3().unit_quaternion();
         geometry_msgs::PoseStamped pose_stamped;
+        pose_stamped.header.seq = seq;
         pose_stamped.header.frame_id = "world";
         pose_stamped.header.stamp.fromSec(timestamp);
         pose_stamped.pose.orientation.w = qwc.w();

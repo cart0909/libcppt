@@ -1,5 +1,6 @@
 #include "backend.h"
 #include "ceres/local_parameterization_se3.h"
+#include "ceres/projection_factor.h"
 #include <ceres/ceres.h>
 #include <glog/logging.h>
 
@@ -85,6 +86,8 @@ void BackEnd::ProcessFrame(FramePtr frame) {
     }
     else {
         if(state == CV_ONLY) {
+            frame->q_wb = d_frames[frame_count-1]->q_wb;
+            frame->p_wb = d_frames[frame_count-1]->p_wb;
             SolveBA();
             Triangulate();
             if(frame_count >= window_size) {
@@ -92,6 +95,27 @@ void BackEnd::ProcessFrame(FramePtr frame) {
             }
             else {
                 ++frame_count;
+            }
+
+            if(draw_pose) {
+                draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb, frame->p_wb));
+            }
+
+            if(draw_mps) {
+                Eigen::VecVector3d mps;
+
+                for(auto& it : m_features) {
+                    auto& feat = it.second;
+                    if(feat.inv_depth == -1)
+                        continue;
+                    Sophus::SE3d Twb(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
+                    Sophus::SE3d Tbc(q_bc, p_bc);
+                    Eigen::Vector3d x3Dc = feat.inv_depth * feat.pt_n_per_frame[0];
+                    Eigen::Vector3d x3Dw = Twb * Tbc * x3Dc;
+                    mps.emplace_back(x3Dw);
+                }
+
+                draw_mps(mps);
             }
         }
         else { // TIGHTLY
@@ -278,8 +302,8 @@ void BackEnd::data2double() {
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         size_t idx_pose = i * 7;
         size_t idx_vb = i * 9;
-        std::memcpy(para_pose + idx_pose, d_frames[i]->p_wb.data(), sizeof(double) * 3);
-        std::memcpy(para_pose + idx_pose + 3, d_frames[i]->q_wb.data(), sizeof(double) * Sophus::SO3d::num_parameters);
+        std::memcpy(para_pose + idx_pose, d_frames[i]->q_wb.data(), sizeof(double) * Sophus::SO3d::num_parameters);
+        std::memcpy(para_pose + idx_pose + 4, d_frames[i]->p_wb.data(), sizeof(double) * 3);
         std::memcpy(para_speed_bias + idx_vb, d_frames[i]->v_wb.data(), sizeof(double) * 3);
         std::memcpy(para_speed_bias + idx_vb + 3, d_frames[i]->ba.data(), sizeof(double) * 3);
         std::memcpy(para_speed_bias + idx_vb + 6, d_frames[i]->bg.data(), sizeof(double) * 3);
@@ -306,8 +330,8 @@ void BackEnd::double2data() {
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         size_t idx_pose = i * 7;
         size_t idx_vb = i * 9;
-        std::memcpy(d_frames[i]->p_wb.data(), para_pose + idx_pose, sizeof(double) * 3);
-        std::memcpy(d_frames[i]->q_wb.data(), para_pose + idx_pose + 3 , sizeof(double) * Sophus::SO3d::num_parameters);
+        std::memcpy(d_frames[i]->q_wb.data(), para_pose + idx_pose, sizeof(double) * Sophus::SO3d::num_parameters);
+        std::memcpy(d_frames[i]->p_wb.data(), para_pose + idx_pose + 4, sizeof(double) * 3);
         std::memcpy(d_frames[i]->v_wb.data(), para_speed_bias + idx_vb , sizeof(double) * 3);
         std::memcpy(d_frames[i]->ba.data(), para_speed_bias + idx_vb + 3 , sizeof(double) * 3);
         std::memcpy(d_frames[i]->bg.data(), para_speed_bias + idx_vb + 6 , sizeof(double) * 3);
@@ -343,6 +367,29 @@ void BackEnd::SolveBA() {
             continue;
         }
         size_t id_i = feat.start_id;
+        Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
+        for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j) {
+            size_t id_j = id_i + j;
+            Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
+            if(feat.pt_r_n_per_frame[j](0) != -1) {
+                if(j == 0)
+                    continue;
+                auto factor = new ProjectionFactor(pt_i, pt_j, q_bc, p_bc, focal_length);
+                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
+            }
+            else {
+                Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
+                if(j == 0) {
+                    auto factor = new SelfProjectionFactor(pt_j, pt_jr, q_rl, p_rl, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_features + mp_idx);
+                }
+                else {
+                    auto factor = new SlaveProjectionFactor(pt_i, pt_jr, q_rl, p_rl, q_bc, p_bc, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
+                }
+            }
+        }
+        ++mp_idx;
     }
 
     ceres::Solver::Options options;
