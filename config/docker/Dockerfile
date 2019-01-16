@@ -20,7 +20,10 @@ RUN apt-get install tzdata -y\
     && apt-get install qtcreator -y\
     && apt-get install libyaml-cpp-dev -y\
     && apt-get install sudo wget gedit nano -y\
-    && apt-get install bash-completion -y
+    && apt-get install bash-completion -y\
+    && apt-get install libv4l-dev # 3rdparty of kalibr
+
+pip install python-igraph --upgrade  # 3rdparty of kalibr
 
 WORKDIR /home/
 RUN mkdir 3rdParty
@@ -89,6 +92,10 @@ RUN source /opt/ros/$ROS_DISTRO/setup.bash \
 WORKDIR /home/3rdParty
 RUN rm -rf vision_opencv-1.13.0/
 
+# install mynt driver
+RUN git clone https://github.com/slightech/MYNT-EYE-SDK-2
+WORKDIR MYNT-EYE-SDK-2
+RUN make init && make build && make install && make samples
 RUN mkdir -p wrappers/ros/src/mynt_eye_ros_wrapper/build
 WORKDIR wrappers/ros/src/mynt_eye_ros_wrapper/build
 RUN source /opt/ros/melodic/setup.bash && cmake .. -DCMAKE_INSTALL_PREFIX="/opt/ros/melodic/"\
