@@ -28,10 +28,19 @@ class SlaveProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 1>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    SlaveProjectionFactor(const Eigen::Vector3d& pt_mi_, const Eigen::Vector3d& pt_sj_,
+                          const Sophus::SO3d& q_sm_, const Eigen::Vector3d& p_sm_,
+                          const Sophus::SO3d& q_bc_, const Eigen::Vector3d& p_bc_,
+                          double focal_length);
 
     bool Evaluate(double const * const* parameters_raw,
                   double* residuals_raw,
                   double** jacobians_raw) const;
+
+    Eigen::Vector3d pt_mi, pt_sj;
+    Sophus::SO3d q_sm, q_bc;
+    Eigen::Vector3d p_sm, p_bc;
+    Eigen::Matrix2d sqrt_info;
 };
 
 // imaster -> jslave

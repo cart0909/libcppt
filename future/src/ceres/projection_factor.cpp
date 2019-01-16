@@ -51,7 +51,11 @@ bool ProjectionFactor::Evaluate(double const * const* parameters_raw,
 
         if(jacobians_raw[1]) {
             Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> J_pose_j(jacobians_raw[1]);
-            // TODO
+            Eigen::Matrix3_6d J;
+            J.leftCols<3>() = -(q_wbj * q_bc).inverse().matrix();
+            J.rightCols<3>() = q_bc.inverse().matrix() * Sophus::SO3d::hat(x3Dbj);
+
+            J_pose_j.leftCols<6>() = reduce * J;
             J_pose_j.rightCols<1>().setZero();
         }
 
@@ -65,6 +69,73 @@ bool ProjectionFactor::Evaluate(double const * const* parameters_raw,
     return true;
 }
 
+SlaveProjectionFactor::SlaveProjectionFactor(const Eigen::Vector3d& pt_mi_, const Eigen::Vector3d& pt_sj_,
+                                             const Sophus::SO3d& q_sm_, const Eigen::Vector3d& p_sm_,
+                                             const Sophus::SO3d& q_bc_, const Eigen::Vector3d& p_bc_,
+                                             double focal_length)
+    : pt_mi(pt_mi_), pt_sj(pt_sj_), q_sm(q_sm_), q_bc(q_bc_), p_sm(p_sm_), p_bc(p_bc_)
+{
+    sqrt_info = (focal_length / 1.5) * Eigen::Matrix2d::Identity();
+}
+
+bool SlaveProjectionFactor::Evaluate(double const * const* parameters_raw,
+                                     double* residuals_raw,
+                                     double** jacobians_raw) const {
+    //parameters [0]: frame i
+    //           [1]: frame j
+    //           [2]: depth
+    Eigen::Map<const Sophus::SO3d> q_wbi(parameters_raw[0]);
+    Eigen::Map<const Eigen::Vector3d> p_wbi(parameters_raw[0] + 4);
+    Eigen::Map<const Sophus::SO3d> q_wbj(parameters_raw[1]);
+    Eigen::Map<const Eigen::Vector3d> p_wbj(parameters_raw[1] + 4);
+    Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
+    double inv_zi = parameters_raw[2][0];
+
+    Eigen::Vector3d x3Dmi = pt_mi / inv_zi;
+    Eigen::Vector3d x3Dbi = q_bc * x3Dmi + p_bc;
+    Eigen::Vector3d x3Dw = q_wbi * x3Dbi + p_wbi;
+    Eigen::Vector3d x3Dbj = q_wbj.inverse() * (x3Dw - p_wbj);
+    Eigen::Vector3d x3Dmj = q_bc.inverse() * (x3Dbj - p_bc);
+    Eigen::Vector3d x3Dsj = q_sm * x3Dmj + p_sm;
+    double zj = x3Dsj(2);
+
+    residuals = (x3Dsj / zj).head<2>() - pt_sj.head<2>();
+
+    if(jacobians_raw) {
+        Eigen::Matrix2_3d reduce;
+        double inv_zj = 1.0f / zj;
+        double inv_zj2 = inv_zj * inv_zj;
+        reduce << inv_zj, 0, -x3Dsj(0) * inv_zj2,
+                  0, inv_zj, -x3Dsj(1) * inv_zj2;
+
+        reduce = sqrt_info * reduce;
+
+        if(jacobians_raw[0]) {
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> J_pose_i(jacobians_raw[0]);
+            Eigen::Matrix3_6d J;
+            J.leftCols<3>() = (q_sm * q_bc.inverse() * q_wbj.inverse()).matrix();
+            J.rightCols<3>() = - (q_sm * q_bc.inverse() * q_wbj.inverse() * q_wbi).matrix() * Sophus::SO3d::hat(x3Dbi);
+            J_pose_i.leftCols<6>() = reduce * J;
+            J_pose_i.rightCols<1>().setZero();
+        }
+
+        if(jacobians_raw[1]) {
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> J_pose_j(jacobians_raw[1]);
+            Eigen::Matrix3_6d J;
+            J.leftCols<3>() = -(q_sm * q_bc.inverse() * q_wbj.inverse()).matrix();
+            J.rightCols<3>() = (q_sm * q_bc.inverse()).matrix() * Sophus::SO3d::hat(x3Dbj);
+            J_pose_j.leftCols<6>() = reduce * J;
+            J_pose_j.rightCols<1>().setZero();
+        }
+
+        if(jacobians_raw[2]) {
+            Eigen::Map<Eigen::Vector2d> J_feat(jacobians_raw[2]);
+            J_feat = reduce * (q_sm * q_bc.inverse() * q_wbj.inverse() * q_wbi * q_bc * (-pt_mi / (inv_zi * inv_zi)));
+        }
+    }
+
+    return true;
+}
 
 SelfProjectionFactor::SelfProjectionFactor(const Eigen::Vector3d& pt_l_, const Eigen::Vector3d& pt_r_,
                                            const Sophus::SO3d& q_rl_, const Eigen::Vector3d& p_rl_,
@@ -88,7 +159,18 @@ bool SelfProjectionFactor::Evaluate(double const * const* parameters_raw,
     residuals = sqrt_info * residuals;
 
     if(jacobians_raw) {
+        Eigen::Matrix2_3d reduce;
+        double inv_zr = 1.0f / zr;
+        double inv_zr2 = inv_zr * inv_zr;
+        reduce << inv_zr, 0, -x3Dcr(0) * inv_zr2,
+                  0, inv_zr, -x3Dcr(1) * inv_zr2;
 
+        reduce = sqrt_info * reduce;
+
+        if(jacobians_raw[0]) {
+            Eigen::Map<Eigen::Vector2d> J_feat(jacobians_raw[0]);
+            J_feat = reduce * -(q_rl * (pt_l / (inv_zl * inv_zl)));
+        }
     }
 
     return true;
