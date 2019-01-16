@@ -323,11 +323,12 @@ void sigint_handler(int s) {
 }
 
 int main(int argc, char** argv) {
-    ros::init(argc, argv, "cppt_vio", ros::init_options::NoSigintHandler);
+//    ros::init(argc, argv, "cppt_vio", ros::init_options::NoSigintHandler);
+    ros::init(argc, argv, "cppt_vio");
     ros::NodeHandle nh("~");
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
 
-    signal(SIGINT, sigint_handler);
+//    signal(SIGINT, sigint_handler);
 
     node.ReadFromNodeHandle(nh);
 
