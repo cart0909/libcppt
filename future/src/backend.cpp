@@ -1,8 +1,9 @@
-#include "backend.h"
+﻿#include "backend.h"
 #include "ceres/local_parameterization_se3.h"
 #include "ceres/projection_factor.h"
 #include <ceres/ceres.h>
 #include <glog/logging.h>
+#include <opencv2/core/eigen.hpp>
 
 BackEnd::BackEnd(double focal_length_,
                  double gyr_n, double acc_n,
@@ -88,7 +89,46 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         if(state == CV_ONLY) {
             frame->q_wb = d_frames[frame_count-1]->q_wb;
             frame->p_wb = d_frames[frame_count-1]->p_wb;
-            SolveBA();
+
+            {
+                std::vector<cv::Point2f> v_pts;
+                std::vector<cv::Point3d> v_mps;
+
+                for(int i = 0, n = frame->pt.size(); i < n; ++i) {
+                    auto it = m_features.find(frame->pt_id[i]);
+                    if(it != m_features.end()) {
+                        if(it->second.inv_depth != -1.0f) {
+                            Eigen::Vector3d x3Dc = it->second.pt_n_per_frame[0] / it->second.inv_depth;
+                            Eigen::Vector3d x3Db = q_bc * x3Dc + p_bc;
+                            Eigen::Vector3d x3Dw = d_frames[it->second.start_id]->q_wb * x3Db + d_frames[it->second.start_id]->p_wb;
+                            v_mps.emplace_back(x3Dw(0), x3Dw(1), x3Dw(2));
+                            v_pts.emplace_back(frame->pt_normal_plane[i](0), frame->pt_normal_plane[i](1));
+                        }
+                    }
+                }
+
+                cv::Mat rvec, tvec;
+                cv::solvePnPRansac(v_mps, v_pts, cv::Mat::eye(3, 3, CV_64F), cv::noArray(),
+                                   rvec, tvec, false, 100, 8.0/focal_length, 0.99);
+                cv::Mat R;
+                cv::Rodrigues(rvec, R);
+                Eigen::Matrix3d RR;
+                cv::cv2eigen(R, RR);
+                Eigen::Quaterniond q(RR);
+                q.normalize();
+
+                Sophus::SO3d q_cw(q);
+                Eigen::Vector3d tcw;
+                cv::cv2eigen(tvec, tcw);
+
+                Sophus::SO3d q_bw = q_bc * q_cw;
+                Eigen::Vector3d p_bw = q_bc * tcw + p_bc;
+
+                frame->q_wb = q_bw.inverse();
+                frame->p_wb = -(q_bw.inverse() * p_bw);
+            }
+
+//            SolveBA();
             Triangulate();
             if(frame_count >= window_size) {
                 SlidingWindow();
@@ -98,7 +138,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
             }
 
             if(draw_pose) {
-                draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb, frame->p_wb));
+                draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb * q_bc, frame->q_wb * p_bc + frame->p_wb));
             }
 
             if(draw_mps) {
@@ -110,7 +150,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
                         continue;
                     Sophus::SE3d Twb(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
                     Sophus::SE3d Tbc(q_bc, p_bc);
-                    Eigen::Vector3d x3Dc = feat.inv_depth * feat.pt_n_per_frame[0];
+                    Eigen::Vector3d x3Dc = feat.pt_n_per_frame[0] / feat.inv_depth;
                     Eigen::Vector3d x3Dw = Twb * Tbc * x3Dc;
                     mps.emplace_back(x3Dw);
                 }
@@ -189,14 +229,30 @@ void BackEnd::SlidingWindow() {
                 else
                     feat.num_meas -= 2;
 
-                feat.pt_n_per_frame.pop_front();
-                feat.pt_r_n_per_frame.pop_front();
-
                 if(feat.num_meas < 2) {
                     it = m_features.erase(it);
                 }
-                else
+                else {
+                    if(feat.inv_depth != -1.0f) {
+                        Eigen::Vector3d x3Dc0 = feat.pt_n_per_frame[0] / feat.inv_depth;
+                        Eigen::Vector3d x3Db0 = q_bc * x3Dc0 + p_bc;
+                        Eigen::Vector3d x3Dw = d_frames[0]->q_wb * x3Db0 + d_frames[0]->p_wb;
+                        Eigen::Vector3d x3Db1 = d_frames[1]->q_wb.inverse() * (x3Dw - d_frames[1]->p_wb);
+                        Eigen::Vector3d x3Dc1 = q_bc.inverse() * (x3Db1 - p_bc);
+                        double inv_z1 = 1.0 / x3Dc1(2);
+
+                        if(inv_z1 > 0) {
+                            feat.inv_depth = inv_z1;
+                        }
+                        else {
+                            feat.inv_depth = -1.0f;
+                        }
+                    }
+
+                    feat.pt_n_per_frame.pop_front();
+                    feat.pt_r_n_per_frame.pop_front();
                     ++it;
+                }
             }
             else {
                 feat.start_id--;
@@ -256,13 +312,16 @@ uint BackEnd::Triangulate() {
             continue;
 
         Eigen::MatrixXd A(2 * feat.num_meas, 4);
-        Sophus::SE3d Tw0(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
+        Sophus::SE3d Tbc(q_bc, p_bc);
+        Sophus::SE3d Twb0(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
+        Sophus::SE3d Twc0 = Twb0 * Tbc;
 
         int A_idx = 0;
         for(int i = 0, n = feat.pt_n_per_frame.size(); i < n; ++i) {
             int idx_i = feat.start_id + i;
-            Sophus::SE3d Twi(d_frames[idx_i]->q_wb, d_frames[idx_i]->p_wb);
-            Sophus::SE3d Ti0 = Twi.inverse() * Tw0;
+            Sophus::SE3d Twbi(d_frames[idx_i]->q_wb, d_frames[idx_i]->p_wb);
+            Sophus::SE3d Twci = Twbi * Tbc;
+            Sophus::SE3d Ti0 = Twci.inverse() * Twc0;
             Eigen::Matrix<double, 3, 4> P;
             P << Ti0.rotationMatrix(), Ti0.translation();
             A.row(A_idx++) = P.row(0) - feat.pt_n_per_frame[i](0) * P.row(2);
