@@ -249,7 +249,7 @@ public:
         }
     }
 
-    void PubCurPose(uint seq, double timestamp, const Sophus::SE3d& Twc) {
+    void PubCurPose(uint64_t seq, double timestamp, const Sophus::SE3d& Twc) {
         static Sophus::SE3d Tglw = Sophus::SE3d::rotX(-M_PI/2);
         // public latest frame
         // path
