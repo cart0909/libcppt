@@ -100,6 +100,7 @@ bool SlaveProjectionFactor::Evaluate(double const * const* parameters_raw,
     double zj = x3Dsj(2);
 
     residuals = (x3Dsj / zj).head<2>() - pt_sj.head<2>();
+    residuals = sqrt_info * residuals;
 
     if(jacobians_raw) {
         Eigen::Matrix2_3d reduce;
