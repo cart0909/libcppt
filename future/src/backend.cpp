@@ -70,7 +70,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
     // start the margin when the sliding window fill the frames
     marginalization_flag = AddFeaturesCheckParallax(frame);
-    LOG(INFO) << "this frame -----------------------------" << (marginalization_flag==MARGIN_OLD? "MARGIN_OLD" : "MARGIN_SECOND_NEW");
+//    LOG(INFO) << "this frame -----------------------------" << (marginalization_flag==MARGIN_OLD? "MARGIN_OLD" : "MARGIN_SECOND_NEW");
 
     if(state == NEED_INIT) {
         frame->q_wb = Sophus::SO3d();
@@ -242,7 +242,7 @@ void BackEnd::SlidingWindowOld() {
                     Eigen::Vector3d x3Dc1 = q_bc.inverse() * (x3Db1 - p_bc);
                     double inv_z1 = 1.0 / x3Dc1(2);
 
-                    if(inv_z1 >= 0.1) {
+                    if(inv_z1 > 0) {
                         feat.inv_depth = inv_z1;
                     }
                     else {
@@ -383,7 +383,7 @@ void BackEnd::data2double() {
     size_t num_mps = 0;
     for(auto& it : m_features) {
         auto& feat = it.second;
-        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth < 0.1) {
+        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
             continue;
         }
         para_features[num_mps++] = feat.inv_depth;
@@ -402,12 +402,22 @@ void BackEnd::double2data() {
     }
 
     size_t num_mps = 0;
+    std::vector<uint64_t> v_outlier_feat_id;
     for(auto& it : m_features) {
         auto& feat = it.second;
-        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth < 0.1) {
+        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
             continue;
         }
         feat.inv_depth = para_features[num_mps++];
+
+        if(feat.inv_depth <= 0) {
+//            LOG(INFO) << it.first << " " << feat.feat_id << " " << feat.inv_depth;
+            v_outlier_feat_id.emplace_back(it.first);
+        }
+    }
+
+    for(auto& it : v_outlier_feat_id) {
+        m_features.erase(it);
     }
 }
 
@@ -428,7 +438,7 @@ void BackEnd::SolveBA() {
     bool ttt = true;
     for(auto& it : m_features) {
         auto& feat = it.second;
-        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth < 0.1) {
+        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
             continue;
         }
 
@@ -450,7 +460,6 @@ void BackEnd::SolveBA() {
                     problem.AddResidualBlock(factor, loss_function, para_features + mp_idx);
                 }
                 else {
-                    // FIXME
                     auto factor = new SlaveProjectionFactor(pt_i, pt_jr, q_rl, p_rl, q_bc, p_bc, focal_length);
                     problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
                 }
@@ -464,10 +473,9 @@ void BackEnd::SolveBA() {
     options.trust_region_strategy_type = ceres::DOGLEG;
     options.max_num_iterations = 10;
     options.num_threads = 4;
+    options.max_solver_time_in_seconds = 0.05; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-    LOG(INFO) << summary.FullReport();
-
     double2data();
 }
