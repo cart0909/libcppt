@@ -109,6 +109,7 @@ private:
     int Triangulate(int sw_idx);
     void Reset();
     void SolveBA();
+    void SolvePnP(FramePtr frame);
 
     std::thread thread_;
     std::mutex  m_buffer;
