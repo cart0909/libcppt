@@ -110,6 +110,10 @@ private:
     void Reset();
     void SolveBA();
     void SolvePnP(FramePtr frame);
+    bool ImuInitialization();
+    bool GyroBiasEstimation();
+    bool ScaleAndGravityApproximation();
+    bool AccBiasEstimationWithScaleAndGravityRefinement(const Eigen::Vector3d& gw);
 
     std::thread thread_;
     std::mutex  m_buffer;
@@ -122,6 +126,7 @@ private:
 
     Eigen::Matrix3d gyr_noise_cov;
     Eigen::Matrix3d acc_noise_cov;
+    Eigen::Matrix6d gyr_acc_noise_cov;
     Eigen::Matrix3d gyr_bias_cov;
     Eigen::Matrix3d acc_bias_cov;
 
@@ -149,5 +154,7 @@ private:
     std::atomic<bool> request_reset_flag;
 
     std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
+
+    double last_imu_t;
 };
 SMART_PTR(BackEnd)

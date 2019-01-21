@@ -38,6 +38,10 @@ using Matrix##SIZE1##_##SIZE2##f = Eigen::Matrix<float, SIZE1, SIZE2>;
 using Matrix##SIZE##d = Eigen::Matrix<double, SIZE, SIZE>; \
 using Matrix##SIZE##f = Eigen::Matrix<float, SIZE, SIZE>;
 
+#define EIGEN_EXTRA_VECTOR(SIZE) \
+using Vector##SIZE##d = Eigen::Matrix<double, SIZE, 1>; \
+using Vector##SIZE##f = Eigen::Matrix<float, SIZE, 1>;
+
 namespace Eigen {
 EIGEN_EXTRA_MATRIX(2, 3)
 EIGEN_EXTRA_MATRIX(3, 6)
@@ -45,6 +49,7 @@ STD_EIGEN_VECTOR(2)
 STD_EIGEN_VECTOR(3)
 STD_EIGEN_VECTOR(4)
 STD_EIGEN_DEQUE(3)
+EIGEN_EXTRA_VECTOR(6)
 EIGEN_EXTRA_SQUARE_MATRIX(6)
 }
 

@@ -12,12 +12,16 @@ BackEnd::BackEnd(double focal_length_,
                  const Sophus::SO3d& q_rl_, const Sophus::SO3d& q_bc_,
                  int window_size_, double min_parallax_)
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_), window_size(window_size_),
-      next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length)
+      next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
     gyr_bias_cov = gyr_w * gyr_w * Eigen::Matrix3d::Identity();
     acc_bias_cov = acc_w * acc_w * Eigen::Matrix3d::Identity();
+
+    gyr_acc_noise_cov.setZero();
+    gyr_acc_noise_cov.block<3, 3>(0, 0) = gyr_noise_cov;
+    gyr_acc_noise_cov.block<3, 3>(3, 3) = acc_noise_cov;
 
     para_pose = new double[(window_size + 1) * 7];
     para_speed_bias = new double[(window_size + 1) * 7];
@@ -79,13 +83,16 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         frame->ba.setZero();
         frame->bg.setZero();
 
+        frame->imu_preintegration = std::make_shared<ImuPreintegration>(frame->bg, frame->ba, gyr_acc_noise_cov);
+
         int num_mps = Triangulate(0);
 
-        if(num_mps > 50) {
+        if(num_mps > 50 && !frame->v_imu_timestamp.empty()) {
+            last_imu_t = frame->v_imu_timestamp.back();
             state = CV_ONLY;
         }
         else {
-            LOG(INFO) << "Stereo init fail, number of mappoints less than 50: " << num_mps;
+            LOG(INFO) << "Stereo init fail, no imu info or number of mappoints less than 50: " << num_mps;
             Reset();
         }
     }
@@ -102,7 +109,24 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         frame->ba = last_frame->ba;
         frame->bg = last_frame->bg;
 
+        frame->imu_preintegration = std::make_shared<ImuPreintegration>(frame->bg, frame->ba, gyr_acc_noise_cov);
+
+        for(int i = 0, n = frame->v_acc.size(); i < n; ++i) {
+            double imu_t = frame->v_imu_timestamp[i], dt = imu_t - last_imu_t;
+            last_imu_t = imu_t;
+            Eigen::Vector3d gyr = frame->v_gyr[i];
+            Eigen::Vector3d acc = frame->v_acc[i];
+            frame->imu_preintegration->push_back(dt, gyr, acc);
+        }
+
         SolveBA();
+
+        if(d_frames.size() == window_size + 1) {
+            GyroBiasEstimation();
+            ScaleAndGravityApproximation();
+            exit(-1);
+        }
+
         SlidingWindow();
 
         if(draw_pose) {
@@ -263,6 +287,32 @@ void BackEnd::SlidingWindowSecondNew() {
         }
         ++it;
     }
+
+    FramePtr second_new = *(d_frames.end() - 2);
+    FramePtr latest_new = d_frames.back();
+
+    double t0 = second_new->v_imu_timestamp.back();
+    for(int i = 0, n = latest_new->v_acc.size(); i < n; ++i) {
+        double dt = latest_new->v_imu_timestamp[i] - t0;
+        t0 = latest_new->v_imu_timestamp[i];
+        Eigen::Vector3d gyr = latest_new->v_gyr[i], acc = latest_new->v_acc[i];
+        second_new->imu_preintegration->push_back(dt, gyr, acc);
+    }
+
+    latest_new->imu_preintegration = second_new->imu_preintegration;
+
+    latest_new->v_imu_timestamp.insert(latest_new->v_imu_timestamp.begin(),
+                                       second_new->v_imu_timestamp.begin(),
+                                       second_new->v_imu_timestamp.end());
+
+    latest_new->v_gyr.insert(latest_new->v_gyr.begin(),
+                             second_new->v_gyr.begin(),
+                             second_new->v_gyr.end());
+
+    latest_new->v_acc.insert(latest_new->v_acc.begin(),
+                             second_new->v_acc.begin(),
+                             second_new->v_acc.end());
+
     d_frames.erase(d_frames.end() - 2);
 }
 
@@ -326,6 +376,7 @@ void BackEnd::Reset() {
     d_frames.clear();
     m_features.clear();
     next_frame_id = 0;
+    last_imu_t = -1.0f;
 }
 
 void BackEnd::data2double() {
@@ -483,4 +534,171 @@ void BackEnd::SolvePnP(FramePtr frame) {
 
     frame->q_wb = q_bw.inverse();
     frame->p_wb = -(q_bw.inverse() * p_bw);
+}
+
+bool BackEnd::ImuInitialization() {
+    return false;
+}
+
+bool BackEnd::GyroBiasEstimation() {
+    double err_0 = 0, err_1 = 0;
+
+    Eigen::Matrix3d H = Eigen::Matrix3d::Zero();
+    Eigen::Vector3d b = Eigen::Vector3d::Zero();
+
+    for(int i = 0, n = d_frames.size(); i < n - 1; ++i) {
+        FramePtr frame_i = d_frames[i];
+        FramePtr frame_i1 = d_frames[i + 1];
+        ImuPreintegrationPtr imu_preintegration = frame_i1->imu_preintegration;
+        Eigen::Matrix3d JR_bg = imu_preintegration->mJR_bg;
+        Sophus::SO3d delRi_i1 = imu_preintegration->mdelRij;
+        Sophus::SO3d qwi = frame_i->q_wb, qwi1 = frame_i1->q_wb;
+        Eigen::Vector3d residual = (delRi_i1.inverse() * (qwi1.inverse() * qwi)).log();
+        err_0 += residual.squaredNorm();
+        H += JR_bg.transpose() * JR_bg;
+        b += JR_bg.transpose() * residual;
+    }
+
+    Eigen::Vector3d bg = d_frames[0]->bg + H.ldlt().solve(b);
+
+    for(auto& frame : d_frames) {
+        frame->imu_preintegration->Repropagate(bg, Eigen::Vector3d::Zero());
+        frame->bg = bg;
+    }
+
+    for(int i = 0, n = d_frames.size(); i < n - 1; ++i) {
+        FramePtr frame_i = d_frames[i];
+        FramePtr frame_i1 = d_frames[i + 1];
+        Sophus::SO3d delRi_i1 = frame_i1->imu_preintegration->mdelRij;
+        Sophus::SO3d qwi = frame_i->q_wb, qwi1 = frame_i1->q_wb;
+        Eigen::Vector3d residual = (delRi_i1.inverse() * (qwi1.inverse() * qwi)).log();
+        err_1 += residual.squaredNorm();
+    }
+
+    LOG(INFO) << "step 1, bg: " << bg(0) << " " << bg(1) << " " << bg(2);
+
+    return true;
+}
+
+bool BackEnd::ScaleAndGravityApproximation() {
+
+    Eigen::MatrixXd A(3*(d_frames.size() - 2), 4);
+    Eigen::VectorXd b(3*(d_frames.size() - 2));
+
+    Sophus::SO3d q_cb = q_bc.inverse();
+    Eigen::Vector3d p_cb = -(q_cb * p_bc);
+
+    for(int i = 0, n = d_frames.size(); i < n - 2; ++i) {
+        FramePtr frame0 = d_frames[i], frame1 = d_frames[i + 1], frame2 = d_frames[i + 2];
+        // FIXME
+        Eigen::Vector3d pwc0 = frame0->q_wb * p_bc + frame0->p_wb,
+                        pwc1 = frame1->q_wb * p_bc + frame1->p_wb,
+                        pwc2 = frame2->q_wb * p_bc + frame2->p_wb;
+        Sophus::SO3d qwb0 = frame0->q_wb,
+                     qwb1 = frame1->q_wb,
+                     qwb2 = frame2->q_wb,
+                     qwc0 = qwb0 * q_bc,
+                     qwc1 = qwb1 * q_bc,
+                     qwc2 = qwb2 * q_bc;
+        //
+        Eigen::Vector3d dp01 = frame1->imu_preintegration->mdelPij,
+                        dp12 = frame2->imu_preintegration->mdelPij,
+                        dv01 = frame1->imu_preintegration->mdelVij;
+        double dt01 = frame1->imu_preintegration->mdel_tij,
+               dt12 = frame2->imu_preintegration->mdel_tij;
+        Eigen::Vector3d lambda = (pwc1 - pwc0) * dt12 - (pwc2 - pwc1) * dt01;
+        Eigen::Matrix3d beta = 0.5 * Eigen::Matrix3d::Identity() * dt01 * dt12 * (dt01 + dt12);
+        Eigen::Vector3d gamma = (qwc0.matrix() - qwc1.matrix()) * p_cb * dt12
+                               -(qwc1.matrix() - qwc2.matrix()) * p_cb * dt01
+                               + qwb0 * dp01 * dt12 - qwb1 * dp12 * dt01
+                               - qwb0 * dv01 * dt01 * dt12;
+
+        A.block<3, 1>(i * 3, 0) = lambda;
+        A.block<3, 3>(i * 3, 1) = beta;
+        b.segment(i * 3, 3) = gamma;
+    }
+
+    // TODO
+    Eigen::Vector4d x = A.colPivHouseholderQr().solve(b);
+    double scale_value = x(0);
+    Eigen::Vector3d gw = x.tail(3);
+
+    LOG(INFO) << "step 2, scale: " << scale_value << " gw: " << gw(0) << " " << gw(1) << " " << gw(2);
+
+    AccBiasEstimationWithScaleAndGravityRefinement(gw);
+
+    return true;
+}
+
+bool BackEnd::AccBiasEstimationWithScaleAndGravityRefinement(const Eigen::Vector3d& gw) {
+    Eigen::Vector3d gw_dir = gw.normalized();
+    Eigen::Vector3d gI_dir(0, 0, -1);
+    double G = 9.81;
+
+    Eigen::Vector3d v_dir = gI_dir.cross(gw_dir);
+    v_dir.normalize();
+    double theta = std::atan2(gI_dir.cross(gw_dir).norm(), gI_dir.dot(gw_dir));
+    Sophus::SO3d RwI = Sophus::SO3d::exp(theta * v_dir);
+
+    // update law
+    // RwI <- RwI * Exp(d_Theta)
+    // d_Thera = [dtx, dty, 0]'
+
+    // wanted
+    // gw = RwI*G*gI_dir
+    Eigen::MatrixXd A(3 * (d_frames.size() - 2), 6);
+    Eigen::VectorXd b(3 * (d_frames.size() - 2));
+
+    Sophus::SO3d q_cb = q_bc.inverse();
+    Eigen::Vector3d p_cb = -(q_cb * p_bc);
+
+
+    for(int i = 0, n = d_frames.size(); i < n - 2; ++i) {
+        FramePtr frame0 = d_frames[i], frame1 = d_frames[i + 1], frame2 = d_frames[i + 2];
+        // FIXME
+        Eigen::Vector3d pwc0 = frame0->q_wb * p_bc + frame0->p_wb,
+                        pwc1 = frame1->q_wb * p_bc + frame1->p_wb,
+                        pwc2 = frame2->q_wb * p_bc + frame2->p_wb;
+        Sophus::SO3d qwb0 = frame0->q_wb,
+                     qwb1 = frame1->q_wb,
+                     qwb2 = frame2->q_wb,
+                     qwc0 = qwb0 * q_bc,
+                     qwc1 = qwb1 * q_bc,
+                     qwc2 = qwb2 * q_bc;
+        //
+        Eigen::Vector3d dp01 = frame1->imu_preintegration->mdelPij,
+                        dp12 = frame2->imu_preintegration->mdelPij,
+                        dv01 = frame1->imu_preintegration->mdelVij;
+        double dt01 = frame1->imu_preintegration->mdel_tij,
+               dt12 = frame2->imu_preintegration->mdel_tij;
+        Eigen::Matrix3d JP01_ba = frame1->imu_preintegration->mJP_ba,
+                        JP12_ba = frame2->imu_preintegration->mJP_ba,
+                        JV01_ba = frame1->imu_preintegration->mJV_ba;
+
+        Eigen::Vector3d lambda = (pwc1 - pwc0) * dt12 - (pwc2 - pwc1) * dt01;
+        Eigen::Matrix3d phi = -0.5 * RwI.matrix() * Sophus::SO3d::hat(gI_dir) * G * (dt01 * dt12) * (dt01 + dt12);
+        Eigen::Matrix3d zeta = qwb1.matrix() * JP12_ba * dt01
+                             + qwb0.matrix() * JV01_ba * dt01 * dt12
+                             - qwb0.matrix() * JV01_ba * dt12;
+        Eigen::Vector3d psi = qwb0 * dp01 * dt12 - qwb1 * dp12 * dt01 - qwb0 * dv01 * dt01 * dt12
+                           + (qwc0.matrix() - qwc1.matrix()) * p_cb * dt12
+                           - (qwc1.matrix() - qwc2.matrix()) * p_cb * dt01
+                           - 0.5 * (RwI * gI_dir) * G * (dt01 * dt12) * (dt01 + dt12);
+
+        A.block<3, 1>(3 * i, 0) = lambda;
+        A.block<3, 2>(3 * i, 1) = phi.leftCols(2);
+        A.block<3, 3>(3 * i, 3) = zeta;
+        b.segment(3 * i, 3) = psi;
+    }
+
+    Eigen::Vector6d x = A.colPivHouseholderQr().solve(b);
+
+    double scale_value = x(0);
+    Eigen::Vector3d delta_theta(x(1), x(2), 0);
+    Eigen::Vector3d ba = x.tail(3);
+
+    LOG(INFO) << "step 3, scale: " << scale_value << " delta_theta: " << delta_theta(0) << " " << delta_theta(1)
+              << " ba: " << ba(0) << " " << ba(1) << " " << ba(2);
+
+    return true;
 }
