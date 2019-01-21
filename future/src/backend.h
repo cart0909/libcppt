@@ -110,15 +110,18 @@ private:
     void Reset();
     void SolveBA();
     void SolvePnP(FramePtr frame);
-
+    double RreprojectionError(Sophus::SO3d  &qi, Eigen::Vector3d &pi, Sophus::SO3d &rbc, Eigen::Vector3d &tbc,
+                              Sophus::SO3d  &qj, Eigen::Vector3d &pj, Sophus::SO3d &q_rl, Eigen::Vector3d &p_rl,
+                              double depth, Eigen::Vector3d &uvi, Eigen::Vector3d &uvj);
+    void Outliersfilter();
     std::thread thread_;
     std::mutex  m_buffer;
     std::condition_variable cv_buffer;
     std::deque<FramePtr> frame_buffer; // [ 0,  1, ..., 8 ,         9 |  10] size 11
                                        //  kf  kf      kf  second new   new
     double focal_length;
-    Eigen::Vector3d p_rl, p_bc;
-    Sophus::SO3d    q_rl, q_bc;
+    Eigen::Vector3d p_rl, p_bc, p_0;
+    Sophus::SO3d    q_rl, q_bc, q_I;
 
     Eigen::Matrix3d gyr_noise_cov;
     Eigen::Matrix3d acc_noise_cov;

@@ -22,7 +22,9 @@ BackEnd::BackEnd(double focal_length_,
     para_pose = new double[(window_size + 1) * 7];
     para_speed_bias = new double[(window_size + 1) * 7];
     para_features = new double[para_features_capacity * 1];
-
+    p_0.setZero();
+    Eigen::Quaterniond I(Eigen::Matrix3d::Identity());
+    q_I.setQuaternion(I);  
     request_reset_flag = false;
 
     thread_ = std::thread(&BackEnd::Process, this);
@@ -103,8 +105,11 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         frame->bg = last_frame->bg;
 
         SolveBA();
-        SlidingWindow();
+        //remove outlier
+        Outliersfilter();
 
+        SlidingWindow();
+        
         if(draw_pose) {
             draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb * q_bc, frame->q_wb * p_bc + frame->p_wb));
         }
@@ -483,4 +488,79 @@ void BackEnd::SolvePnP(FramePtr frame) {
 
     frame->q_wb = q_bw.inverse();
     frame->p_wb = -(q_bw.inverse() * p_bw);
+}
+
+double BackEnd::RreprojectionError(Sophus::SO3d  &qi, Eigen::Vector3d &pi, Sophus::SO3d &qbc, Eigen::Vector3d &pbc,
+                                   Sophus::SO3d  &qj, Eigen::Vector3d &pj, Sophus::SO3d &q_rl, Eigen::Vector3d &p_rl,
+                                   double depth, Eigen::Vector3d &uvi, Eigen::Vector3d &uvj)
+{
+    Eigen::Vector3d pts_w = qi * (qbc * (depth * uvi) + pbc) + pi;
+    //Eigen::Vector3d pts_cj = ricj.matrix().transpose() * (qj.matrix().transpose() * (pts_w - pj) - ticj);
+    Eigen::Vector3d pts_cj_m = q_bc.inverse() * (qj.inverse() * (pts_w - pj) - pbc);
+    Eigen::Vector3d pts_cj_s=  q_rl * (pts_cj_m) + p_rl;
+    Eigen::Vector2d residual = (pts_cj_s / pts_cj_s.z()).head<2>() - uvj.head<2>();
+    double rx = residual.x();
+    double ry = residual.y();
+    return sqrt(rx * rx + ry * ry);
+}
+
+void BackEnd::Outliersfilter(){
+    std::vector<uint64_t> removeIndex;
+    for(auto& it :m_features){
+        auto& feat = it.second;
+
+        //<4 : not rookie 3d point.
+        if(feat.CountNumMeas(window_size) < 4 || feat.inv_depth == -1.0f)
+            continue;
+
+        double err = 0;
+        int errCnt = 0;
+        size_t id_i = feat.start_id;
+        Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
+        double depth = 1.0f / feat.inv_depth;
+
+        //estimate error by each of edge
+        for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j){
+            size_t id_j = id_i + j;
+
+            //mono track edge in same camera
+            if (j != 0)
+            {
+                Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
+                double tmp_error = RreprojectionError(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb,
+                                                      q_bc, p_bc, d_frames[id_j]->q_wb, d_frames[id_j]->p_wb,
+                                                      q_I, p_0, depth, pt_i, pt_j);
+                err += tmp_error;
+                errCnt++;
+            }
+            //stereo edge info that project to different camera
+            if(feat.pt_r_n_per_frame[j](0) != -1.0f){
+                Eigen::Vector3d pts_j_right = feat.pt_r_n_per_frame[j];
+                if(j != 0){
+                double tmp_error = RreprojectionError(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb,
+                                                      q_bc, p_bc, d_frames[id_j]->q_wb, d_frames[id_j]->p_wb,
+                                                      q_rl, p_rl, depth, pt_i, pts_j_right);
+                    err += tmp_error;
+                    errCnt++;
+                }
+                else{
+                double tmp_error = RreprojectionError(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb,
+                                                     q_bc, p_bc, d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb,
+                                                     q_rl, p_rl, depth, pt_i, pts_j_right);
+                err += tmp_error;
+                errCnt++;
+                }
+            }
+        }
+        //estimate each edge error
+        double ave_err = err / errCnt;
+        if(ave_err * focal_length > 3)
+            removeIndex.emplace_back(it.first);
+    }
+
+    //erase outlier from m_features
+    for(auto& it : removeIndex) {
+        m_features.erase(it);
+    }
+
 }
