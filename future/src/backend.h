@@ -109,9 +109,10 @@ private:
     int Triangulate(int sw_idx);
     void Reset();
     void SolveBA();
+    void SolveBAImu();
     void SolvePnP(FramePtr frame);
-    bool ImuInitialization();
     bool GyroBiasEstimation();
+    bool GravityEstimation();
     bool ScaleAndGravityApproximation();
     bool AccBiasEstimationWithScaleAndGravityRefinement(const Eigen::Vector3d& gw);
 
@@ -129,6 +130,7 @@ private:
     Eigen::Matrix6d gyr_acc_noise_cov;
     Eigen::Matrix3d gyr_bias_cov;
     Eigen::Matrix3d acc_bias_cov;
+    Eigen::Matrix6d acc_gyr_bias_invcov;
 
     std::map<uint64_t, Feature> m_features;
     int window_size;
@@ -156,5 +158,6 @@ private:
     std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
 
     double last_imu_t;
+    double gravity_magnitude;
 };
 SMART_PTR(BackEnd)

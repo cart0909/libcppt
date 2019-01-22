@@ -159,7 +159,7 @@ public:
     }
 
     void PubMapPoint(const Eigen::VecVector3d& mps) {
-        static Sophus::SE3d Tglw = Sophus::SE3d::rotZ(-M_PI/2) * Sophus::SE3d::rotY(-M_PI/2);
+        static Sophus::SE3d Tglw;
 
         visualization_msgs::Marker msgs_points;
         msgs_points.header.frame_id = "world";
@@ -249,7 +249,7 @@ public:
     }
 
     void PubCurPose(uint64_t seq, double timestamp, const Sophus::SE3d& Twc) {
-        static Sophus::SE3d Tglw = Sophus::SE3d::rotZ(-M_PI/2) * Sophus::SE3d::rotY(-M_PI/2);
+        static Sophus::SE3d Tglw;
         // public latest frame
         // path
         Sophus::SE3d Tglc = Tglw * Twc;

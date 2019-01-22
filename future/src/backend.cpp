@@ -1,6 +1,7 @@
 ﻿#include "backend.h"
 #include "ceres/local_parameterization_se3.h"
 #include "ceres/projection_factor.h"
+#include "ceres/imu_factor.h"
 #include <ceres/ceres.h>
 #include <glog/logging.h>
 #include <opencv2/core/eigen.hpp>
@@ -12,7 +13,7 @@ BackEnd::BackEnd(double focal_length_,
                  const Sophus::SO3d& q_rl_, const Sophus::SO3d& q_bc_,
                  int window_size_, double min_parallax_)
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_), window_size(window_size_),
-      next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f)
+      next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f), gravity_magnitude(-1.0f)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
@@ -23,8 +24,14 @@ BackEnd::BackEnd(double focal_length_,
     gyr_acc_noise_cov.block<3, 3>(0, 0) = gyr_noise_cov;
     gyr_acc_noise_cov.block<3, 3>(3, 3) = acc_noise_cov;
 
+    Eigen::Matrix6d acc_gyr_bias_cov;
+    acc_gyr_bias_cov.setZero();
+    acc_gyr_bias_cov.block<3, 3>(0, 0) = acc_bias_cov;
+    acc_gyr_bias_cov.block<3, 3>(3, 3) = gyr_bias_cov;
+    acc_gyr_bias_invcov = acc_gyr_bias_cov.inverse();
+
     para_pose = new double[(window_size + 1) * 7];
-    para_speed_bias = new double[(window_size + 1) * 7];
+    para_speed_bias = new double[(window_size + 1) * 9];
     para_features = new double[para_features_capacity * 1];
 
     request_reset_flag = false;
@@ -121,10 +128,12 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
         SolveBA();
 
-        if(d_frames.size() == window_size + 1) {
+        if(d_frames.size() == window_size + 1 && gravity_magnitude == -1.0f) {
             GyroBiasEstimation();
-            ScaleAndGravityApproximation();
-            exit(-1);
+            if(GravityEstimation()) {
+                SolveBAImu();
+                exit(-1);
+            }
         }
 
         SlidingWindow();
@@ -377,6 +386,7 @@ void BackEnd::Reset() {
     m_features.clear();
     next_frame_id = 0;
     last_imu_t = -1.0f;
+    gravity_magnitude = -1.0f;
 }
 
 void BackEnd::data2double() {
@@ -452,7 +462,7 @@ void BackEnd::SolveBA() {
     }
 
     size_t mp_idx = 0;
-    bool ttt = true;
+
     for(auto& it : m_features) {
         auto& feat = it.second;
         if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
@@ -497,6 +507,76 @@ void BackEnd::SolveBA() {
     double2data();
 }
 
+void BackEnd::SolveBAImu() {
+    data2double();
+    ceres::Problem problem;
+    ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
+    ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
+
+    for(int i = 0, n = d_frames.size(); i < n; ++i) {
+        problem.AddParameterBlock(para_pose + i * 7, 7, local_para_se3);
+
+        if(i == 0) {
+            problem.SetParameterBlockConstant(para_pose + i * 7);
+        }
+        else {
+            auto factor = new ImuFactor(d_frames[i]->imu_preintegration,
+                                        Eigen::Vector3d(0, 0, -gravity_magnitude),
+                                        acc_gyr_bias_invcov);
+            problem.AddResidualBlock(factor, NULL,
+                                     para_pose + (i - 1) * 7,
+                                     para_speed_bias + (i - 1) * 9,
+                                     para_pose + i * 7,
+                                     para_speed_bias + i * 9);
+        }
+    }
+
+    size_t mp_idx = 0;
+    for(auto& it : m_features) {
+        auto& feat = it.second;
+        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
+            continue;
+        }
+
+        size_t id_i = feat.start_id;
+        Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
+        for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j) {
+            size_t id_j = id_i + j;
+            Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
+
+            if(j != 0) {
+                auto factor = new ProjectionFactor(pt_i, pt_j, q_bc, p_bc, focal_length);
+                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
+            }
+
+            if(feat.pt_r_n_per_frame[j](0) != -1.0f) {
+                Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
+                if(j == 0) {
+                    auto factor = new SelfProjectionFactor(pt_j, pt_jr, q_rl, p_rl, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_features + mp_idx);
+                }
+                else {
+                    auto factor = new SlaveProjectionFactor(pt_i, pt_jr, q_rl, p_rl, q_bc, p_bc, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
+                }
+            }
+        }
+        ++mp_idx;
+    }
+
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.trust_region_strategy_type = ceres::DOGLEG;
+    options.max_num_iterations = 10;
+    options.num_threads = 4;
+//    options.max_solver_time_in_seconds = 0.05; // 50 ms for solver and 50 ms for other
+    ceres::Solver::Summary summary;
+
+    ceres::Solve(options, &problem, &summary);
+    LOG(INFO) << summary.FullReport();
+    double2data();
+}
+
 void BackEnd::SolvePnP(FramePtr frame) {
     // pnp this help debug
     std::vector<cv::Point2f> v_pts;
@@ -534,10 +614,6 @@ void BackEnd::SolvePnP(FramePtr frame) {
 
     frame->q_wb = q_bw.inverse();
     frame->p_wb = -(q_bw.inverse() * p_bw);
-}
-
-bool BackEnd::ImuInitialization() {
-    return false;
 }
 
 bool BackEnd::GyroBiasEstimation() {
@@ -699,6 +775,68 @@ bool BackEnd::AccBiasEstimationWithScaleAndGravityRefinement(const Eigen::Vector
 
     LOG(INFO) << "step 3, scale: " << scale_value << " delta_theta: " << delta_theta(0) << " " << delta_theta(1)
               << " ba: " << ba(0) << " " << ba(1) << " " << ba(2);
+
+    return true;
+}
+
+bool BackEnd::GravityEstimation() {
+    Eigen::MatrixXd A(3*(d_frames.size() - 2), 3);
+    Eigen::VectorXd b(3*(d_frames.size() - 2));
+    Sophus::SO3d q_cb = q_bc.inverse();
+    Eigen::Vector3d p_cb = -(q_cb * p_bc);
+    Eigen::Matrix3d I3x3 = Eigen::Matrix3d::Identity();
+
+    for(int i = 0, n = d_frames.size(); i < n - 2; ++i) {
+        FramePtr frame0 = d_frames[i], frame1 = d_frames[i + 1], frame2 = d_frames[i + 2];
+        Eigen::Vector3d pwc0 = frame0->q_wb * p_bc + frame0->p_wb,
+                        pwc1 = frame1->q_wb * p_bc + frame1->p_wb,
+                        pwc2 = frame2->q_wb * p_bc + frame2->p_wb;
+        Sophus::SO3d qwb0 = frame0->q_wb,
+                     qwb1 = frame1->q_wb,
+                     qwb2 = frame2->q_wb,
+                     qwc0 = qwb0 * q_bc,
+                     qwc1 = qwb1 * q_bc,
+                     qwc2 = qwb2 * q_bc;
+        Eigen::Vector3d dp01 = frame1->imu_preintegration->mdelPij,
+                        dp12 = frame2->imu_preintegration->mdelPij,
+                        dv01 = frame1->imu_preintegration->mdelVij;
+        double dt01 = frame1->imu_preintegration->mdel_tij,
+               dt12 = frame2->imu_preintegration->mdel_tij;
+
+        Eigen::Matrix3d beta = 0.5 * I3x3 * (dt01 * dt12) * (dt01 + dt12);
+        Eigen::Vector3d alpha = (pwc2 - pwc1) * dt01 - (pwc1 - pwc0) * dt12
+                              + (qwc0.matrix() - qwc1.matrix()) * p_cb * dt12
+                              - (qwc1.matrix() - qwc2.matrix()) * p_cb * dt01
+                              + qwb0 * dp01 * dt12 - qwb1 * dp12 * dt01
+                              - qwb0 * dv01 * dt01 * dt12;
+
+        A.block<3, 3>(3 * i, 0) = beta;
+        b.segment(3 * i, 3) = alpha;
+    }
+
+    Eigen::Vector3d gw = A.colPivHouseholderQr().solve(b);
+
+    LOG(INFO) << "step 2, gw: " << gw(0) << " " << gw(1) << " " << gw(2) << ", |gw|: " << gw.norm();
+
+    Eigen::Vector3d gw_dir = gw.normalized();
+    Eigen::Vector3d gI_dir(0, 0, -1);
+    double G = gw.norm();
+
+    if(G < 9.7f || G > 9.9f)
+        return false;
+
+    gravity_magnitude = G;
+
+    Eigen::Vector3d v_dir = gI_dir.cross(gw_dir);
+    v_dir.normalize();
+    double theta = std::atan2(gI_dir.cross(gw_dir).norm(), gI_dir.dot(gw_dir));
+    Sophus::SO3d RwI = Sophus::SO3d::exp(theta * v_dir);
+    Sophus::SO3d RIw = RwI.inverse();
+
+    for(int i = 0, n = d_frames.size(); i < n; ++i) {
+        d_frames[i]->q_wb = RIw * d_frames[i]->q_wb;
+        d_frames[i]->p_wb = RIw * d_frames[i]->p_wb;
+    }
 
     return true;
 }
