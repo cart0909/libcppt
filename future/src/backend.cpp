@@ -103,7 +103,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
             Reset();
         }
     }
-    else if(state == CV_ONLY) {
+    else {
         // d_frames.size() max 11
         if(d_frames.size() >= 4) // [0, 1, 2, 3 ...
             Triangulate(d_frames.size() - 3);
@@ -117,7 +117,6 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         frame->bg = last_frame->bg;
 
         frame->imu_preintegration = std::make_shared<ImuPreintegration>(frame->bg, frame->ba, gyr_acc_noise_cov);
-
         for(int i = 0, n = frame->v_acc.size(); i < n; ++i) {
             double imu_t = frame->v_imu_timestamp[i], dt = imu_t - last_imu_t;
             last_imu_t = imu_t;
@@ -126,13 +125,16 @@ void BackEnd::ProcessFrame(FramePtr frame) {
             frame->imu_preintegration->push_back(dt, gyr, acc);
         }
 
-        SolveBA();
+        if(state == CV_ONLY)
+            SolveBA();
+        else if(state == TIGHTLY)
+            SolveBAImu();
 
         if(d_frames.size() == window_size + 1 && gravity_magnitude == -1.0f) {
             GyroBiasEstimation();
             if(GravityEstimation()) {
                 SolveBAImu();
-                exit(-1);
+                state = TIGHTLY;
             }
         }
 
@@ -575,6 +577,10 @@ void BackEnd::SolveBAImu() {
     ceres::Solve(options, &problem, &summary);
     LOG(INFO) << summary.FullReport();
     double2data();
+
+    for(int i = 1, n = d_frames.size(); i < n; ++i) {
+        d_frames[i]->imu_preintegration->Repropagate(d_frames[i-1]->bg, d_frames[i-1]->ba);
+    }
 }
 
 void BackEnd::SolvePnP(FramePtr frame) {

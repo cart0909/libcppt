@@ -26,10 +26,9 @@ ImuFactor::ImuFactor(ImuPreintegrationPtr preintegration_, const Eigen::Vector3d
                      const Eigen::Matrix6d& inv_cov_acc_gyr_bias)
     : preintegration(preintegration_), gw(gw_)
 {
-    sqrt_info.setIdentity();
-    // FIXME
+    sqrt_info.setZero();
     sqrt_info.block<9, 9>(0, 0) = Eigen::LLT<Eigen::Matrix9d>(preintegration->mCovariance.inverse()).matrixL().transpose();
-    sqrt_info.block<6, 6>(9, 9) = Eigen::LLT<Eigen::Matrix6d>(inv_cov_acc_gyr_bias).matrixL().transpose();
+    sqrt_info.block<6, 6>(9, 9) = Eigen::LLT<Eigen::Matrix6d>(inv_cov_acc_gyr_bias / preintegration->mdel_tij).matrixL().transpose();
 }
 
 bool ImuFactor::Evaluate(double const *const *parameters_raw,
@@ -49,12 +48,6 @@ bool ImuFactor::Evaluate(double const *const *parameters_raw,
     Eigen::Map<const Eigen::Vector3d> bgj(parameters_raw[3] + 6);
 
     Eigen::Map<Eigen::Vector15d> residuals(residuals_raw);
-    Eigen::Map<Eigen::Vector3d> r_delRij(residuals_raw);
-    Eigen::Map<Eigen::Vector3d> r_delVij(residuals_raw + 3);
-    Eigen::Map<Eigen::Vector3d> r_delPij(residuals_raw + 6);
-    Eigen::Map<Eigen::Vector3d> r_ba(residuals_raw + 9);
-    Eigen::Map<Eigen::Vector3d> r_bg(residuals_raw + 12);
-
     Eigen::Vector3d delta_bg = bgi - preintegration->mbg;
     Eigen::Vector3d delta_ba = bai - preintegration->mba;
 
@@ -67,11 +60,17 @@ bool ImuFactor::Evaluate(double const *const *parameters_raw,
 
     double dtij = preintegration->mdel_tij, dtij2 = dtij * dtij;
 
-    r_delRij = (delRij.inverse() * qbi_w * qwbj).log();
-    r_delVij = qbi_w * (vwbj - vwbi - gw * dtij) - delVij;
-    r_delPij = qbi_w * (pwbj - pwbi - vwbi * dtij - 0.5 * gw * dtij2) - delPij;
-    r_ba = baj - bai;
-    r_bg = bgj - bgi;
+    Eigen::Vector3d r_delRij = (delRij.inverse() * qbi_w * qwbj).log();
+    Eigen::Vector3d r_delVij = qbi_w * (vwbj - vwbi - gw * dtij) - delVij;
+    Eigen::Vector3d r_delPij = qbi_w * (pwbj - pwbi - vwbi * dtij - 0.5 * gw * dtij2) - delPij;
+    Eigen::Vector3d r_ba = baj - bai;
+    Eigen::Vector3d r_bg = bgj - bgi;
+
+    residuals.segment(I_RIJ, 3) = r_delRij;
+    residuals.segment(I_VIJ, 3) = r_delVij;
+    residuals.segment(I_PIJ, 3) = r_delPij;
+    residuals.segment(I_BA, 3) = r_ba;
+    residuals.segment(I_BG, 3) = r_bg;
 
     residuals = sqrt_info * residuals;
 
@@ -84,7 +83,7 @@ bool ImuFactor::Evaluate(double const *const *parameters_raw,
             J_pose_i.block<3, 3>(I_RIJ, I_RI) = -Jr_r_delRij_inv * (qbj_w * qwbi).matrix();
             J_pose_i.block<3, 3>(I_VIJ, I_RI) = Sophus::SO3d::hat(qbi_w * (vwbj - vwbi - gw * dtij));
             J_pose_i.block<3, 3>(I_PIJ, I_RI) = Sophus::SO3d::hat(qbi_w * (pwbj - pwbi - vwbi * dtij - 0.5 * gw * dtij2));
-            J_pose_i.block<3, 3>(I_PIJ, I_PI) = -Eigen::Matrix3d::Identity();
+            J_pose_i.block<3, 3>(I_PIJ, I_PI) = -I3x3;
             J_pose_i = sqrt_info * J_pose_i;
         }
 
