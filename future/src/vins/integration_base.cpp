@@ -148,3 +148,32 @@ void IntegrationBase::propagate(double _dt, const Eigen::Vector3d &_acc_1, const
     gyr_0 = gyr_1;
 
 }
+
+Eigen::Vector15d IntegrationBase::evaluate(const Eigen::Vector3d& Pi, const Sophus::SO3d& Qi, const Eigen::Vector3d& Vi, const Eigen::Vector3d& Bai, const Eigen::Vector3d& Bgi,
+                                           const Eigen::Vector3d& Pj, const Sophus::SO3d& Qj, const Eigen::Vector3d& Vj, const Eigen::Vector3d& Baj, const Eigen::Vector3d& Bgj,
+                                           const Eigen::Vector3d& Gw)
+{
+    Eigen::Vector15d residuals;
+
+    Eigen::Matrix3d dp_dba = jacobian.block<3, 3>(O_P, O_BA);
+    Eigen::Matrix3d dp_dbg = jacobian.block<3, 3>(O_P, O_BG);
+
+    Eigen::Matrix3d dq_dbg = jacobian.block<3, 3>(O_R, O_BG);
+
+    Eigen::Matrix3d dv_dba = jacobian.block<3, 3>(O_V, O_BA);
+    Eigen::Matrix3d dv_dbg = jacobian.block<3, 3>(O_V, O_BG);
+
+    Eigen::Vector3d dba = Bai - linearized_ba;
+    Eigen::Vector3d dbg = Bgi - linearized_bg;
+
+    Sophus::SO3d corrected_delta_q = delta_q * Sophus::SO3d::exp(dq_dbg * dbg);
+    Eigen::Vector3d corrected_delta_v = delta_v + dv_dba * dba + dv_dbg * dbg;
+    Eigen::Vector3d corrected_delta_p = delta_p + dp_dba * dba + dp_dbg * dbg;
+
+    residuals.block<3, 1>(O_P, 0) = Qi.inverse() * (0.5 * Gw * sum_dt * sum_dt + Pj - Pi - Vi * sum_dt) - corrected_delta_p;
+    residuals.block<3, 1>(O_R, 0) = (corrected_delta_q.inverse() * (Qi.inverse() * Qj)).log();
+    residuals.block<3, 1>(O_V, 0) = Qi.inverse() * (Gw * sum_dt + Vj - Vi) - corrected_delta_v;
+    residuals.block<3, 1>(O_BA, 0) = Baj - Bai;
+    residuals.block<3, 1>(O_BG, 0) = Bgj - Bgi;
+    return residuals;
+}

@@ -2,18 +2,21 @@
 #include "ceres/local_parameterization_se3.h"
 #include "ceres/projection_factor.h"
 #include "ceres/imu_factor.h"
+#include "vins/imu_factor.h"
 #include <ceres/ceres.h>
 #include <glog/logging.h>
 #include <opencv2/core/eigen.hpp>
 
 BackEnd::BackEnd(double focal_length_,
-                 double gyr_n, double acc_n,
-                 double gyr_w, double acc_w,
+                 double gyr_n_, double acc_n_,
+                 double gyr_w_, double acc_w_,
                  const Eigen::Vector3d& p_rl_, const Eigen::Vector3d& p_bc_,
                  const Sophus::SO3d& q_rl_, const Sophus::SO3d& q_bc_,
-                 int window_size_, double min_parallax_)
-    : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_), window_size(window_size_),
-      next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f), gravity_magnitude(-1.0f)
+                 double gravity_magnitude_, int window_size_, double min_parallax_)
+    : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_),
+      gyr_n(gyr_n_), acc_n(acc_n_), gyr_w(gyr_w_), acc_w(acc_w_), window_size(window_size_),
+      next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f),
+      gravity_magnitude(gravity_magnitude_)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
@@ -90,16 +93,16 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         frame->ba.setZero();
         frame->bg.setZero();
 
-        frame->imu_preintegration = std::make_shared<ImuPreintegration>(frame->bg, frame->ba, gyr_acc_noise_cov);
-
         int num_mps = Triangulate(0);
 
-        if(num_mps > 50 && !frame->v_imu_timestamp.empty()) {
+        if(num_mps > 30 && frame->v_imu_timestamp.size() >= 5) {
+            frame->q_wb = InitFirstIMUPose(frame->v_acc);
+            frame->imupreinte = std::make_shared<IntegrationBase>(frame->v_acc[0], frame->v_gyr[0], frame->ba, frame->bg, acc_n, gyr_n, acc_w, gyr_w);
             last_imu_t = frame->v_imu_timestamp.back();
             state = CV_ONLY;
         }
         else {
-            LOG(INFO) << "Stereo init fail, no imu info or number of mappoints less than 50: " << num_mps;
+            LOG(INFO) << "Stereo init fail, no imu info or number of mappoints less than 30: " << num_mps;
             Reset();
         }
     }
@@ -115,14 +118,14 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         frame->v_wb = last_frame->v_wb;
         frame->ba = last_frame->ba;
         frame->bg = last_frame->bg;
+        frame->imupreinte = std::make_shared<IntegrationBase>(frame->v_acc[0], frame->v_gyr[0], last_frame->ba, last_frame->bg, acc_n, gyr_n, acc_w, gyr_w);
 
-        frame->imu_preintegration = std::make_shared<ImuPreintegration>(frame->bg, frame->ba, gyr_acc_noise_cov);
         for(int i = 0, n = frame->v_acc.size(); i < n; ++i) {
             double imu_t = frame->v_imu_timestamp[i], dt = imu_t - last_imu_t;
             last_imu_t = imu_t;
             Eigen::Vector3d gyr = frame->v_gyr[i];
             Eigen::Vector3d acc = frame->v_acc[i];
-            frame->imu_preintegration->push_back(dt, gyr, acc);
+            frame->imupreinte->push_back(dt, acc, gyr);
         }
 
         if(state == CV_ONLY)
@@ -130,12 +133,10 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         else if(state == TIGHTLY)
             SolveBAImu();
 
-        if(d_frames.size() == window_size + 1 && gravity_magnitude == -1.0f) {
+        if(d_frames.size() == window_size + 1 && state == CV_ONLY) {
             GyroBiasEstimation();
-            if(GravityEstimation()) {
-                SolveBAImu();
-                state = TIGHTLY;
-            }
+            SolveBAImu();
+            state = TIGHTLY;
         }
 
         SlidingWindow();
@@ -307,10 +308,10 @@ void BackEnd::SlidingWindowSecondNew() {
         double dt = latest_new->v_imu_timestamp[i] - t0;
         t0 = latest_new->v_imu_timestamp[i];
         Eigen::Vector3d gyr = latest_new->v_gyr[i], acc = latest_new->v_acc[i];
-        second_new->imu_preintegration->push_back(dt, gyr, acc);
+        second_new->imupreinte->push_back(dt, acc, gyr);
     }
 
-    latest_new->imu_preintegration = second_new->imu_preintegration;
+    latest_new->imupreinte = second_new->imupreinte;
 
     latest_new->v_imu_timestamp.insert(latest_new->v_imu_timestamp.begin(),
                                        second_new->v_imu_timestamp.begin(),
@@ -522,9 +523,7 @@ void BackEnd::SolveBAImu() {
             problem.SetParameterBlockConstant(para_pose + i * 7);
         }
         else {
-            auto factor = new ImuFactor(d_frames[i]->imu_preintegration,
-                                        Eigen::Vector3d(0, 0, -gravity_magnitude),
-                                        acc_gyr_bias_invcov);
+            auto factor = new IMUFactor(d_frames[i]->imupreinte, Eigen::Vector3d(0, 0, gravity_magnitude));
             problem.AddResidualBlock(factor, NULL,
                                      para_pose + (i - 1) * 7,
                                      para_speed_bias + (i - 1) * 9,
@@ -579,7 +578,7 @@ void BackEnd::SolveBAImu() {
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i) {
-        d_frames[i]->imu_preintegration->Repropagate(d_frames[i-1]->bg, d_frames[i-1]->ba);
+        d_frames[i]->imupreinte->repropagate(d_frames[i-1]->ba, d_frames[i-1]->bg);
     }
 }
 
@@ -631,9 +630,9 @@ bool BackEnd::GyroBiasEstimation() {
     for(int i = 0, n = d_frames.size(); i < n - 1; ++i) {
         FramePtr frame_i = d_frames[i];
         FramePtr frame_i1 = d_frames[i + 1];
-        ImuPreintegrationPtr imu_preintegration = frame_i1->imu_preintegration;
-        Eigen::Matrix3d JR_bg = imu_preintegration->mJR_bg;
-        Sophus::SO3d delRi_i1 = imu_preintegration->mdelRij;
+        IntegrationBasePtr imu_preintegration = frame_i1->imupreinte;
+        Eigen::Matrix3d JR_bg = imu_preintegration->jacobian.block<3, 3>(O_R, O_BG);
+        Sophus::SO3d delRi_i1 = imu_preintegration->delta_q;
         Sophus::SO3d qwi = frame_i->q_wb, qwi1 = frame_i1->q_wb;
         Eigen::Vector3d residual = (delRi_i1.inverse() * (qwi1.inverse() * qwi)).log();
         err_0 += residual.squaredNorm();
@@ -644,205 +643,34 @@ bool BackEnd::GyroBiasEstimation() {
     Eigen::Vector3d bg = d_frames[0]->bg + H.ldlt().solve(b);
 
     for(auto& frame : d_frames) {
-        frame->imu_preintegration->Repropagate(bg, Eigen::Vector3d::Zero());
+        frame->imupreinte->repropagate(Eigen::Vector3d::Zero(), bg);
         frame->bg = bg;
     }
 
     for(int i = 0, n = d_frames.size(); i < n - 1; ++i) {
         FramePtr frame_i = d_frames[i];
         FramePtr frame_i1 = d_frames[i + 1];
-        Sophus::SO3d delRi_i1 = frame_i1->imu_preintegration->mdelRij;
+        Sophus::SO3d delRi_i1 = frame_i1->imupreinte->delta_q;
         Sophus::SO3d qwi = frame_i->q_wb, qwi1 = frame_i1->q_wb;
         Eigen::Vector3d residual = (delRi_i1.inverse() * (qwi1.inverse() * qwi)).log();
         err_1 += residual.squaredNorm();
     }
 
-    LOG(INFO) << "step 1, bg: " << bg(0) << " " << bg(1) << " " << bg(2);
-
+    LOG(INFO) << "bg: " << bg(0) << " " << bg(1) << " " << bg(2) << ", err: " << err_0 << " -> " << err_1;
     return true;
 }
 
-bool BackEnd::ScaleAndGravityApproximation() {
-
-    Eigen::MatrixXd A(3*(d_frames.size() - 2), 4);
-    Eigen::VectorXd b(3*(d_frames.size() - 2));
-
-    Sophus::SO3d q_cb = q_bc.inverse();
-    Eigen::Vector3d p_cb = -(q_cb * p_bc);
-
-    for(int i = 0, n = d_frames.size(); i < n - 2; ++i) {
-        FramePtr frame0 = d_frames[i], frame1 = d_frames[i + 1], frame2 = d_frames[i + 2];
-        // FIXME
-        Eigen::Vector3d pwc0 = frame0->q_wb * p_bc + frame0->p_wb,
-                        pwc1 = frame1->q_wb * p_bc + frame1->p_wb,
-                        pwc2 = frame2->q_wb * p_bc + frame2->p_wb;
-        Sophus::SO3d qwb0 = frame0->q_wb,
-                     qwb1 = frame1->q_wb,
-                     qwb2 = frame2->q_wb,
-                     qwc0 = qwb0 * q_bc,
-                     qwc1 = qwb1 * q_bc,
-                     qwc2 = qwb2 * q_bc;
-        //
-        Eigen::Vector3d dp01 = frame1->imu_preintegration->mdelPij,
-                        dp12 = frame2->imu_preintegration->mdelPij,
-                        dv01 = frame1->imu_preintegration->mdelVij;
-        double dt01 = frame1->imu_preintegration->mdel_tij,
-               dt12 = frame2->imu_preintegration->mdel_tij;
-        Eigen::Vector3d lambda = (pwc1 - pwc0) * dt12 - (pwc2 - pwc1) * dt01;
-        Eigen::Matrix3d beta = 0.5 * Eigen::Matrix3d::Identity() * dt01 * dt12 * (dt01 + dt12);
-        Eigen::Vector3d gamma = (qwc0.matrix() - qwc1.matrix()) * p_cb * dt12
-                               -(qwc1.matrix() - qwc2.matrix()) * p_cb * dt01
-                               + qwb0 * dp01 * dt12 - qwb1 * dp12 * dt01
-                               - qwb0 * dv01 * dt01 * dt12;
-
-        A.block<3, 1>(i * 3, 0) = lambda;
-        A.block<3, 3>(i * 3, 1) = beta;
-        b.segment(i * 3, 3) = gamma;
+Sophus::SO3d BackEnd::InitFirstIMUPose(const Eigen::VecVector3d& v_acc) {
+    Sophus::SO3d qwb;
+    Eigen::Vector3d ave_acc = Eigen::Vector3d::Zero();
+    int n = v_acc.size();
+    for(int i = 0; i < n; ++i) {
+        ave_acc += v_acc[i];
     }
+    ave_acc /= n;
 
-    // TODO
-    Eigen::Vector4d x = A.colPivHouseholderQr().solve(b);
-    double scale_value = x(0);
-    Eigen::Vector3d gw = x.tail(3);
-
-    LOG(INFO) << "step 2, scale: " << scale_value << " gw: " << gw(0) << " " << gw(1) << " " << gw(2);
-
-    AccBiasEstimationWithScaleAndGravityRefinement(gw);
-
-    return true;
-}
-
-bool BackEnd::AccBiasEstimationWithScaleAndGravityRefinement(const Eigen::Vector3d& gw) {
-    Eigen::Vector3d gw_dir = gw.normalized();
-    Eigen::Vector3d gI_dir(0, 0, -1);
-    double G = 9.81;
-
-    Eigen::Vector3d v_dir = gI_dir.cross(gw_dir);
-    v_dir.normalize();
-    double theta = std::atan2(gI_dir.cross(gw_dir).norm(), gI_dir.dot(gw_dir));
-    Sophus::SO3d RwI = Sophus::SO3d::exp(theta * v_dir);
-
-    // update law
-    // RwI <- RwI * Exp(d_Theta)
-    // d_Thera = [dtx, dty, 0]'
-
-    // wanted
-    // gw = RwI*G*gI_dir
-    Eigen::MatrixXd A(3 * (d_frames.size() - 2), 6);
-    Eigen::VectorXd b(3 * (d_frames.size() - 2));
-
-    Sophus::SO3d q_cb = q_bc.inverse();
-    Eigen::Vector3d p_cb = -(q_cb * p_bc);
-
-
-    for(int i = 0, n = d_frames.size(); i < n - 2; ++i) {
-        FramePtr frame0 = d_frames[i], frame1 = d_frames[i + 1], frame2 = d_frames[i + 2];
-        // FIXME
-        Eigen::Vector3d pwc0 = frame0->q_wb * p_bc + frame0->p_wb,
-                        pwc1 = frame1->q_wb * p_bc + frame1->p_wb,
-                        pwc2 = frame2->q_wb * p_bc + frame2->p_wb;
-        Sophus::SO3d qwb0 = frame0->q_wb,
-                     qwb1 = frame1->q_wb,
-                     qwb2 = frame2->q_wb,
-                     qwc0 = qwb0 * q_bc,
-                     qwc1 = qwb1 * q_bc,
-                     qwc2 = qwb2 * q_bc;
-        //
-        Eigen::Vector3d dp01 = frame1->imu_preintegration->mdelPij,
-                        dp12 = frame2->imu_preintegration->mdelPij,
-                        dv01 = frame1->imu_preintegration->mdelVij;
-        double dt01 = frame1->imu_preintegration->mdel_tij,
-               dt12 = frame2->imu_preintegration->mdel_tij;
-        Eigen::Matrix3d JP01_ba = frame1->imu_preintegration->mJP_ba,
-                        JP12_ba = frame2->imu_preintegration->mJP_ba,
-                        JV01_ba = frame1->imu_preintegration->mJV_ba;
-
-        Eigen::Vector3d lambda = (pwc1 - pwc0) * dt12 - (pwc2 - pwc1) * dt01;
-        Eigen::Matrix3d phi = -0.5 * RwI.matrix() * Sophus::SO3d::hat(gI_dir) * G * (dt01 * dt12) * (dt01 + dt12);
-        Eigen::Matrix3d zeta = qwb1.matrix() * JP12_ba * dt01
-                             + qwb0.matrix() * JV01_ba * dt01 * dt12
-                             - qwb0.matrix() * JV01_ba * dt12;
-        Eigen::Vector3d psi = qwb0 * dp01 * dt12 - qwb1 * dp12 * dt01 - qwb0 * dv01 * dt01 * dt12
-                           + (qwc0.matrix() - qwc1.matrix()) * p_cb * dt12
-                           - (qwc1.matrix() - qwc2.matrix()) * p_cb * dt01
-                           - 0.5 * (RwI * gI_dir) * G * (dt01 * dt12) * (dt01 + dt12);
-
-        A.block<3, 1>(3 * i, 0) = lambda;
-        A.block<3, 2>(3 * i, 1) = phi.leftCols(2);
-        A.block<3, 3>(3 * i, 3) = zeta;
-        b.segment(3 * i, 3) = psi;
-    }
-
-    Eigen::Vector6d x = A.colPivHouseholderQr().solve(b);
-
-    double scale_value = x(0);
-    Eigen::Vector3d delta_theta(x(1), x(2), 0);
-    Eigen::Vector3d ba = x.tail(3);
-
-    LOG(INFO) << "step 3, scale: " << scale_value << " delta_theta: " << delta_theta(0) << " " << delta_theta(1)
-              << " ba: " << ba(0) << " " << ba(1) << " " << ba(2);
-
-    return true;
-}
-
-bool BackEnd::GravityEstimation() {
-    Eigen::MatrixXd A(3*(d_frames.size() - 2), 3);
-    Eigen::VectorXd b(3*(d_frames.size() - 2));
-    Sophus::SO3d q_cb = q_bc.inverse();
-    Eigen::Vector3d p_cb = -(q_cb * p_bc);
-    Eigen::Matrix3d I3x3 = Eigen::Matrix3d::Identity();
-
-    for(int i = 0, n = d_frames.size(); i < n - 2; ++i) {
-        FramePtr frame0 = d_frames[i], frame1 = d_frames[i + 1], frame2 = d_frames[i + 2];
-        Eigen::Vector3d pwc0 = frame0->q_wb * p_bc + frame0->p_wb,
-                        pwc1 = frame1->q_wb * p_bc + frame1->p_wb,
-                        pwc2 = frame2->q_wb * p_bc + frame2->p_wb;
-        Sophus::SO3d qwb0 = frame0->q_wb,
-                     qwb1 = frame1->q_wb,
-                     qwb2 = frame2->q_wb,
-                     qwc0 = qwb0 * q_bc,
-                     qwc1 = qwb1 * q_bc,
-                     qwc2 = qwb2 * q_bc;
-        Eigen::Vector3d dp01 = frame1->imu_preintegration->mdelPij,
-                        dp12 = frame2->imu_preintegration->mdelPij,
-                        dv01 = frame1->imu_preintegration->mdelVij;
-        double dt01 = frame1->imu_preintegration->mdel_tij,
-               dt12 = frame2->imu_preintegration->mdel_tij;
-
-        Eigen::Matrix3d beta = 0.5 * I3x3 * (dt01 * dt12) * (dt01 + dt12);
-        Eigen::Vector3d alpha = (pwc2 - pwc1) * dt01 - (pwc1 - pwc0) * dt12
-                              + (qwc0.matrix() - qwc1.matrix()) * p_cb * dt12
-                              - (qwc1.matrix() - qwc2.matrix()) * p_cb * dt01
-                              + qwb0 * dp01 * dt12 - qwb1 * dp12 * dt01
-                              - qwb0 * dv01 * dt01 * dt12;
-
-        A.block<3, 3>(3 * i, 0) = beta;
-        b.segment(3 * i, 3) = alpha;
-    }
-
-    Eigen::Vector3d gw = A.colPivHouseholderQr().solve(b);
-
-    LOG(INFO) << "step 2, gw: " << gw(0) << " " << gw(1) << " " << gw(2) << ", |gw|: " << gw.norm();
-
-    Eigen::Vector3d gw_dir = gw.normalized();
-    Eigen::Vector3d gI_dir(0, 0, -1);
-    double G = gw.norm();
-
-    if(G < 9.7f || G > 9.9f)
-        return false;
-
-    gravity_magnitude = G;
-
-    Eigen::Vector3d v_dir = gI_dir.cross(gw_dir);
-    v_dir.normalize();
-    double theta = std::atan2(gI_dir.cross(gw_dir).norm(), gI_dir.dot(gw_dir));
-    Sophus::SO3d RwI = Sophus::SO3d::exp(theta * v_dir);
-    Sophus::SO3d RIw = RwI.inverse();
-
-    for(int i = 0, n = d_frames.size(); i < n; ++i) {
-        d_frames[i]->q_wb = RIw * d_frames[i]->q_wb;
-        d_frames[i]->p_wb = RIw * d_frames[i]->p_wb;
-    }
-
-    return true;
+    Eigen::Vector3d ngb = ave_acc.normalized();
+    Eigen::Vector3d ngw(0, 0, 1.0f);
+    qwb.setQuaternion(Eigen::Quaterniond::FromTwoVectors(ngb, ngw));
+    return qwb;
 }

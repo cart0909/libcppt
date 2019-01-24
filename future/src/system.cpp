@@ -21,7 +21,8 @@ System::System(const std::string& config_file) {
     stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.p_rl[0], param.q_rl[0]);
     backend = std::make_shared<BackEnd>(cam_m->f(), param.gyr_noise, param.acc_noise,
                                         param.gyr_bias_noise, param.acc_bias_noise,
-                                        param.p_rl[0], param.p_bc[0], param.q_rl[0], param.q_bc[0]);
+                                        param.p_rl[0], param.p_bc[0], param.q_rl[0], param.q_bc[0],
+                                        param.gravity_magnitude);
 }
 
 System::~System() {}

@@ -130,5 +130,6 @@ src/ceres/marginalization_factor.cpp
 src/ceres/imu_factor.cpp
 src/vins/marginalization_factor.cpp
 src/vins/integration_base.cpp
+src/vins/imu_factor.cpp
 )
 target_link_libraries(${PROJECT_NAME} ${THRID_PARTY_LIBS})

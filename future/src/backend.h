@@ -3,7 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include "util.h"
-#include "imu_preintegration.h"
+#include "vins/integration_base.h"
 
 class BackEnd {
 public:
@@ -36,7 +36,7 @@ public:
 
         Eigen::VecVector3d v_gyr, v_acc;
         std::vector<double> v_imu_timestamp;
-        ImuPreintegrationPtr imu_preintegration;
+        IntegrationBasePtr imupreinte;
     };
     SMART_PTR(Frame)
 
@@ -78,10 +78,10 @@ public:
     SMART_PTR(Feature)
 
     BackEnd(double focal_length_,
-            double gyr_n, double acc_n,
-            double gyr_w, double acc_w,
+            double gyr_n_, double acc_n_,
+            double gyr_w_, double acc_w_,
             const Eigen::Vector3d& p_rl_, const Eigen::Vector3d& p_bc_,
-            const Sophus::SO3d& q_rl_, const Sophus::SO3d& q_bc_,
+            const Sophus::SO3d& q_rl_, const Sophus::SO3d& q_bc_, double gravity_magnitude_,
             int window_size_ = 10, double min_parallax_ = 10.0f);
     ~BackEnd();
 
@@ -112,9 +112,7 @@ private:
     void SolveBAImu();
     void SolvePnP(FramePtr frame);
     bool GyroBiasEstimation();
-    bool GravityEstimation();
-    bool ScaleAndGravityApproximation();
-    bool AccBiasEstimationWithScaleAndGravityRefinement(const Eigen::Vector3d& gw);
+    Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
 
     std::thread thread_;
     std::mutex  m_buffer;
@@ -125,6 +123,7 @@ private:
     Eigen::Vector3d p_rl, p_bc;
     Sophus::SO3d    q_rl, q_bc;
 
+    double gyr_n, acc_n, gyr_w, acc_w;
     Eigen::Matrix3d gyr_noise_cov;
     Eigen::Matrix3d acc_noise_cov;
     Eigen::Matrix6d gyr_acc_noise_cov;

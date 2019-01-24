@@ -365,12 +365,10 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
             dx.segment(idx, size) = x - x0;
         else
         {
-            dx.segment<3>(idx + 0) = x.head<3>() - x0.head<3>();
-            dx.segment<3>(idx + 3) = 2.0 * Utility::positify(Eigen::Quaterniond(x0(6), x0(3), x0(4), x0(5)).inverse() * Eigen::Quaterniond(x(6), x(3), x(4), x(5))).vec();
-            if (!((Eigen::Quaterniond(x0(6), x0(3), x0(4), x0(5)).inverse() * Eigen::Quaterniond(x(6), x(3), x(4), x(5))).w() >= 0))
-            {
-                dx.segment<3>(idx + 3) = 2.0 * -Utility::positify(Eigen::Quaterniond(x0(6), x0(3), x0(4), x0(5)).inverse() * Eigen::Quaterniond(x(6), x(3), x(4), x(5))).vec();
-            }
+            Eigen::Map<const Sophus::SO3d> q(parameters[i]), q0(marginalization_info->keep_block_data[i]);
+            Eigen::Map<const Eigen::Vector3d> p(parameters[i] + 4), p0(marginalization_info->keep_block_data[i] + 4);
+            dx.segment<3>(idx + 0) = p - p0;
+            dx.segment<3>(idx + 3) = (q0.inverse() * q).log();
         }
     }
     Eigen::Map<Eigen::VectorXd>(residuals, n) = marginalization_info->linearized_residuals + marginalization_info->linearized_jacobians * dx;
