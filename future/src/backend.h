@@ -113,6 +113,7 @@ private:
     void SolvePnP(FramePtr frame);
     bool GyroBiasEstimation();
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
+    void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
 
     std::thread thread_;
     std::mutex  m_buffer;
@@ -158,5 +159,6 @@ private:
 
     double last_imu_t;
     double gravity_magnitude;
+    Eigen::Vector3d gw;
 };
 SMART_PTR(BackEnd)

@@ -118,7 +118,6 @@ add_library(${PROJECT_NAME} SHARED
 src/util.cpp
 src/camera.cpp
 src/feature_tracker.cpp
-src/imu_preintegration.cpp
 src/stereo_matcher.cpp
 src/config_loader.cpp
 src/system.cpp
@@ -126,8 +125,6 @@ src/backend.cpp
 src/converter.cpp
 src/ceres/local_parameterization_se3.cpp
 src/ceres/projection_factor.cpp
-src/ceres/marginalization_factor.cpp
-src/ceres/imu_factor.cpp
 src/vins/marginalization_factor.cpp
 src/vins/integration_base.cpp
 src/vins/imu_factor.cpp

@@ -1,7 +1,6 @@
 ﻿#include "backend.h"
 #include "ceres/local_parameterization_se3.h"
 #include "ceres/projection_factor.h"
-#include "ceres/imu_factor.h"
 #include "vins/imu_factor.h"
 #include <ceres/ceres.h>
 #include <glog/logging.h>
@@ -16,7 +15,7 @@ BackEnd::BackEnd(double focal_length_,
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_),
       gyr_n(gyr_n_), acc_n(acc_n_), gyr_w(gyr_w_), acc_w(acc_w_), window_size(window_size_),
       next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f),
-      gravity_magnitude(gravity_magnitude_)
+      gravity_magnitude(gravity_magnitude_), gw(0, 0, gravity_magnitude_)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
@@ -95,7 +94,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
         int num_mps = Triangulate(0);
 
-        if(num_mps > 30 && frame->v_imu_timestamp.size() >= 5) {
+        if(num_mps >= 30 && frame->v_imu_timestamp.size() >= 5) {
             frame->q_wb = InitFirstIMUPose(frame->v_acc);
             frame->imupreinte = std::make_shared<IntegrationBase>(frame->v_acc[0], frame->v_gyr[0], frame->ba, frame->bg, acc_n, gyr_n, acc_w, gyr_w);
             last_imu_t = frame->v_imu_timestamp.back();
@@ -113,20 +112,8 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
         FramePtr last_frame = *(d_frames.end() - 2);
 
-        frame->q_wb = last_frame->q_wb;
-        frame->p_wb = last_frame->p_wb;
-        frame->v_wb = last_frame->v_wb;
-        frame->ba = last_frame->ba;
-        frame->bg = last_frame->bg;
-        frame->imupreinte = std::make_shared<IntegrationBase>(frame->v_acc[0], frame->v_gyr[0], last_frame->ba, last_frame->bg, acc_n, gyr_n, acc_w, gyr_w);
-
-        for(int i = 0, n = frame->v_acc.size(); i < n; ++i) {
-            double imu_t = frame->v_imu_timestamp[i], dt = imu_t - last_imu_t;
-            last_imu_t = imu_t;
-            Eigen::Vector3d gyr = frame->v_gyr[i];
-            Eigen::Vector3d acc = frame->v_acc[i];
-            frame->imupreinte->push_back(dt, acc, gyr);
-        }
+        // predict next frame pose from last frame
+        PredictNextFramePose(last_frame, frame);
 
         if(state == CV_ONLY)
             SolveBA();
@@ -389,7 +376,6 @@ void BackEnd::Reset() {
     m_features.clear();
     next_frame_id = 0;
     last_imu_t = -1.0f;
-    gravity_magnitude = -1.0f;
 }
 
 void BackEnd::data2double() {
@@ -574,7 +560,7 @@ void BackEnd::SolveBAImu() {
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-    LOG(INFO) << summary.FullReport();
+//    LOG(INFO) << summary.FullReport();
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i) {
@@ -673,4 +659,38 @@ Sophus::SO3d BackEnd::InitFirstIMUPose(const Eigen::VecVector3d& v_acc) {
     Eigen::Vector3d ngw(0, 0, 1.0f);
     qwb.setQuaternion(Eigen::Quaterniond::FromTwoVectors(ngb, ngw));
     return qwb;
+}
+
+void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
+    cur_frame->q_wb = ref_frame->q_wb;
+    cur_frame->p_wb = ref_frame->p_wb;
+    cur_frame->v_wb = ref_frame->v_wb;
+    cur_frame->ba = ref_frame->ba;
+    cur_frame->bg = ref_frame->bg;
+    cur_frame->imupreinte = std::make_shared<IntegrationBase>(
+                ref_frame->v_acc.back(), ref_frame->v_gyr.back(),
+                ref_frame->ba, ref_frame->bg,
+                acc_n, gyr_n, acc_w, gyr_w);
+
+    Eigen::Vector3d gyr_0 = ref_frame->v_gyr.back(), acc_0 = ref_frame->v_acc.back();
+    double t0 = ref_frame->v_imu_timestamp.back();
+
+    for(int i = 0, n = cur_frame->v_acc.size(); i < n; ++i) {
+        double t = cur_frame->v_imu_timestamp[i], dt = t - t0;
+        Eigen::Vector3d gyr = cur_frame->v_gyr[i];
+        Eigen::Vector3d acc = cur_frame->v_acc[i];
+        cur_frame->imupreinte->push_back(dt, acc, gyr);
+
+        Eigen::Vector3d un_acc_0 = cur_frame->q_wb * (acc_0 - ref_frame->ba) - gw;
+        Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + gyr) - ref_frame->bg;
+        cur_frame->q_wb = cur_frame->q_wb * Sophus::SO3d::exp(un_gyr * dt);
+        Eigen::Vector3d un_acc_1 = cur_frame->q_wb * (acc - ref_frame->ba) - gw;
+        Eigen::Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
+        cur_frame->p_wb += dt * cur_frame->v_wb + 0.5 * dt * dt * un_acc;
+        cur_frame->v_wb += dt * un_acc;
+
+        gyr_0 = gyr;
+        acc_0 = acc;
+        t0 = t;
+    }
 }
