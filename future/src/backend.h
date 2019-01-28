@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include "util.h"
 #include "vins/integration_base.h"
+#include "vins/marginalization_factor.h"
 
 class BackEnd {
 public:
@@ -114,6 +115,7 @@ private:
     bool GyroBiasEstimation();
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
     void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
+    void Marginalize();
 
     std::thread thread_;
     std::mutex  m_buffer;
@@ -160,5 +162,8 @@ private:
     double last_imu_t;
     double gravity_magnitude;
     Eigen::Vector3d gw;
+
+    std::vector<double*> para_margin_block;
+    MarginalizationInfo* last_margin_info;
 };
 SMART_PTR(BackEnd)

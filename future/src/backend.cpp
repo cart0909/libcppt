@@ -15,7 +15,7 @@ BackEnd::BackEnd(double focal_length_,
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_),
       gyr_n(gyr_n_), acc_n(acc_n_), gyr_w(gyr_w_), acc_w(acc_w_), window_size(window_size_),
       next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f),
-      gravity_magnitude(gravity_magnitude_), gw(0, 0, gravity_magnitude_)
+      gravity_magnitude(gravity_magnitude_), gw(0, 0, gravity_magnitude_), last_margin_info(nullptr)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
@@ -376,6 +376,7 @@ void BackEnd::Reset() {
     m_features.clear();
     next_frame_id = 0;
     last_imu_t = -1.0f;
+    last_margin_info = nullptr;
 }
 
 void BackEnd::data2double() {
@@ -407,6 +408,9 @@ void BackEnd::data2double() {
 }
 
 void BackEnd::double2data() {
+    Sophus::SO3d q_w0b0 = d_frames[0]->q_wb;
+    Eigen::Vector3d p_w0b0 = d_frames[0]->p_wb;
+
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         size_t idx_pose = i * 7;
         size_t idx_vb = i * 9;
@@ -415,6 +419,16 @@ void BackEnd::double2data() {
         std::memcpy(d_frames[i]->v_wb.data(), para_speed_bias + idx_vb , sizeof(double) * 3);
         std::memcpy(d_frames[i]->ba.data(), para_speed_bias + idx_vb + 3 , sizeof(double) * 3);
         std::memcpy(d_frames[i]->bg.data(), para_speed_bias + idx_vb + 6 , sizeof(double) * 3);
+    }
+
+    Sophus::SO3d q_w1b0 = d_frames[0]->q_wb;
+    double y_diff = Sophus::R2ypr(q_w0b0)(0) - Sophus::R2ypr(q_w1b0)(0);
+    Sophus::SO3d q_w0w1 = Sophus::ypr2R<double>(y_diff, 0, 0);
+
+    for(int i = 0, n = d_frames.size(); i < n; ++i) {
+        d_frames[i]->q_wb = q_w0w1 * d_frames[i]->q_wb;
+        d_frames[i]->p_wb = q_w0w1 * (d_frames[i]->p_wb - d_frames[0]->p_wb) + p_w0b0;
+        d_frames[i]->v_wb = q_w0w1 * d_frames[i]->v_wb;
     }
 
     size_t num_mps = 0;
@@ -502,13 +516,15 @@ void BackEnd::SolveBAImu() {
     ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
+    if(last_margin_info) {
+        auto factor = new MarginalizationFactor(last_margin_info);
+        problem.AddResidualBlock(factor, NULL, para_margin_block);
+    }
+
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         problem.AddParameterBlock(para_pose + i * 7, 7, local_para_se3);
 
-        if(i == 0) {
-            problem.SetParameterBlockConstant(para_pose + i * 7);
-        }
-        else {
+        if(i != 0) {
             auto factor = new IMUFactor(d_frames[i]->imupreinte, Eigen::Vector3d(0, 0, gravity_magnitude));
             problem.AddResidualBlock(factor, NULL,
                                      para_pose + (i - 1) * 7,
@@ -556,16 +572,19 @@ void BackEnd::SolveBAImu() {
     options.trust_region_strategy_type = ceres::DOGLEG;
     options.max_num_iterations = 10;
     options.num_threads = 4;
-//    options.max_solver_time_in_seconds = 0.05; // 50 ms for solver and 50 ms for other
+    options.max_solver_time_in_seconds = 0.05; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-//    LOG(INFO) << summary.FullReport();
+    LOG(INFO) << summary.FullReport();
+
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i) {
         d_frames[i]->imupreinte->repropagate(d_frames[i-1]->ba, d_frames[i-1]->bg);
     }
+
+    Marginalize();
 }
 
 void BackEnd::SolvePnP(FramePtr frame) {
@@ -657,7 +676,8 @@ Sophus::SO3d BackEnd::InitFirstIMUPose(const Eigen::VecVector3d& v_acc) {
 
     Eigen::Vector3d ngb = ave_acc.normalized();
     Eigen::Vector3d ngw(0, 0, 1.0f);
-    qwb.setQuaternion(Eigen::Quaterniond::FromTwoVectors(ngb, ngw));
+    Eigen::Vector3d ypr = Sophus::R2ypr(Eigen::Quaterniond::FromTwoVectors(ngb, ngw));
+    qwb = Sophus::ypr2R<double>(0, ypr(1), ypr(2));
     return qwb;
 }
 
@@ -692,5 +712,141 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
         gyr_0 = gyr;
         acc_0 = acc;
         t0 = t;
+    }
+}
+
+void BackEnd::Marginalize() {
+    if(marginalization_flag == MARGIN_OLD) {
+        ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
+        MarginalizationInfo* margin_info = new MarginalizationInfo();
+        data2double();
+
+        if(last_margin_info) {
+            std::vector<int> drop_set;
+            for(int i = 0, n = para_margin_block.size(); i < n ; ++i) {
+                if(para_margin_block[i] == para_pose ||
+                   para_margin_block[i] == para_speed_bias)
+                    drop_set.emplace_back(i);
+            }
+
+            auto factor = new MarginalizationFactor(last_margin_info);
+            auto residual_block_info = new ResidualBlockInfo(factor, NULL,
+                                                             para_margin_block,
+                                                             drop_set);
+            margin_info->addResidualBlockInfo(residual_block_info);
+        }
+
+        // imu
+        {
+            auto factor = new IMUFactor(d_frames[1]->imupreinte, gw);
+            auto residual_block_info = new ResidualBlockInfo(factor, NULL,
+                                                             std::vector<double*>{para_pose, para_speed_bias,
+                                                                                  para_pose + 6, para_speed_bias + 9},
+                                                             std::vector<int>{0, 1});
+            margin_info->addResidualBlockInfo(residual_block_info);
+        }
+
+        // features
+        int feature_index = -1;
+        for(auto& it : m_features) {
+            auto& feat = it.second;
+            if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
+                continue;
+            }
+            ++feature_index;
+
+            int id_i = feat.start_id;
+            if(id_i != 0)
+                continue;
+
+            Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
+
+            for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j) {
+                size_t id_j = id_i + j;
+                Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
+
+                if(j != 0) {
+                    auto factor = new ProjectionFactor(pt_i, pt_j, q_bc, p_bc, focal_length);
+                    auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
+                                                                     std::vector<double*>{para_pose, para_pose + id_j * 7, para_features + feature_index},
+                                                                     std::vector<int>{0, 2});
+                    margin_info->addResidualBlockInfo(residual_block_info);
+                }
+
+                if(feat.pt_r_n_per_frame[j](0) != -1.0f) {
+                    Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
+                    if(j == 0) {
+                        auto factor = new SelfProjectionFactor(pt_j, pt_jr, q_rl, p_rl, focal_length);
+                        auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
+                                                                         std::vector<double*>{para_features + feature_index},
+                                                                         std::vector<int>{0});
+                        margin_info->addResidualBlockInfo(residual_block_info);
+                    }
+                    else {
+                        auto factor = new SlaveProjectionFactor(pt_i, pt_jr, q_rl, p_rl, q_bc, p_bc, focal_length);
+                        auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
+                                                                         std::vector<double*>{para_pose, para_pose + id_j * 7, para_features + feature_index},
+                                                                         std::vector<int>{0, 2});
+                        margin_info->addResidualBlockInfo(residual_block_info);
+                    }
+                }
+            }
+        }
+
+        margin_info->preMarginalize();
+        margin_info->marginalize();
+
+        std::unordered_map<long, double *> addr_shift;
+        for(int i = 1, n = d_frames.size(); i < n; ++i) {
+            addr_shift[reinterpret_cast<long>(para_pose + 7 * i)] = para_pose + 7 * (i - 1);
+            addr_shift[reinterpret_cast<long>(para_speed_bias + 9 * i)] = para_speed_bias + 9 * (i - 1);
+        }
+
+        std::vector<double*> parameter_blocks = margin_info->getParameterBlocks(addr_shift);
+
+        if(last_margin_info)
+            delete last_margin_info;
+        last_margin_info = margin_info;
+        para_margin_block = parameter_blocks;
+    }
+    else if(marginalization_flag == MARGIN_SECOND_NEW) {
+        auto it = std::find(para_margin_block.begin(), para_margin_block.end(), para_pose + 7 * (d_frames.size() - 2));
+        if(last_margin_info && it != para_margin_block.end()) {
+            MarginalizationInfo* margin_info = new MarginalizationInfo();
+            data2double();
+
+            std::vector<int> drop_set;
+            drop_set.emplace_back(it - para_margin_block.begin());
+
+            auto factor = new MarginalizationFactor(last_margin_info);
+            auto residual_block_info = new ResidualBlockInfo(factor, NULL,
+                                                             para_margin_block,
+                                                             drop_set);
+            margin_info->addResidualBlockInfo(residual_block_info);
+
+            margin_info->preMarginalize();
+            margin_info->marginalize();
+
+            std::unordered_map<long, double*> addr_shift;
+            for(int i = 0, n = d_frames.size(); i < n; ++i) {
+                if(i == n - 2) {
+                    continue;
+                }
+                else if(i == n - 1) {
+                    addr_shift[reinterpret_cast<long>(para_pose + 7 * i)] = para_pose + 7 * (i - 1);
+                    addr_shift[reinterpret_cast<long>(para_speed_bias + 9 * i)] = para_speed_bias + 9 * (i - 1);
+                }
+                else {
+                    addr_shift[reinterpret_cast<long>(para_pose + 7 * i)] = para_pose + 7 * i;
+                    addr_shift[reinterpret_cast<long>(para_speed_bias + 9 * i)] = para_speed_bias + 9 * i;
+                }
+            }
+
+            std::vector<double*> parameter_blocks = margin_info->getParameterBlocks(addr_shift);
+            if(last_margin_info)
+                delete last_margin_info;
+            last_margin_info = margin_info;
+            para_margin_block = parameter_blocks;
+        }
     }
 }

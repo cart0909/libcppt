@@ -187,6 +187,24 @@ Eigen::Matrix<typename Derived::Scalar, 4, 4> Qright(const Sophus::SO3Base<Deriv
     return ans;
 }
 
+template<typename Derived>
+Eigen::Matrix<typename Derived::Scalar, 3, 1> R2ypr(const Sophus::SO3Base<Derived>& q) {
+    return q.matrix().eulerAngles(2, 1, 0);
+}
+
+template<typename Derived>
+Eigen::Matrix<typename Derived::Scalar, 3, 1> R2ypr(const Eigen::QuaternionBase<Derived>& q) {
+    return q.matrix().eulerAngles(2, 1, 0);
+}
+
+template<class Scalar>
+Sophus::SO3<Scalar> ypr2R(Scalar yaw, Scalar pitch, Scalar roll) {
+    Sophus::SO3<Scalar> q(Eigen::AngleAxisd(yaw  , Eigen::Vector3d::UnitZ()) *
+                          Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
+                          Eigen::AngleAxisd(roll , Eigen::Vector3d::UnitX()));
+    return q;
+}
+
 };
 
 namespace util {
