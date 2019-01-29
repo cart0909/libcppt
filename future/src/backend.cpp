@@ -128,26 +128,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
         SlidingWindow();
 
-        if(draw_pose) {
-            draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb * q_bc, frame->q_wb * p_bc + frame->p_wb));
-        }
-
-        if(draw_mps) {
-            Eigen::VecVector3d mps;
-
-            for(auto& it : m_features) {
-                auto& feat = it.second;
-                if(feat.inv_depth == -1.0f)
-                    continue;
-                Sophus::SE3d Twb(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
-                Sophus::SE3d Tbc(q_bc, p_bc);
-                Eigen::Vector3d x3Dc = feat.pt_n_per_frame[0] / feat.inv_depth;
-                Eigen::Vector3d x3Dw = Twb * Tbc * x3Dc;
-                mps.emplace_back(x3Dw);
-            }
-
-            draw_mps(mps);
-        }
+        DrawUI();
     }
 }
 
@@ -422,7 +403,11 @@ void BackEnd::double2data() {
     }
 
     Sophus::SO3d q_w1b0 = d_frames[0]->q_wb;
-    double y_diff = Sophus::R2ypr(q_w0b0)(0) - Sophus::R2ypr(q_w1b0)(0);
+    double y_diff = Sophus::R2ypr(q_w0b0 * q_w1b0.inverse())(0);
+
+    if(y_diff * 2 > M_PI)
+        y_diff -= M_PI;
+
     Sophus::SO3d q_w0w1 = Sophus::ypr2R<double>(y_diff, 0, 0);
 
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
@@ -516,22 +501,22 @@ void BackEnd::SolveBAImu() {
     ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
-    if(last_margin_info) {
-        auto factor = new MarginalizationFactor(last_margin_info);
-        problem.AddResidualBlock(factor, NULL, para_margin_block);
-    }
-
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         problem.AddParameterBlock(para_pose + i * 7, 7, local_para_se3);
 
         if(i != 0) {
-            auto factor = new IMUFactor(d_frames[i]->imupreinte, Eigen::Vector3d(0, 0, gravity_magnitude));
+            auto factor = new IMUFactor(d_frames[i]->imupreinte, gw);
             problem.AddResidualBlock(factor, NULL,
                                      para_pose + (i - 1) * 7,
                                      para_speed_bias + (i - 1) * 9,
                                      para_pose + i * 7,
                                      para_speed_bias + i * 9);
         }
+    }
+
+    if(last_margin_info) {
+        auto factor = new MarginalizationFactor(last_margin_info);
+        problem.AddResidualBlock(factor, NULL, para_margin_block);
     }
 
     size_t mp_idx = 0;
@@ -717,8 +702,8 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
 
 void BackEnd::Marginalize() {
     if(marginalization_flag == MARGIN_OLD) {
-        ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
-        MarginalizationInfo* margin_info = new MarginalizationInfo();
+        auto loss_function = new ceres::HuberLoss(std::sqrt(5.991));
+        auto margin_info = new MarginalizationInfo();
         data2double();
 
         if(last_margin_info) {
@@ -741,7 +726,7 @@ void BackEnd::Marginalize() {
             auto factor = new IMUFactor(d_frames[1]->imupreinte, gw);
             auto residual_block_info = new ResidualBlockInfo(factor, NULL,
                                                              std::vector<double*>{para_pose, para_speed_bias,
-                                                                                  para_pose + 6, para_speed_bias + 9},
+                                                                                  para_pose + 7, para_speed_bias + 9},
                                                              std::vector<int>{0, 1});
             margin_info->addResidualBlockInfo(residual_block_info);
         }
@@ -804,6 +789,7 @@ void BackEnd::Marginalize() {
 
         std::vector<double*> parameter_blocks = margin_info->getParameterBlocks(addr_shift);
 
+
         if(last_margin_info)
             delete last_margin_info;
         last_margin_info = margin_info;
@@ -812,12 +798,11 @@ void BackEnd::Marginalize() {
     else if(marginalization_flag == MARGIN_SECOND_NEW) {
         auto it = std::find(para_margin_block.begin(), para_margin_block.end(), para_pose + 7 * (d_frames.size() - 2));
         if(last_margin_info && it != para_margin_block.end()) {
-            MarginalizationInfo* margin_info = new MarginalizationInfo();
+            auto margin_info = new MarginalizationInfo();
             data2double();
 
             std::vector<int> drop_set;
             drop_set.emplace_back(it - para_margin_block.begin());
-
             auto factor = new MarginalizationFactor(last_margin_info);
             auto residual_block_info = new ResidualBlockInfo(factor, NULL,
                                                              para_margin_block,
@@ -843,10 +828,47 @@ void BackEnd::Marginalize() {
             }
 
             std::vector<double*> parameter_blocks = margin_info->getParameterBlocks(addr_shift);
+
             if(last_margin_info)
                 delete last_margin_info;
             last_margin_info = margin_info;
             para_margin_block = parameter_blocks;
         }
+    }
+}
+
+void BackEnd::DrawUI() {
+
+    auto frame = d_frames.back();
+
+    if(draw_pose) {
+        draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb * q_bc, frame->q_wb * p_bc + frame->p_wb));
+    }
+
+    if(draw_mps) {
+        Eigen::VecVector3d mps;
+
+        for(auto& it : m_features) {
+            auto& feat = it.second;
+            if(feat.inv_depth == -1.0f)
+                continue;
+            Sophus::SE3d Twb(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
+            Sophus::SE3d Tbc(q_bc, p_bc);
+            Eigen::Vector3d x3Dc = feat.pt_n_per_frame[0] / feat.inv_depth;
+            Eigen::Vector3d x3Dw = Twb * Tbc * x3Dc;
+            mps.emplace_back(x3Dw);
+        }
+
+        draw_mps(mps);
+    }
+
+    if(draw_sw) {
+        std::vector<Sophus::SE3d> v_Twc;
+
+        for(int i = 0, n = d_frames.size(); i < n - 1; ++i) {
+            v_Twc.emplace_back(d_frames[i]->q_wb * q_bc, d_frames[i]->q_wb * p_bc + d_frames[i]->p_wb);
+        }
+
+        draw_sw(frame->id, frame->timestamp, v_Twc);
     }
 }

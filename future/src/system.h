@@ -24,6 +24,9 @@ public:
     inline void SetDrawPoseCallback(std::function<void(uint64_t, double, const Sophus::SE3d&)> callback) {
         backend->SetDrawPoseCallback(callback);
     }
+    inline void SetDrawSlidingWindowCallback(std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> callback) {
+        backend->SetDrawSlidingWindowCallback(callback);
+    }
 private:
     std::atomic<bool> reset_flag;
     bool b_first_frame = true;

@@ -49,7 +49,10 @@ public:
         system->SetDrawTrackingImgCallback(std::bind(&Node::PubTrackImg, this, std::placeholders::_1,
                                                      std::placeholders::_2, std::placeholders::_3));
         system->SetDrawMapPointCallback(std::bind(&Node::PubMapPoint, this, std::placeholders::_1));
-        system->SetDrawPoseCallback(std::bind(&Node::PubCurPose, this, std::placeholders::_1, std::placeholders::_2,std::placeholders::_3));
+        system->SetDrawPoseCallback(std::bind(&Node::PubCurPose, this, std::placeholders::_1,
+                                              std::placeholders::_2,std::placeholders::_3));
+        system->SetDrawSlidingWindowCallback(std::bind(&Node::PubSlidingWindow, this, std::placeholders::_1,
+                                                       std::placeholders::_2, std::placeholders::_3));
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
@@ -187,15 +190,16 @@ public:
         pub_mappoints.publish(msgs_points);
     }
 
-    void PubSlidingWindow(const std::vector<Sophus::SE3d>& v_Twc,
-                          const Eigen::VecVector3d& v_x3Dw) {
+    void PubSlidingWindow(uint64_t seq, double timestamp, const std::vector<Sophus::SE3d>& v_Twc) {
         if(v_Twc.empty())
             return;
 
-        static Sophus::SE3d Tglw = Sophus::SE3d::rotZ(-M_PI/2) * Sophus::SE3d::rotY(-M_PI/2);
+        static Sophus::SE3d Tglw;
         { // print keyframe point
             visualization_msgs::Marker key_poses;
             key_poses.header.frame_id = "world";
+            key_poses.header.seq = seq;
+            key_poses.header.stamp.fromSec(timestamp);
             key_poses.ns = "keyframes";
             key_poses.type = visualization_msgs::Marker::SPHERE_LIST;
             key_poses.action = visualization_msgs::Marker::ADD;
@@ -218,33 +222,6 @@ public:
                 key_poses.points.emplace_back(pose_marker);
             }
             pub_keyframes.publish(key_poses);
-        }
-
-        { // print map point
-            visualization_msgs::Marker msgs_points;
-            msgs_points.header.frame_id = "world";
-            msgs_points.ns = "mappoint";
-            msgs_points.type = visualization_msgs::Marker::SPHERE_LIST;
-            msgs_points.action = visualization_msgs::Marker::ADD;
-            msgs_points.pose.orientation.w = 1.0;
-            msgs_points.lifetime = ros::Duration();
-
-            msgs_points.id = 0;
-            msgs_points.scale.x = 0.01;
-            msgs_points.scale.y = 0.01;
-            msgs_points.scale.z = 0.01;
-            msgs_points.color.g = 1.0;
-            msgs_points.color.a = 1.0;
-
-            for(auto& x3Dw : v_x3Dw) {
-                geometry_msgs::Point point_marker;
-                Eigen::Vector3d X = Tglw * x3Dw;
-                point_marker.x = X(0);
-                point_marker.y = X(1);
-                point_marker.z = X(2);
-                msgs_points.points.emplace_back(point_marker);
-            }
-            pub_mappoints.publish(msgs_points);
         }
     }
 

@@ -96,6 +96,10 @@ public:
         draw_pose = callback;
     }
 
+    inline void SetDrawSlidingWindowCallback(std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> callback) {
+        draw_sw = callback;
+    }
+
     inline void ResetRequest() {
         request_reset_flag = true;
     }
@@ -116,6 +120,7 @@ private:
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
     void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
     void Marginalize();
+    void DrawUI();
 
     std::thread thread_;
     std::mutex  m_buffer;
@@ -165,5 +170,7 @@ private:
 
     std::vector<double*> para_margin_block;
     MarginalizationInfo* last_margin_info;
+
+    std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> draw_sw;
 };
 SMART_PTR(BackEnd)
