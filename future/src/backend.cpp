@@ -126,9 +126,10 @@ void BackEnd::ProcessFrame(FramePtr frame) {
             state = TIGHTLY;
         }
 
-        SlidingWindow();
-
-        DrawUI();
+        if(state == TIGHTLY) {
+            SlidingWindow();
+            DrawUI();
+        }
     }
 }
 
@@ -409,10 +410,10 @@ void BackEnd::double2data() {
         y_diff -= M_PI;
 
     Sophus::SO3d q_w0w1 = Sophus::ypr2R<double>(y_diff, 0, 0);
-
+    Eigen::Vector3d p_w1b0 = d_frames[0]->p_wb;
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         d_frames[i]->q_wb = q_w0w1 * d_frames[i]->q_wb;
-        d_frames[i]->p_wb = q_w0w1 * (d_frames[i]->p_wb - d_frames[0]->p_wb) + p_w0b0;
+        d_frames[i]->p_wb = q_w0w1 * (d_frames[i]->p_wb - p_w1b0) + p_w0b0;
         d_frames[i]->v_wb = q_w0w1 * d_frames[i]->v_wb;
     }
 
@@ -561,15 +562,14 @@ void BackEnd::SolveBAImu() {
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-    LOG(INFO) << summary.FullReport();
+//    LOG(INFO) << summary.FullReport();
 
     double2data();
+//    Marginalize();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i) {
         d_frames[i]->imupreinte->repropagate(d_frames[i-1]->ba, d_frames[i-1]->bg);
     }
-
-    Marginalize();
 }
 
 void BackEnd::SolvePnP(FramePtr frame) {
@@ -838,6 +838,8 @@ void BackEnd::Marginalize() {
 }
 
 void BackEnd::DrawUI() {
+    if(d_frames.empty())
+        return;
 
     auto frame = d_frames.back();
 
