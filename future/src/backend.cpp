@@ -392,29 +392,27 @@ void BackEnd::data2double() {
 void BackEnd::double2data() {
     Sophus::SO3d q_w0b0 = d_frames[0]->q_wb;
     Eigen::Vector3d p_w0b0 = d_frames[0]->p_wb;
-
-    for(int i = 0, n = d_frames.size(); i < n; ++i) {
-        size_t idx_pose = i * 7;
-        size_t idx_vb = i * 9;
-        std::memcpy(d_frames[i]->q_wb.data(), para_pose + idx_pose, sizeof(double) * Sophus::SO3d::num_parameters);
-        std::memcpy(d_frames[i]->p_wb.data(), para_pose + idx_pose + 4, sizeof(double) * 3);
-        std::memcpy(d_frames[i]->v_wb.data(), para_speed_bias + idx_vb , sizeof(double) * 3);
-        std::memcpy(d_frames[i]->ba.data(), para_speed_bias + idx_vb + 3 , sizeof(double) * 3);
-        std::memcpy(d_frames[i]->bg.data(), para_speed_bias + idx_vb + 6 , sizeof(double) * 3);
-    }
-
-    Sophus::SO3d q_w1b0 = d_frames[0]->q_wb;
+    Eigen::Map<Sophus::SO3d> q_w1b0(para_pose);
+    Eigen::Map<Eigen::Vector3d> p_w1b0(para_pose + 4);
     double y_diff = Sophus::R2ypr(q_w0b0 * q_w1b0.inverse())(0);
 
     if(y_diff * 2 > M_PI)
         y_diff -= M_PI;
 
-    Sophus::SO3d q_w0w1 = Sophus::ypr2R<double>(y_diff, 0, 0);
-    Eigen::Vector3d p_w1b0 = d_frames[0]->p_wb;
+    Sophus::SO3d q_w2w1 = Sophus::ypr2R<double>(y_diff, 0, 0);
+    Eigen::Vector3d p_w2w1 = -(q_w2w1 * p_w1b0) + q_w2w1 * q_w1b0 * q_w0b0.inverse() * p_w0b0;
+
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
-        d_frames[i]->q_wb = q_w0w1 * d_frames[i]->q_wb;
-        d_frames[i]->p_wb = q_w0w1 * (d_frames[i]->p_wb - p_w1b0) + p_w0b0;
-        d_frames[i]->v_wb = q_w0w1 * d_frames[i]->v_wb;
+        size_t idx_pose = i * 7;
+        size_t idx_vb = i * 9;
+        Eigen::Map<Sophus::SO3d> q_w1b(para_pose + idx_pose);
+        Eigen::Map<Eigen::Vector3d> p_w1b(para_pose + idx_pose + 4);
+        Eigen::Map<Eigen::Vector3d> v_w1b(para_speed_bias + idx_vb);
+        d_frames[i]->q_wb = q_w2w1 * q_w1b;
+        d_frames[i]->p_wb = q_w2w1 * p_w1b + p_w2w1;
+        d_frames[i]->v_wb = q_w2w1 * v_w1b;
+        std::memcpy(d_frames[i]->ba.data(), para_speed_bias + idx_vb + 3 , sizeof(double) * 3);
+        std::memcpy(d_frames[i]->bg.data(), para_speed_bias + idx_vb + 6 , sizeof(double) * 3);
     }
 
     size_t num_mps = 0;
