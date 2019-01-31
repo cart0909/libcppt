@@ -3,40 +3,35 @@
 
 class Camera {
 public:
-    Camera(uint width_, uint height_);
+    Camera(int width_, int height_);
     virtual ~Camera();
 
     virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const = 0;
-    virtual Eigen::Vector2d Project(const Eigen::Vector3d& P) const = 0;
+    Eigen::Vector2d Project(const Eigen::Vector3d& P) const;
 
     virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const = 0;
-    virtual Eigen::Vector3d BackProject(const Eigen::Vector2d& p) const = 0;
+    Eigen::Vector3d BackProject(const Eigen::Vector2d& p) const;
 
     // pd_u = p_u + d_u
     virtual void Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J = nullptr) const = 0;
-    virtual Eigen::Vector2d Distortion(const Eigen::Vector2d& p_u) const = 0;
+    Eigen::Vector2d Distortion(const Eigen::Vector2d& p_u) const;
     virtual double f() const = 0;
 
-    const uint width;
-    const uint height;
+    const int width;
+    const int height;
 };
 
 SMART_PTR(Camera);
 
 class IdealPinhole : public Camera {
 public:
-    IdealPinhole(uint width, uint height, double fx_, double fy_, double cx_, double cy_);
+    IdealPinhole(int width, int height, double fx_, double fy_, double cx_, double cy_);
     virtual ~IdealPinhole();
 
     virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const;
-    virtual Eigen::Vector2d Project(const Eigen::Vector3d& P) const;
-
     virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
-    virtual Eigen::Vector3d BackProject(const Eigen::Vector2d& p) const;
-
     // pd_u = p_u + d_u
     virtual void Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J = nullptr) const;
-    virtual Eigen::Vector2d Distortion(const Eigen::Vector2d& p_u) const;
 
     virtual double f() const;
 
@@ -50,19 +45,14 @@ SMART_PTR(IdealPinhole);
 
 class Pinhole : public IdealPinhole {
 public:
-    Pinhole(uint width, uint height, double fx, double fy, double cx, double cy,
+    Pinhole(int width, int height, double fx, double fy, double cx, double cy,
             double k1_, double k2_, double p1_, double p2_);
     virtual ~Pinhole();
 
     virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const;
-    virtual Eigen::Vector2d Project(const Eigen::Vector3d& P) const;
-
     virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
-    virtual Eigen::Vector3d BackProject(const Eigen::Vector2d& p) const;
-
     // pd_u = p_u + d_u
     virtual void Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J = nullptr) const;
-    virtual Eigen::Vector2d Distortion(const Eigen::Vector2d& p_u) const;
 
     const double k1;
     const double k2;
@@ -71,3 +61,20 @@ public:
 };
 
 SMART_PTR(Pinhole);
+
+class Fisheye : public IdealPinhole {
+public:
+    Fisheye(int width, int height, double fx, double fy, double cx, double cy,
+            double k1_, double k2_, double k3_, double k4_);
+    virtual ~Fisheye();
+
+    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const;
+    virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
+    // pd_u = p_u + d_u
+    virtual void Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J = nullptr) const;
+
+    const double k1;
+    const double k2;
+    const double k3;
+    const double k4;
+};

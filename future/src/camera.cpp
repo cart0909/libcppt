@@ -1,9 +1,27 @@
 #include "camera.h"
 
-Camera::Camera(uint width_, uint height_) : width(width_), height(height_) {}
+Camera::Camera(int width_, int height_) : width(width_), height(height_) {}
 Camera::~Camera() {}
 
-IdealPinhole::IdealPinhole(uint width, uint height, double fx_, double fy_, double cx_, double cy_)
+Eigen::Vector2d Camera::Project(const Eigen::Vector3d& P) const {
+    Eigen::Vector2d p;
+    Project(P, p);
+    return p;
+}
+
+Eigen::Vector3d Camera::BackProject(const Eigen::Vector2d& p) const {
+    Eigen::Vector3d P;
+    BackProject(p, P);
+    return P;
+}
+
+Eigen::Vector2d Camera::Distortion(const Eigen::Vector2d& p_u) const {
+    Eigen::Vector2d d_u;
+    Distortion(p_u, d_u);
+    return d_u;
+}
+
+IdealPinhole::IdealPinhole(int width, int height, double fx_, double fy_, double cx_, double cy_)
     : Camera(width, height), fx(fx_), fy(fy_), cx(cx_), cy(cy_) {}
 IdealPinhole::~IdealPinhole() {}
 
@@ -19,22 +37,10 @@ void IdealPinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::
     }
 }
 
-Eigen::Vector2d IdealPinhole::Project(const Eigen::Vector3d& P) const {
-    Eigen::Vector2d p;
-    Project(P, p);
-    return p;
-}
-
 void IdealPinhole::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
     const double inv_fx = 1.0f / fx;
     const double inv_fy = 1.0f / fy;
     P << (p(0) - cx) * inv_fx, (p(1) - cy) * inv_fy, 1;
-}
-
-Eigen::Vector3d IdealPinhole::BackProject(const Eigen::Vector2d& p) const {
-    Eigen::Vector3d P;
-    BackProject(p, P);
-    return P;
 }
 
 // p_d = p_u + d_u
@@ -46,17 +52,11 @@ void IdealPinhole::Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, 
     }
 }
 
-Eigen::Vector2d IdealPinhole::Distortion(const Eigen::Vector2d& p_u) const {
-    Eigen::Vector2d d_u;
-    Distortion(p_u, d_u);
-    return d_u;
-}
-
 double IdealPinhole::f() const {
     return fx;
 }
 
-Pinhole::Pinhole(uint width, uint height, double fx, double fy, double cx, double cy,
+Pinhole::Pinhole(int width, int height, double fx, double fy, double cx, double cy,
                  double k1_, double k2_, double p1_, double p2_)
     : IdealPinhole(width, height, fx, fy, cx, cy), k1(k1_), k2(k2_), p1(p1_), p2(p2_) {}
 Pinhole::~Pinhole() {}
@@ -99,12 +99,6 @@ void Pinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matri
         p << fx * p_d(0) + cx,
              fy * p_d(1) + cy;
     }
-}
-
-Eigen::Vector2d Pinhole::Project(const Eigen::Vector3d& P) const {
-    Eigen::Vector2d p;
-    Project(P, p);
-    return p;
 }
 
 void Pinhole::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
@@ -150,12 +144,6 @@ void Pinhole::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
     P << mx_u, my_u, 1;
 }
 
-Eigen::Vector3d Pinhole::BackProject(const Eigen::Vector2d& p) const {
-    Eigen::Vector3d P;
-    BackProject(p, P);
-    return P;
-}
-
 // p_d = p_u + d_u
 // J = d(p_d)/d(p_u)
 void Pinhole::Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J) const {
@@ -180,8 +168,21 @@ void Pinhole::Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen
     }
 }
 
-Eigen::Vector2d Pinhole::Distortion(const Eigen::Vector2d& p_u) const {
-    Eigen::Vector2d d_u;
-    Distortion(p_u, d_u);
-    return d_u;
+Fisheye::Fisheye(int width, int height, double fx, double fy, double cx, double cy,
+                 double k1_, double k2_, double k3_, double k4_)
+    : IdealPinhole(width, height, fx, fy, cx, cy), k1(k1_), k2(k2_), k3(k3_), k4(k4_) {}
+Fisheye::~Fisheye() {}
+
+void Fisheye::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
+
 }
+
+void Fisheye::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
+
+}
+
+// pd_u = p_u + d_u
+void Fisheye::Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J) const {
+
+}
+
