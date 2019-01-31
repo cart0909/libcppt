@@ -1,4 +1,4 @@
-﻿#include "backend.h"
+#include "backend.h"
 #include "ceres/local_parameterization_se3.h"
 #include "ceres/projection_factor.h"
 #include "vins/imu_factor.h"
@@ -505,7 +505,7 @@ void BackEnd::SolveBAImu() {
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         problem.AddParameterBlock(para_pose + i * 7, 7, local_para_se3);
 
-        if(i != 0) {
+        if(i != 0 && d_frames[i]->imupreinte->sum_dt < 10.0) {
             auto factor = new IMUFactor(d_frames[i]->imupreinte, gw);
             problem.AddResidualBlock(factor, NULL,
                                      para_pose + (i - 1) * 7,
@@ -565,11 +565,11 @@ void BackEnd::SolveBAImu() {
 //    LOG(INFO) << summary.FullReport();
 
     double2data();
-//    Marginalize();
 
-    for(int i = 1, n = d_frames.size(); i < n; ++i) {
+    for(int i = 1, n = d_frames.size(); i < n; ++i)
         d_frames[i]->imupreinte->repropagate(d_frames[i-1]->ba, d_frames[i-1]->bg);
-    }
+
+    Marginalize();
 }
 
 void BackEnd::SolvePnP(FramePtr frame) {
@@ -722,7 +722,7 @@ void BackEnd::Marginalize() {
         }
 
         // imu
-        {
+        if(d_frames[1]->imupreinte->sum_dt < 10.0) {
             auto factor = new IMUFactor(d_frames[1]->imupreinte, gw);
             auto residual_block_info = new ResidualBlockInfo(factor, NULL,
                                                              std::vector<double*>{para_pose, para_speed_bias,
