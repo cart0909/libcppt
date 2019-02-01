@@ -15,14 +15,9 @@ Eigen::Vector3d Camera::BackProject(const Eigen::Vector2d& p) const {
     return P;
 }
 
-Eigen::Vector2d Camera::Distortion(const Eigen::Vector2d& p_u) const {
-    Eigen::Vector2d d_u;
-    Distortion(p_u, d_u);
-    return d_u;
-}
 
 IdealPinhole::IdealPinhole(int width, int height, double fx_, double fy_, double cx_, double cy_)
-    : Camera(width, height), fx(fx_), fy(fy_), cx(cx_), cy(cy_) {}
+    : Camera(width, height), fx(fx_), fy(fy_), cx(cx_), cy(cy_), inv_fx(1.0f/fx_), inv_fy(1.0f/fy_) {}
 IdealPinhole::~IdealPinhole() {}
 
 void IdealPinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
@@ -38,19 +33,9 @@ void IdealPinhole::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::
 }
 
 void IdealPinhole::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
-    const double inv_fx = 1.0f / fx;
-    const double inv_fy = 1.0f / fy;
     P << (p(0) - cx) * inv_fx, (p(1) - cy) * inv_fy, 1;
 }
 
-// p_d = p_u + d_u
-// J = d(p_d)/d(p_u)
-void IdealPinhole::Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J) const {
-    d_u.setZero();
-    if(J) {
-        J->setIdentity();
-    }
-}
 
 double IdealPinhole::f() const {
     return fx;
@@ -105,8 +90,6 @@ void Pinhole::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
     // Lift points to normalised plane
     double mx_d, my_d, mx_u, my_u;
 
-    const double inv_fx = 1.0f / fx;
-    const double inv_fy = 1.0f / fy;
     mx_d = (p(0) - cx) * inv_fx;
     my_d = (p(1) - cy) * inv_fy;
 
@@ -168,21 +151,113 @@ void Pinhole::Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen
     }
 }
 
+Eigen::Vector2d Pinhole::Distortion(const Eigen::Vector2d& p_u) const {
+    Eigen::Vector2d d_u;
+    Distortion(p_u, d_u);
+    return d_u;
+}
+
 Fisheye::Fisheye(int width, int height, double fx, double fy, double cx, double cy,
                  double k1_, double k2_, double k3_, double k4_)
     : IdealPinhole(width, height, fx, fy, cx, cy), k1(k1_), k2(k2_), k3(k3_), k4(k4_) {}
 Fisheye::~Fisheye() {}
 
 void Fisheye::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
-
+    double theta = acos(P(2) / P.norm());
+    double phi = atan2(P(1), P(0));
+    Eigen::Vector2d p_u = r(theta) * Eigen::Vector2d(cos(phi), sin(phi));
+    p << fx * p_u(0) + cx,
+         fy * p_u(1) + cy;
 }
 
 void Fisheye::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
+    Eigen::Vector2d p_u;
+    p_u << (p(0) - cx) * inv_fx,
+           (p(1) - cy) * inv_fy;
 
+    const double eps = 1e-10;
+    const double p_u_norm = p_u.norm();
+
+
+    // part 1, derive out phi
+    double phi = 0.0;
+
+    if(p_u_norm > eps) {
+        phi = atan2(p_u(1), p_u(0));
+    }
+
+    // part 2, derive out theta
+    Eigen::Matrix9d A = Eigen::Matrix9d::Zero();
+    A.block<8, 8>(1, 0).setIdentity();
+    A(0, 8) = -p_u_norm;
+    A(1, 8) = 1;
+    A(3, 8) = k1;
+    A(5, 8) = k2;
+    A(7, 8) = k3;
+    A.col(8) /= k4;
+
+    Eigen::EigenSolver<Eigen::Matrix9d> es(A, false);
+    Eigen::VectorXcd eigval = es.eigenvalues();
+
+    bool exist_solution = false;
+    double theta_star = std::numeric_limits<double>::max();
+    for(int i = 0, n = eigval.rows(); i < n; ++i) {
+        if(std::abs(eigval(i).imag()) > eps)
+            continue;
+        double real = eigval(i).real();
+
+        if(real < -eps) {
+            continue;
+        }
+        else if(real < 0.0f) {
+            real = 0.0f;
+        }
+
+        if(real < theta_star) {
+            theta_star = real;
+
+            if(!exist_solution)
+                exist_solution = true;
+        }
+    }
+
+    double theta = p_u_norm;
+    if(exist_solution) {
+        theta = theta_star;
+    }
+
+    // part 3 restore the x y z without real depth
+    P << tan(theta) * cos(phi), // sin(theta) * cos(phi)
+         tan(theta) * sin(phi), // sin(theta) * sin(phi)
+                             1; // cos(theta)
 }
 
-// pd_u = p_u + d_u
-void Fisheye::Distortion(const Eigen::Vector2d& p_u, Eigen::Vector2d& d_u, Eigen::Matrix2d* J) const {
+double Fisheye::r(double theta) const {
+    double theta_2 = theta * theta;
+    double theta_3 = theta * theta_2;
+    double theta_5 = theta_2 * theta_3;
+    double theta_7 = theta_2 * theta_5;
+    double theta_9 = theta_2 * theta_7;
 
+    return theta + k1 * theta_3 + k2 * theta_5 + k3 * theta_7 + k4 * theta_9;
 }
 
+IdelOmni::IdelOmni(int width, int height, double fx, double fy, double cx, double cy,
+                   double xi_)
+    : IdealPinhole(width, height, fx, fy, cx, cy), xi(xi_)
+{}
+
+IdelOmni::~IdelOmni() {}
+
+void IdelOmni::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
+    Eigen::Vector2d p_u = P.head(2);
+    p_u /= (P(2) + xi * P.norm());
+
+    p << fx * p_u(0) + cx,
+         fy * p_u(1) + cy;
+}
+
+void IdelOmni::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
+    Eigen::Vector2d p_u((p(0) - cx) * inv_fx, (p(1) - cy) * inv_fy);
+
+}
