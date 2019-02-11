@@ -1,11 +1,11 @@
 %YAML:1.0
 #common parameters
-imu_topic: "/mynteye/imu/data_raw"
-image_topic: "/mynteye/left/image_raw"
-image_r_topic: "/mynteye/right/image_raw"
+imu_topic: "/imu0"
+image_topic: "/cam0/image_raw"
+image_r_topic: "/cam1/image_raw"
 output_path: "/catkin_ws/src/libcppt/config/log.tum"
 
-model_type: FISHEYE
+model_type: OMNI
 camera_name: camera
 image_width: 752
 image_height: 480
@@ -15,25 +15,29 @@ T_BC0: !!opencv-matrix
     rows: 4
     cols: 4
     dt: d
-    data: [-0.00095705, -0.99999954,  0.00004162,  0.00459602,
-            0.99999521, -0.00095692,  0.00294225, -0.04548259,
-           -0.00294221,  0.00004444,  0.99999567,  0.02718889,
-            0.        ,  0.        ,  0.        ,  1.        ]
+    data: [ 9.9991036582958637e-01, 1.1948793070511360e-02,
+           -6.0404180899061577e-03, 3.8836925129605959e-02,
+           -1.1931508793228868e-02, 9.9992464233075007e-01,
+            2.8894216789357523e-03, -4.7406823518464092e-03,
+            6.0744879998126597e-03, -2.8170913864660921e-03,
+            9.9997758204454790e-01, -3.5997702822723361e-03, 0., 0., 0., 1. ]
 
-intrinsics0: [364.26419971604133, 364.82818171274516, 372.8636776356645, 227.60889825783622] #fu, fv, cu, cv
-distortion_coefficients0: [-0.016626884031487477, -0.006870887150553673, 0.005344202860982514, -0.004004412315029034]
+intrinsics0: [1.3217792921289520e+03, 1.3237233061481388e+03, 3.5263371410695777e+02, 2.2968716966022129e+02, 1.8162816904697401e+00] #fu, fv, cu, cv, xi
+distortion_coefficients0: [-5.2280966938007600e-02, 5.3709501857137787e-01, -3.5867321540317175e-04, -2.5596838136604099e-04]
 
 T_BC1: !!opencv-matrix
     rows: 4
     cols: 4
     dt: d
-    data: [-0.00132155, -0.99999585, -0.0025617 ,  0.00419516,
-            0.99992171, -0.00135332,  0.01243957,  0.07504689,
-           -0.01244298, -0.00254506,  0.99991934,  0.02616159,
-            0.        ,  0.        ,  0.        ,  1.        ]
+    data: [ 9.9993524996167893e-01, 1.0794248206017055e-02,
+            3.6027891614088276e-03, -7.1831109637002136e-02,
+           -1.0796833045707175e-02, 9.9994146833980613e-01,
+            6.9877794450892857e-04, 2.1952350924807923e-04,
+           -3.5950355016039623e-03, -7.3763141168485817e-04,
+            9.9999326578714653e-01, -7.1952800314573134e-03, 0., 0., 0., 1. ]
 
-intrinsics1: [364.7578595525992, 365.3201798921848, 380.55704968108734, 232.91638602405592] #fu, fv, cu, cv
-distortion_coefficients1: [-0.016230041132905364, -0.007719712157983653, 0.003963569555341727, -0.002459478520357914]
+intrinsics1: [9.7068844957117221e+02, 9.7213267608006288e+02, 3.8278539255731852e+02, 2.1495866029789241e+02, 1.0717101664076085e+00] #fu, fv, cu, cv, xi
+distortion_coefficients1: [-3.0221279791260491e-01, 1.9647499896032700e-01, 1.6647738868803629e-04, 5.1332315500428121e-04]
 
 T_BI: !!opencv-matrix
     cols: 4
@@ -79,10 +83,10 @@ max_num_iterations: 5   # max solver itrations, to guarantee real time
 keyframe_parallax: 10.0 # keyframe selection threshold (pixel)
 
 #imu parameters       The more accurate parameters you provide, the better performance
-acc_n: 0.0268014618074          # accelerometer measurement noise standard deviation. #0.599298904976
-gyr_n: 0.00888232829671        # gyroscope measurement noise standard deviation.     #0.198614898699
-acc_w: 0.00262960861593         # accelerometer bias random work noise standard deviation.  #0.02
-gyr_w: 0.000379565782927       # gyroscope bias random work noise standard deviation.     #4.0e-5
+acc_n: 0.1            # accelerometer measurement noise standard deviation. #0.599298904976
+gyr_n: 0.01           # gyroscope measurement noise standard deviation.     #0.198614898699
+acc_w: 0.001          # accelerometer bias random work noise standard deviation.  #0.02
+gyr_w: 0.0001         # gyroscope bias random work noise standard deviation.     #4.0e-5
 
 #imu parameters       The more accurate parameters you provide, the better performance
 #acc_n: 7.6509e-02           # accelerometer measurement noise standard deviation. #0.599298904976

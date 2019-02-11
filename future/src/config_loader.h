@@ -7,6 +7,7 @@ public:
         int num_camera;
         std::vector<int> width;
         std::vector<int> height;
+        std::vector<std::string> cam_model;
         std::vector<std::vector<double>> intrinsic_master;
         std::vector<std::vector<double>> distortion_master;
         std::vector<Eigen::Vector3d> p_bc;

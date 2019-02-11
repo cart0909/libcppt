@@ -40,7 +40,7 @@ public:
 
 SMART_PTR(IdealPinhole)
 
-class Pinhole : public IdealPinhole {
+class Pinhole : public virtual IdealPinhole {
 public:
     Pinhole(int width, int height, double fx, double fy, double cx, double cy,
             double k1_, double k2_, double p1_, double p2_);
@@ -79,11 +79,11 @@ public:
 
 SMART_PTR(Fisheye);
 
-class IdelOmni : public IdealPinhole {
+class IdealOmni : public virtual IdealPinhole {
 public:
-    IdelOmni(int width, int height, double fx, double fy, double cx, double cy,
+    IdealOmni(int width, int height, double fx, double fy, double cx, double cy,
              double xi_);
-    virtual ~IdelOmni();
+    virtual ~IdealOmni();
 
     virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const;
     virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
@@ -91,4 +91,16 @@ public:
     const double xi;
 };
 
-SMART_PTR(IdelOmni)
+SMART_PTR(IdealOmni)
+
+class Omni : public IdealOmni, public Pinhole {
+public:
+    Omni(int width, int height, double fx, double fy, double cx, double cy, double xi,
+         double k1, double k2, double p1, double p2);
+    virtual ~Omni();
+
+    virtual void Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J = nullptr) const;
+    virtual void BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const;
+};
+
+SMART_PTR(Omni)

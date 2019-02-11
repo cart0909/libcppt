@@ -13,6 +13,7 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     param.num_camera = 1;
     param.width.resize(param.num_camera);
     param.height.resize(param.num_camera);
+    param.cam_model.resize(param.num_camera);
     param.intrinsic_master.resize(param.num_camera);
     param.distortion_master.resize(param.num_camera);
     param.p_bc.resize(param.num_camera);
@@ -25,6 +26,7 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
 
     param.width[0] = fs["image_width"];
     param.height[0] = fs["image_height"];
+    fs["model_type"] >> param.cam_model[0];
     fs["intrinsics0"] >> param.intrinsic_master[0];
     fs["distortion_coefficients0"] >> param.distortion_master[0];
     param.b_slave[0] = true;
@@ -68,12 +70,25 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
 void ConfigLoader::Log(const Param& param) {
     LOG(INFO) << "number of camera: " << param.num_camera;
     for(int i = 0; i < param.num_camera; ++i) {
-        LOG(INFO) << "cam" << i <<" image size: " << cv::Size(param.width[i], param.height[i]);
-        LOG(INFO) << "cam" << i << " intrinsic: "
-                  << param.intrinsic_master[i][0] << " "
-                  << param.intrinsic_master[i][1] << " "
-                  << param.intrinsic_master[i][2] << " "
-                  << param.intrinsic_master[i][3];
+        LOG(INFO) << "cam" << i << " image size: " << cv::Size(param.width[i], param.height[i]);
+        LOG(INFO) << "cam" << i << " model type: " << param.cam_model[i];
+
+        if(param.cam_model[i] == "OMNI") {
+            LOG(INFO) << "cam" << i << " intrinsic: "
+                      << param.intrinsic_master[i][0] << " "
+                      << param.intrinsic_master[i][1] << " "
+                      << param.intrinsic_master[i][2] << " "
+                      << param.intrinsic_master[i][3] << " "
+                      << param.intrinsic_master[i][4];
+        }
+        else {
+            LOG(INFO) << "cam" << i << " intrinsic: "
+                      << param.intrinsic_master[i][0] << " "
+                      << param.intrinsic_master[i][1] << " "
+                      << param.intrinsic_master[i][2] << " "
+                      << param.intrinsic_master[i][3];
+        }
+
 
         LOG(INFO) << "cam" << i << " distortion: "
                   << param.distortion_master[i][0] << " "
@@ -93,11 +108,21 @@ void ConfigLoader::Log(const Param& param) {
         if(!param.b_slave[i])
             continue;
 
-        LOG(INFO) << "cam" << i << "r intrinsic: "
-                  << param.intrinsic_slave[i][0] << " "
-                  << param.intrinsic_slave[i][1] << " "
-                  << param.intrinsic_slave[i][2] << " "
-                  << param.intrinsic_slave[i][3];
+        if(param.cam_model[i] == "OMNI") {
+            LOG(INFO) << "cam" << i << "r intrinsic: "
+                      << param.intrinsic_slave[i][0] << " "
+                      << param.intrinsic_slave[i][1] << " "
+                      << param.intrinsic_slave[i][2] << " "
+                      << param.intrinsic_slave[i][3] << " "
+                      << param.intrinsic_slave[i][4];
+        }
+        else {
+            LOG(INFO) << "cam" << i << "r intrinsic: "
+                      << param.intrinsic_slave[i][0] << " "
+                      << param.intrinsic_slave[i][1] << " "
+                      << param.intrinsic_slave[i][2] << " "
+                      << param.intrinsic_slave[i][3];
+        }
 
         LOG(INFO) << "cam" << i << "r distortion: "
                   << param.distortion_slave[i][0] << " "

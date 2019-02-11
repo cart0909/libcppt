@@ -242,22 +242,89 @@ double Fisheye::r(double theta) const {
     return theta + k1 * theta_3 + k2 * theta_5 + k3 * theta_7 + k4 * theta_9;
 }
 
-IdelOmni::IdelOmni(int width, int height, double fx, double fy, double cx, double cy,
+IdealOmni::IdealOmni(int width, int height, double fx, double fy, double cx, double cy,
                    double xi_)
     : IdealPinhole(width, height, fx, fy, cx, cy), xi(xi_)
 {}
 
-IdelOmni::~IdelOmni() {}
+IdealOmni::~IdealOmni() {}
 
-void IdelOmni::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
-    Eigen::Vector2d p_u = P.head(2);
-    p_u /= (P(2) + xi * P.norm());
-
+void IdealOmni::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
+    Eigen::Vector3d Ps = P.normalized();
+    Eigen::Vector2d p_u = Ps.head(2) / (Ps(2) + xi);
     p << fx * p_u(0) + cx,
          fy * p_u(1) + cy;
 }
 
-void IdelOmni::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
+void IdealOmni::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
     Eigen::Vector2d p_u((p(0) - cx) * inv_fx, (p(1) - cy) * inv_fy);
 
+    if(xi == 1.0f) {
+        P << p_u(0), p_u(1), (1.0 - p_u.squaredNorm()) / 2.0f;
+        P /= P(2);
+    }
+    else {
+        double xi_2 = xi * xi;
+        double p_u_snorm = p_u.squaredNorm();
+        double alpha_s = (xi + std::sqrt(1 + (1 - xi_2) * p_u_snorm)) / (p_u_snorm + 1);
+        P << alpha_s * p_u(0),
+             alpha_s * p_u(1),
+             alpha_s - xi;
+        P /= P(2);
+    }
+}
+
+Omni::Omni(int width, int height, double fx, double fy, double cx, double cy, double xi,
+           double k1, double k2, double p1, double p2)
+    : IdealPinhole(width, height, fx, fy, cx, cy),
+      IdealOmni(width, height, fx, fy, cx, cy, xi),
+      Pinhole(width, height, fx, fy, cx, cy, k1, k2, p1, p2)
+{}
+Omni::~Omni() {}
+
+void Omni::Project(const Eigen::Vector3d& P, Eigen::Vector2d& p, Eigen::Matrix2_3d* J) const {
+    Eigen::Vector2d p_u;
+    IdealOmni::Project(P, p_u);
+
+    Eigen::Vector2d d_u;
+    Distortion(p_u, d_u);
+
+    Eigen::Vector2d p_d = p_u + d_u;
+
+    p << fx * p_d(0) + cx,
+         fy * p_d(1) + cy;
+}
+
+void Omni::BackProject(const Eigen::Vector2d& p, Eigen::Vector3d& P) const {
+    // Lift points to normalised plane
+    Eigen::Vector2d m_d, m_u;
+
+    m_d << (p(0) - cx) * inv_fx,
+           (p(1) - cy) * inv_fy;
+
+    // Recursive distortion model
+    int n = 8;
+    Eigen::Vector2d d_u;
+    Distortion(m_d, d_u);
+    // Approximate value
+    m_u = m_d - d_u;
+
+    for(int i = 1; i < n; ++i) {
+        Distortion(m_u, d_u);
+        m_u = m_d - d_u;
+    }
+
+    if(xi == 1.0f) {
+        P << m_u(0), m_u(1), (1.0 - m_u.squaredNorm()) / 2.0f;
+        P /= P(2);
+    }
+    else {
+        double xi_2 = xi * xi;
+        double p_u_snorm = m_u.squaredNorm();
+        double alpha_s = (xi + std::sqrt(1 + (1 - xi_2) * p_u_snorm)) / (p_u_snorm + 1);
+        P << alpha_s * m_u(0),
+             alpha_s * m_u(1),
+             alpha_s - xi;
+        P /= P(2);
+    }
 }
