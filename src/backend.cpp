@@ -822,7 +822,7 @@ void BackEnd::Marginalize() {
         margin_info->preMarginalize();
         margin_info->marginalize();
 
-        std::unordered_map<long, double *> addr_shift;
+        std::map<long, double *> addr_shift;
         for(int i = 1, n = d_frames.size(); i < n; ++i) {
             addr_shift[reinterpret_cast<long>(para_pose + 7 * i)] = para_pose + 7 * (i - 1);
             addr_shift[reinterpret_cast<long>(para_speed_bias + 9 * i)] = para_speed_bias + 9 * (i - 1);
@@ -853,7 +853,7 @@ void BackEnd::Marginalize() {
             margin_info->preMarginalize();
             margin_info->marginalize();
 
-            std::unordered_map<long, double*> addr_shift;
+            std::map<long, double*> addr_shift;
             for(int i = 0, n = d_frames.size(); i < n; ++i) {
                 if(i == n - 2) {
                     continue;

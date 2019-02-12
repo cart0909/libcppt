@@ -308,7 +308,7 @@ void MarginalizationInfo::marginalize()
     //      (linearized_jacobians.transpose() * linearized_residuals - b).sum());
 }
 
-std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map<long, double *> &addr_shift)
+std::vector<double *> MarginalizationInfo::getParameterBlocks(std::map<long, double *> &addr_shift)
 {
     std::vector<double *> keep_block_addr;
     keep_block_size.clear();
