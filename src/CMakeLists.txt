@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.11)
-project(cppt_modules)
+project(cppt)
 
 # Cross Compile
 if ("$ENV{CROSS_COMPILE_FLAG}" STREQUAL "XU4")
@@ -85,19 +85,12 @@ set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${GTEST_INCLUDE_DIRS})
 set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${GTEST_LIBRARIES})
 message("GTEST_INCLUDE_DIRS:" ${GTEST_INCLUDE_DIRS})
 message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
-#find_package(ArrayFire REQUIRED)
-#message("ArrayFire::afcuda:" ArrayFire::afcuda)
-#set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ArrayFire::afcuda)
-#find_package(GTSAM REQUIRED)
-#set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${GTSAM_INCLUDE_DIR})
-#set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} gtsam)
 
 # add ros
 find_package(catkin REQUIRED COMPONENTS
 roscpp
 roslib
 cmake_modules
-systrace
 )
 
 set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
@@ -107,62 +100,32 @@ catkin_package(
 DEPENDS
 CATKIN_DEPENDS roscpp roslib
 INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
-LIBRARIES cppt_modules
+LIBRARIES ${PROJECT_NAME}
 )
 
 # DBoW2
-set(DBOW2_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/reloc/3rdParty/DBoW2)
+#set(DBOW2_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/reloc/3rdParty/DBoW2)
 
 # include
 include_directories(
 ${THRID_PARTY_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}
-${DBOW2_INCLUDE_DIRS}
+#${DBOW2_INCLUDE_DIRS}
 )
 
-add_library(cppt_modules SHARED
-basic_datatype/so3_extent.cpp
-basic_datatype/frame.cpp
-basic_datatype/sliding_window.cpp
-basic_datatype/mappoint.cpp
-basic_datatype/util_datatype.cpp
-basic_datatype/basic_sensor.cpp
-camera_model/camera.cpp
-camera_model/pinhole_camera.cpp
-camera_model/stereo_camera.cpp
-camera_model/simple_stereo_camera.cpp
-# front_end/image_processor.cpp
-front_end/frontend_config.cpp
-front_end/utility.cpp
-front_end/simple_frontend.cpp
-front_end/sparse_img_align.cpp
-# back_end/msckf.cpp
-back_end/imu_state.cpp
-front_end/imu_preintegration.cpp
-# back_end/isam2_backend.cpp
-back_end/simple_backend.cpp
+add_library(${PROJECT_NAME} SHARED
+util.cpp
+camera.cpp
+feature_tracker.cpp
+stereo_matcher.cpp
+config_loader.cpp
+system.cpp
+backend.cpp
+converter.cpp
+ceres/local_parameterization_se3.cpp
 ceres/projection_factor.cpp
-ceres/marginalization_factor.cpp
-system/vo_system.cpp
-${DBOW2_INCLUDE_DIRS}/DBoW2/BowVector.cpp
-${DBOW2_INCLUDE_DIRS}/DBoW2/FBrief.cpp
-${DBOW2_INCLUDE_DIRS}/DBoW2/FORB.cpp
-${DBOW2_INCLUDE_DIRS}/DBoW2/FeatureVector.cpp
-${DBOW2_INCLUDE_DIRS}/DBoW2/QueryResults.cpp
-${DBOW2_INCLUDE_DIRS}/DBoW2/ScoringObject.cpp
-${DBOW2_INCLUDE_DIRS}/DUtils/Random.cpp
-${DBOW2_INCLUDE_DIRS}/DUtils/Timestamp.cpp
-${DBOW2_INCLUDE_DIRS}/DVision/BRIEF.cpp
-${DBOW2_INCLUDE_DIRS}/VocabularyBinary.cpp
+vins/marginalization_factor.cpp
+vins/integration_base.cpp
+vins/imu_factor.cpp
 )
-target_link_libraries(cppt_modules ${THRID_PARTY_LIBS})
-
-add_executable(cppt_test
-test/cppt_test.cpp
-test/openmp_test.cpp
-#test/arrayfire_test.cpp
-#test/gtsam_test.cpp
-camera_model/pinhole_camera_test.cpp
-camera_model/stereo_camera_test.cpp
-)
-target_link_libraries(cppt_test cppt_modules)
+target_link_libraries(${PROJECT_NAME} ${THRID_PARTY_LIBS})
