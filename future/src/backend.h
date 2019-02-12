@@ -88,8 +88,12 @@ public:
 
     void PushFrame(FramePtr frame);
 
-    inline void SetDrawMapPointCallback(std::function<void(const Eigen::VecVector3d&)> callback) {
+    inline void SetDrawMapPointCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
         draw_mps = callback;
+    }
+
+    inline void SetDrawMarginMpsCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
+        draw_margin_mps = callback;
     }
 
     inline void SetDrawPoseCallback(std::function<void(uint64_t, double, const Sophus::SE3d&)> callback) {
@@ -149,7 +153,6 @@ private:
     double min_parallax;
     MarginType marginalization_flag;
 
-    std::function<void(const Eigen::VecVector3d&)> draw_mps;
 
     // ceres data
     void data2double();
@@ -162,7 +165,6 @@ private:
     // maintain system
     std::atomic<bool> request_reset_flag;
 
-    std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
 
     double last_imu_t;
     double gravity_magnitude;
@@ -171,6 +173,10 @@ private:
     std::vector<double*> para_margin_block;
     MarginalizationInfo* last_margin_info;
 
+    Eigen::VecVector3d margin_mps;
+    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_mps;
+    std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
     std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> draw_sw;
+    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_margin_mps;
 };
 SMART_PTR(BackEnd)

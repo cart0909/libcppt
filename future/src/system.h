@@ -17,15 +17,24 @@ public:
                  const Eigen::VecVector3d& v_acc,
                  const std::vector<double>& v_imu_timestamp);
 
-    void SetDrawTrackingImgCallback(std::function<void(const cv::Mat&, uint64_t, double)> callback);
-    inline void SetDrawMapPointCallback(std::function<void(const Eigen::VecVector3d&)> callback) {
+    inline void SetDrawTrackingImgCallback(std::function<void(const cv::Mat&, uint64_t, double)> callback) {
+        draw_tracking_img = callback;
+    }
+
+    inline void SetDrawMapPointCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
         backend->SetDrawMapPointCallback(callback);
     }
+
     inline void SetDrawPoseCallback(std::function<void(uint64_t, double, const Sophus::SE3d&)> callback) {
         backend->SetDrawPoseCallback(callback);
     }
+
     inline void SetDrawSlidingWindowCallback(std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> callback) {
         backend->SetDrawSlidingWindowCallback(callback);
+    }
+
+    inline void SetDrawMarginMpsCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
+        backend->SetDrawMarginMpsCallback(callback);
     }
 private:
     std::atomic<bool> reset_flag;

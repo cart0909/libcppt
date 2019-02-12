@@ -10,6 +10,7 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 #include <sensor_msgs/Imu.h>
+#include <sensor_msgs/PointCloud.h>
 #include <opencv2/core/eigen.hpp>
 #include <sophus/se3.hpp>
 #include <nav_msgs/Path.h>
@@ -48,11 +49,14 @@ public:
         system = std::make_shared<System>(config_file);
         system->SetDrawTrackingImgCallback(std::bind(&Node::PubTrackImg, this, std::placeholders::_1,
                                                      std::placeholders::_2, std::placeholders::_3));
-        system->SetDrawMapPointCallback(std::bind(&Node::PubMapPoint, this, std::placeholders::_1));
+        system->SetDrawMapPointCallback(std::bind(&Node::PubMapPoint, this, std::placeholders::_1,
+                                                  std::placeholders::_2, std::placeholders::_3));
         system->SetDrawPoseCallback(std::bind(&Node::PubCurPose, this, std::placeholders::_1,
                                               std::placeholders::_2,std::placeholders::_3));
         system->SetDrawSlidingWindowCallback(std::bind(&Node::PubSlidingWindow, this, std::placeholders::_1,
                                                        std::placeholders::_2, std::placeholders::_3));
+        system->SetDrawMarginMpsCallback(std::bind(&Node::PubMarginMps, this, std::placeholders::_1,
+                                                   std::placeholders::_2, std::placeholders::_3));
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
@@ -161,40 +165,26 @@ public:
         pub_track_img.publish(track_cvimage.toImageMsg());
     }
 
-    void PubMapPoint(const Eigen::VecVector3d& mps) {
-        static Sophus::SE3d Tglw;
-
-        visualization_msgs::Marker msgs_points;
-        msgs_points.header.frame_id = "world";
-        msgs_points.ns = "mappoint";
-        msgs_points.type = visualization_msgs::Marker::SPHERE_LIST;
-        msgs_points.action = visualization_msgs::Marker::ADD;
-        msgs_points.pose.orientation.w = 1.0;
-        msgs_points.lifetime = ros::Duration();
-
-        msgs_points.id = 0;
-        msgs_points.scale.x = 0.01;
-        msgs_points.scale.y = 0.01;
-        msgs_points.scale.z = 0.01;
-        msgs_points.color.g = 1.0;
-        msgs_points.color.a = 1.0;
+    void PubMapPoint(uint64_t seq, double timestamp, const Eigen::VecVector3d& mps) {
+        sensor_msgs::PointCloud mps_msg;
+        mps_msg.header.frame_id = "world";
+        mps_msg.header.seq = seq;
+        mps_msg.header.stamp.fromSec(timestamp);
 
         for(auto& x3Dw : mps) {
-            geometry_msgs::Point point_marker;
-            Eigen::Vector3d X = Tglw * x3Dw;
-            point_marker.x = X(0);
-            point_marker.y = X(1);
-            point_marker.z = X(2);
-            msgs_points.points.emplace_back(point_marker);
+            geometry_msgs::Point32 point_marker;
+            point_marker.x = x3Dw(0);
+            point_marker.y = x3Dw(1);
+            point_marker.z = x3Dw(2);
+            mps_msg.points.emplace_back(point_marker);
         }
-        pub_mappoints.publish(msgs_points);
+        pub_mappoints.publish(mps_msg);
     }
 
     void PubSlidingWindow(uint64_t seq, double timestamp, const std::vector<Sophus::SE3d>& v_Twc) {
         if(v_Twc.empty())
             return;
 
-        static Sophus::SE3d Tglw;
         { // print keyframe point
             visualization_msgs::Marker key_poses;
             key_poses.header.frame_id = "world";
@@ -214,7 +204,7 @@ public:
             key_poses.color.a = 1.0;
 
             for(auto& Twc : v_Twc) {
-                Eigen::Vector3d twc = (Tglw*Twc).translation();
+                Eigen::Vector3d twc = Twc.translation();
                 geometry_msgs::Point pose_marker;
                 pose_marker.x = twc(0);
                 pose_marker.y = twc(1);
@@ -226,12 +216,9 @@ public:
     }
 
     void PubCurPose(uint64_t seq, double timestamp, const Sophus::SE3d& Twc) {
-        static Sophus::SE3d Tglw;
         // public latest frame
-        // path
-        Sophus::SE3d Tglc = Tglw * Twc;
-        Eigen::Vector3d twc = Tglc.translation();
-        Eigen::Quaterniond qwc = Tglc.so3().unit_quaternion();
+        Eigen::Vector3d twc = Twc.translation();
+        Eigen::Quaterniond qwc = Twc.so3().unit_quaternion();
         geometry_msgs::PoseStamped pose_stamped;
         pose_stamped.header.seq = seq;
         pose_stamped.header.frame_id = "world";
@@ -250,6 +237,22 @@ public:
         camera_pose_visual.reset();
         camera_pose_visual.add_pose(twc, qwc);
         camera_pose_visual.publish_by(pub_camera_pose, path.header);
+    }
+
+    void PubMarginMps(uint64_t seq, double timestamp, const Eigen::VecVector3d& margin_mps) {
+        sensor_msgs::PointCloud margin_mps_msg;
+        margin_mps_msg.header.frame_id = "world";
+        margin_mps_msg.header.seq = seq;
+        margin_mps_msg.header.stamp.fromSec(timestamp);
+
+        for(auto& it : margin_mps) {
+            geometry_msgs::Point32 p;
+            p.x = it(0);
+            p.y = it(1);
+            p.z = it(2);
+            margin_mps_msg.points.push_back(p);
+        }
+        pub_margin_mps.publish(margin_mps_msg);
     }
 
     string imu_topic;
@@ -272,7 +275,7 @@ public:
     nav_msgs::Path path;
     ros::Publisher pub_camera_pose;
     ros::Publisher pub_keyframes;
-    ros::Publisher pub_mappoints;
+    ros::Publisher pub_mappoints, pub_margin_mps;
 
     CameraPoseVisualization camera_pose_visual;
 
@@ -322,7 +325,8 @@ int main(int argc, char** argv) {
     node.path.header.frame_id = "world";
     node.pub_camera_pose = nh.advertise<visualization_msgs::MarkerArray>("camera_pose", 1000);
     node.pub_keyframes = nh.advertise<visualization_msgs::Marker>("keyframes", 1000);
-    node.pub_mappoints = nh.advertise<visualization_msgs::Marker>("mappoints", 1000);
+    node.pub_mappoints = nh.advertise<sensor_msgs::PointCloud>("mappoints", 1000);
+    node.pub_margin_mps = nh.advertise<sensor_msgs::PointCloud>("margin_mps", 1000);
     ROS_INFO_STREAM("Player is ready.");
 
     ros::spin();

@@ -1,4 +1,4 @@
-#include "system.h"
+﻿#include "system.h"
 #include "converter.h"
 #include <glog/logging.h>
 
@@ -92,6 +92,53 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
         StereoMatcher::FramePtr stereo_frame = stereo_matcher->Process(feat_frame, img_r);
         backend->PushFrame(Converter::Convert(feat_frame, cam_m, stereo_frame, cam_s,
                                               v_cache_gyr, v_cache_acc, v_cache_imu_timestamps));
+        {
+            std::map<uint64_t, cv::Point2f> m_id_history_tmp;
+            std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow_tmp;
+            for(int i = 0, n = feat_frame->pt_id.size(); i < n; ++i) {
+                auto it = m_id_history.find(feat_frame->pt_id[i]);
+                if(it != m_id_history.end()) {
+                    m_id_history_tmp[it->first] = it->second;
+                    auto d_pt = m_id_optical_flow[it->first];
+                    m_id_optical_flow_tmp[it->first] = d_pt;
+                    d_pt->emplace_back(feat_frame->pt[i]);
+                    while(d_pt->size() > 5) {
+                        d_pt->pop_front();
+                    }
+                }
+                else {
+                    m_id_history_tmp[feat_frame->pt_id[i]] = feat_frame->pt[i];
+                    m_id_optical_flow_tmp[feat_frame->pt_id[i]] = std::make_shared<std::deque<cv::Point2f>>();
+                    m_id_optical_flow_tmp[feat_frame->pt_id[i]]->emplace_back(feat_frame->pt[i]);
+                }
+            }
+            m_id_history = std::move(m_id_history_tmp);
+            m_id_optical_flow = std::move(m_id_optical_flow_tmp);
+        }
+
+        if(draw_tracking_img) {
+            cv::Mat tracking_img, tracking_img_r;
+            cv::cvtColor(feat_frame->img, tracking_img, CV_GRAY2BGR);
+            cv::cvtColor(stereo_frame->img_r, tracking_img_r, CV_GRAY2BGR);
+
+            for(auto& it : m_id_optical_flow) {
+                uint64_t pt_id = it.first;
+                std::deque<cv::Point2f>& history_pts = *it.second;
+                for(int i = 0, n = history_pts.size() - 1; i < n; ++i) {
+                    cv::line(tracking_img, history_pts[i], history_pts[i+1], cv::Scalar(0, 255, 255), 2);
+                }
+                cv::circle(tracking_img, history_pts.back(), 4, cv::Scalar(0, 255, 0), -1);
+            }
+
+            for(auto& it : stereo_frame->pt_r) {
+                if(it.x != -1.0f) {
+                    cv::circle(tracking_img_r, it, 4, cv::Scalar(0, 255, 0), -1);
+                }
+            }
+
+            cv::hconcat(tracking_img, tracking_img_r, tracking_img);
+            draw_tracking_img(tracking_img, feat_frame->id, feat_frame->timestamp);
+        }
     }
     else {
         v_cache_gyr = v_gyr;
@@ -99,47 +146,5 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
         v_cache_imu_timestamps = v_imu_timestamp;
     }
 
-    {
-        std::map<uint64_t, cv::Point2f> m_id_history_tmp;
-        std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow_tmp;
-        for(int i = 0, n = feat_frame->pt_id.size(); i < n; ++i) {
-            auto it = m_id_history.find(feat_frame->pt_id[i]);
-            if(it != m_id_history.end()) {
-                m_id_history_tmp[it->first] = it->second;
-                auto d_pt = m_id_optical_flow[it->first];
-                m_id_optical_flow_tmp[it->first] = d_pt;
-                d_pt->emplace_back(feat_frame->pt[i]);
-                while(d_pt->size() > 5) {
-                    d_pt->pop_front();
-                }
-            }
-            else {
-                m_id_history_tmp[feat_frame->pt_id[i]] = feat_frame->pt[i];
-                m_id_optical_flow_tmp[feat_frame->pt_id[i]] = std::make_shared<std::deque<cv::Point2f>>();
-                m_id_optical_flow_tmp[feat_frame->pt_id[i]]->emplace_back(feat_frame->pt[i]);
-            }
-        }
-        m_id_history = std::move(m_id_history_tmp);
-        m_id_optical_flow = std::move(m_id_optical_flow_tmp);
-    }
-
-    if(draw_tracking_img) {
-        cv::Mat tracking_img;
-        cv::cvtColor(feat_frame->img, tracking_img, CV_GRAY2BGR);
-
-        for(auto& it : m_id_optical_flow) {
-            uint64_t pt_id = it.first;
-            std::deque<cv::Point2f>& history_pts = *it.second;
-            for(int i = 0, n = history_pts.size() - 1; i < n; ++i) {
-                cv::line(tracking_img, history_pts[i], history_pts[i+1], cv::Scalar(0, 255, 255), 2);
-            }
-            cv::circle(tracking_img, history_pts.back(), 4, cv::Scalar(0, 255, 0), -1);
-        }
-
-        draw_tracking_img(tracking_img, feat_frame->id, feat_frame->timestamp);
-    }
 }
 
-void System::SetDrawTrackingImgCallback(std::function<void(const cv::Mat&, uint64_t, double)> callback) {
-    draw_tracking_img = callback;
-}

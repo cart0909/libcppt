@@ -700,6 +700,7 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
 
 void BackEnd::Marginalize() {
     if(marginalization_flag == MARGIN_OLD) {
+        margin_mps.clear();
         auto loss_function = new ceres::HuberLoss(std::sqrt(5.991));
         auto margin_info = new MarginalizationInfo();
         data2double();
@@ -733,7 +734,17 @@ void BackEnd::Marginalize() {
         int feature_index = -1;
         for(auto& it : m_features) {
             auto& feat = it.second;
-            if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
+
+            if(feat.inv_depth == -1.0f)
+                continue;
+
+            if(feat.CountNumMeas(window_size) < 2) {
+                // for ui debug
+                Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
+                Eigen::Vector3d x3Dc = pt_i / feat.inv_depth;
+                Eigen::Vector3d x3Db = q_bc * x3Dc + p_bc;
+                Eigen::Vector3d x3Dw = d_frames[0]->q_wb * x3Db + d_frames[0]->p_wb;
+                margin_mps.emplace_back(x3Dw);
                 continue;
             }
             ++feature_index;
@@ -859,7 +870,7 @@ void BackEnd::DrawUI() {
             mps.emplace_back(x3Dw);
         }
 
-        draw_mps(mps);
+        draw_mps(frame->id, frame->timestamp, mps);
     }
 
     if(draw_sw) {
@@ -870,5 +881,9 @@ void BackEnd::DrawUI() {
         }
 
         draw_sw(frame->id, frame->timestamp, v_Twc);
+    }
+
+    if(draw_margin_mps && (marginalization_flag == MARGIN_OLD)) {
+        draw_margin_mps(frame->id, frame->timestamp, margin_mps);
     }
 }
