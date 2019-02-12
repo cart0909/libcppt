@@ -425,8 +425,40 @@ void BackEnd::double2data() {
         feat.inv_depth = para_features[num_mps++];
 
         if(feat.inv_depth <= 0) {
-//            LOG(INFO) << it.first << " " << feat.feat_id << " " << feat.inv_depth;
             v_outlier_feat_id.emplace_back(it.first);
+        }
+        else {
+            // remove the point with bigger reprojection error
+            int idx_i = feat.start_id;
+            Eigen::Vector3d x3Dci = feat.pt_n_per_frame[0] / feat.inv_depth;
+            Eigen::Vector3d x3Dbi = q_bc * x3Dci + p_bc;
+            Eigen::Vector3d x3Dw = d_frames[idx_i]->q_wb * x3Dbi + d_frames[idx_i]->p_wb;
+            double ave_reproj_error_norm = 0.0f;
+            int num_factors = 0;
+
+            for(int i = 0, n = feat.pt_n_per_frame.size(); i < n; ++i) {
+                int idx_j = idx_i + i;
+                Eigen::Vector3d x3Dbj = d_frames[idx_j]->q_wb.inverse() * (x3Dw - d_frames[idx_j]->p_wb);
+                Eigen::Vector3d x3Dcj = q_bc.inverse() * (x3Dbj - p_bc);
+                if(i != 0) {
+                    Eigen::Vector2d residual = (x3Dcj.head<2>() / x3Dcj(2)) - feat.pt_n_per_frame[i].head<2>();
+                    ave_reproj_error_norm += residual.norm();
+                    ++num_factors;
+                }
+
+                if(feat.pt_r_n_per_frame[i](0) != -1.0f) {
+                    Eigen::Vector3d x3Drj = q_rl * x3Dcj + p_rl;
+                    Eigen::Vector2d residual = (x3Drj.head<2>() / x3Drj(2)) - feat.pt_r_n_per_frame[i].head<2>();
+                    ave_reproj_error_norm += residual.norm();
+                    ++num_factors;
+                }
+            }
+
+            ave_reproj_error_norm /= num_factors;
+            if(ave_reproj_error_norm * focal_length > 3) {
+                v_outlier_feat_id.emplace_back(it.first);
+//                LOG(INFO) << feat.feat_id << " " << ave_reproj_error_norm * focal_length;
+            }
         }
     }
 
