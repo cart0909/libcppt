@@ -18,6 +18,9 @@ StereoMatcher::FramePtr StereoMatcher::Process(FeatureTracker::FrameConstPtr fea
 
     FramePtr frame = InitFrame(img_r);
 
+    if(feat_frame->pt.empty())
+        return frame;
+
     // optical flow
     std::vector<uchar> status;
     std::vector<float> err;
