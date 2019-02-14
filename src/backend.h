@@ -129,8 +129,8 @@ private:
     std::thread thread_;
     std::mutex  m_buffer;
     std::condition_variable cv_buffer;
-    std::deque<FramePtr> frame_buffer; // [ 0,  1, ..., 8 ,         9 |  10] size 11
-                                       //  kf  kf      kf  second new   new
+    std::deque<FramePtr> frame_buffer;
+
     double focal_length;
     Eigen::Vector3d p_rl, p_bc;
     Sophus::SO3d    q_rl, q_bc;
@@ -145,8 +145,8 @@ private:
 
     std::map<uint64_t, Feature> m_features;
     int window_size;
-    std::deque<FramePtr> d_frames;
-
+    std::deque<FramePtr> d_frames; // [ 0,  1, ..., 8 ,         9 |  10] size 11
+                                   //  kf  kf      kf  second new   new
     uint64_t next_frame_id;
     State state;
 

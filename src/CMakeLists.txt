@@ -104,13 +104,25 @@ LIBRARIES ${PROJECT_NAME}
 )
 
 # DBoW2
-#set(DBOW2_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/reloc/3rdParty/DBoW2)
+set(DBOW2_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/3rdParty/DBoW2)
+set(DBOW2_SRC_FILES
+${DBOW2_INCLUDE_DIRS}/VocabularyBinary.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/BowVector.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/FBrief.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/FeatureVector.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/FORB.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/QueryResults.cpp
+${DBOW2_INCLUDE_DIRS}/DBoW2/ScoringObject.cpp
+${DBOW2_INCLUDE_DIRS}/DUtils/Random.cpp
+${DBOW2_INCLUDE_DIRS}/DUtils/Timestamp.cpp
+${DBOW2_INCLUDE_DIRS}/DVision/BRIEF.cpp
+)
 
 # include
 include_directories(
 ${THRID_PARTY_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}
-#${DBOW2_INCLUDE_DIRS}
+${DBOW2_INCLUDE_DIRS}/..
 )
 
 add_library(${PROJECT_NAME} SHARED
@@ -122,10 +134,12 @@ config_loader.cpp
 system.cpp
 backend.cpp
 converter.cpp
+relocalization.cpp
 ceres/local_parameterization_se3.cpp
 ceres/projection_factor.cpp
 vins/marginalization_factor.cpp
 vins/integration_base.cpp
 vins/imu_factor.cpp
+${DBOW2_SRC_FILES}
 )
 target_link_libraries(${PROJECT_NAME} ${THRID_PARTY_LIBS})
