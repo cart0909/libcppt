@@ -104,6 +104,10 @@ public:
         draw_sw = callback;
     }
 
+    inline void SetPushKeyFrameCallback(std::function<void(FramePtr, const Eigen::VecVector3d&)> callback) {
+        push_keyframe_callback = callback;
+    }
+
     inline void ResetRequest() {
         request_reset_flag = true;
     }
@@ -178,5 +182,7 @@ private:
     std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
     std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> draw_sw;
     std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_margin_mps;
+
+    std::function<void(FramePtr, const Eigen::VecVector3d&)> push_keyframe_callback;
 };
 SMART_PTR(BackEnd)

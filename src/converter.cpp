@@ -28,3 +28,11 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
     backend_frame->v_imu_timestamp = v_imu_timestamp;
     return backend_frame;
 }
+
+Relocalization::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame,
+                                            BackEnd::FramePtr back_frame,
+                                            const Eigen::VecVector3d& v_x3Dw) {
+    Relocalization::FramePtr frame(new Relocalization::Frame);
+    frame->img = feat_frame->img;
+    return frame;
+}

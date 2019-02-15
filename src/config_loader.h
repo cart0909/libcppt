@@ -23,6 +23,9 @@ public:
         double acc_bias_noise;
         double gyr_bias_noise;
         double gravity_magnitude;
+
+        std::string voc_filename;
+        std::string brief_pattern_file;
     };
     static Param Load(const std::string& config_file);
 private:

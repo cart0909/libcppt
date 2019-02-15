@@ -238,6 +238,10 @@ void BackEnd::SlidingWindowOld() {
         }
     }
 
+    if(push_keyframe_callback) {
+        push_keyframe_callback(d_frames[d_frames.size() - 2], Eigen::VecVector3d());
+    }
+
     d_frames.pop_front();
 }
 

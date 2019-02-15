@@ -5,6 +5,7 @@
 #include "feature_tracker.h"
 #include "stereo_matcher.h"
 #include "backend.h"
+#include "relocalization.h"
 
 class System {
 public:
@@ -37,6 +38,8 @@ public:
         backend->SetDrawMarginMpsCallback(callback);
     }
 private:
+    void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dw);
+
     std::atomic<bool> reset_flag;
     bool b_first_frame = true;
     ConfigLoader::Param param;
@@ -53,5 +56,9 @@ private:
 
     Eigen::VecVector3d v_cache_gyr, v_cache_acc;
     std::vector<double> v_cache_imu_timestamps;
+
+    RelocalizationPtr reloc;
+    std::mutex mtx_reloc_cache;
+    std::deque<std::pair<FeatureTracker::FramePtr, BackEnd::FramePtr>> d_reloc_cache;
 };
 SMART_PTR(System)
