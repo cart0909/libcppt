@@ -13,5 +13,5 @@ public:
                                      const std::vector<double>& v_imu_timestamp);
     static Relocalization::FramePtr Convert(FeatureTracker::FramePtr feat_frame,
                                             BackEnd::FramePtr back_frame,
-                                            const Eigen::VecVector3d& v_x3Dw);
+                                            const Eigen::VecVector3d& v_x3Dc);
 };

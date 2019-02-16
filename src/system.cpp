@@ -164,7 +164,7 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
 
 }
 
-void System::PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dw) {
+void System::PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc) {
     std::unique_lock<std::mutex> lock(mtx_reloc_cache);
     int idx = 0;
     for(int i = 0, n = d_reloc_cache.size(); i < n; ++i)
@@ -177,6 +177,14 @@ void System::PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVe
     d_reloc_cache.erase(d_reloc_cache.begin(), d_reloc_cache.begin() + idx);
     lock.unlock();
 
-    Relocalization::FramePtr reloc_frame = Converter::Convert(feat_frame, back_frame, v_x3Dw);
-    reloc->PushFrame(reloc_frame);
+    int count = 0;
+    for(auto& x3Dc : v_x3Dc) {
+        if(x3Dc(2) != -1.0)
+            ++count;
+    }
+
+    if(count >= 50) {
+        Relocalization::FramePtr reloc_frame = Converter::Convert(feat_frame, back_frame, v_x3Dc);
+        reloc->PushFrame(reloc_frame);
+    }
 }

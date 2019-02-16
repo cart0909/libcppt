@@ -20,7 +20,7 @@ public:
         std::vector<uint64_t> v_pt_id;
         std::vector<cv::Point2f> v_pt_2d_uv;
         std::vector<cv::Point2f> v_pt_2d_normal; // un vn
-        std::vector<cv::Point3f> v_pt_3d; // x3Dw
+        std::vector<cv::Point3f> v_pt_3d; // x3Dc
         std::vector<DVision::BRIEF::bitset> v_descriptor;
 
         std::vector<cv::Point2f> v_extra_pt_2d_uv;
@@ -36,7 +36,7 @@ public:
 
     void PushFrame(FramePtr frame);
     void Process();
-    void DetectLoop(FramePtr frame);
+    int64_t DetectLoop(FramePtr frame);
     void Optimize4DoF();
 
 private:

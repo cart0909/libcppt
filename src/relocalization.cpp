@@ -43,12 +43,71 @@ void Relocalization::Process() {
         });
 
         for(auto& frame : v_frames) {
-            DetectLoop(frame);
+            int64_t index = DetectLoop(frame);
+            if(index == -1)
+                continue;
+            FramePtr candidate_frame = v_frame_database[index];
+
+            std::vector<cv::Point2f> pt_2d_i, pt_2d_j;
+            std::vector<cv::Point2f> pt_2d_i_norm, pt_2d_j_norm;
+            std::vector<cv::Point3f> v_x3Dci;
+            for(int i = 0, n = frame->v_extra_descriptor.size(); i < n; ++i) {
+                int best_index = -1;
+                int best_distance = 128;
+                int second_distance = best_distance;
+                for(int j = 0, m = candidate_frame->v_descriptor.size(); j < m; ++j) {
+                    int d = DVision::BRIEF::distance(frame->v_extra_descriptor[i],
+                                                     candidate_frame->v_descriptor[j]);
+
+                    if(d < best_distance) {
+                        best_index = j;
+                        second_distance = best_distance;
+                        best_distance = d;
+                    }
+                    else if(d < second_distance) {
+                        second_distance = d;
+                    }
+                }
+
+                if((float)best_distance < (float)second_distance * 0.75) {
+                    pt_2d_i.emplace_back(candidate_frame->v_pt_2d_uv[best_index]);
+                    pt_2d_i_norm.emplace_back(candidate_frame->v_pt_2d_normal[best_index]);
+                    v_x3Dci.emplace_back(candidate_frame->v_pt_3d[best_index]);
+                    pt_2d_j.emplace_back(frame->v_extra_pt_2d_uv[i]);
+                    pt_2d_j_norm.emplace_back(frame->v_extra_pt_2d_normal[i]);
+                }
+            }
+
+            if(pt_2d_i.size() > 25) { // magic number?
+                std::vector<uchar> status;
+
+                cv::Mat rvec, tvec;
+                if(cv::solvePnPRansac(v_x3Dci, pt_2d_j_norm, cv::Mat::eye(3, 3, CV_64F), cv::noArray(), rvec, tvec,
+                                      false, 100, 10.0 / camera->f(), 0.99, status)) {
+                    util::ReduceVector(pt_2d_i, status);
+                    util::ReduceVector(pt_2d_j, status);
+
+                    // debug
+                    cv::Mat img;
+                    cv::hconcat(candidate_frame->compressed_img, frame->compressed_img, img);
+                    for(int i = 0, n = pt_2d_i.size(); i < n; ++i) {
+                        auto pt_i = pt_2d_i[i] / 2;
+                        auto pt_j = pt_2d_j[i] / 2;
+                        int width = img.cols / 2;
+                        pt_j.x += width;
+                        cv::circle(img, pt_i, 2, cv::Scalar(0, 255, 255), -1);
+                        cv::circle(img, pt_j, 2, cv::Scalar(0, 255, 255), -1);
+                        cv::line(img, pt_i, pt_j, cv::Scalar(0, 255, 0), 1);
+                    }
+                    cv::imshow("reloc", img);
+                    cv::waitKey(1);
+                }
+            }
         }
     }
 }
 
-void Relocalization::DetectLoop(FramePtr frame) {
+int64_t Relocalization::DetectLoop(FramePtr frame) {
     // re-id
     frame->frame_id = next_frame_id++;
 
@@ -88,7 +147,7 @@ void Relocalization::DetectLoop(FramePtr frame) {
     v_frame_database.emplace_back(frame);
 
     if(frame->frame_id <= 50)
-        return;
+        return -1;
 
     // detect loop step 1, check bag of word similar
     // a good match with its neighbor
@@ -106,14 +165,10 @@ void Relocalization::DetectLoop(FramePtr frame) {
             }
         }
 
-    if(find_loop) {
-        cv::imshow("ref", v_frame_database[min_index]->compressed_img);
-        cv::imshow("cur", frame->compressed_img);
-
-        LOG(INFO) << "ref: " << min_index << ", cur: " << frame->frame_id;
-
-        cv::waitKey(1);
-    }
+    if(find_loop)
+        return min_index;
+    else
+        return -1;
 }
 
 void Optimize4DoF() {

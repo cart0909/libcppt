@@ -38,7 +38,7 @@ public:
         backend->SetDrawMarginMpsCallback(callback);
     }
 private:
-    void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dw);
+    void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc);
 
     std::atomic<bool> reset_flag;
     bool b_first_frame = true;

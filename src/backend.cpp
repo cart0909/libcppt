@@ -239,7 +239,39 @@ void BackEnd::SlidingWindowOld() {
     }
 
     if(push_keyframe_callback) {
-        push_keyframe_callback(d_frames[d_frames.size() - 2], Eigen::VecVector3d());
+        FramePtr frame_j = d_frames[d_frames.size() - 2];
+        Eigen::VecVector3d v_x3Dcj;
+
+        for(int i = 0, n = frame_j->pt_id.size(); i < n; ++i) {
+            uint64_t pt_id = frame_j->pt_id[i];
+            auto it = m_features.find(pt_id);
+            if(it == m_features.end()) {
+                v_x3Dcj.emplace_back(-1, -1, -1);
+            }
+            else {
+                auto& feat = it->second;
+                if(feat.inv_depth == -1.0) {
+                    v_x3Dcj.emplace_back(-1, -1, -1);
+                }
+                else {
+                    FramePtr frame_i = d_frames[feat.start_id];
+                    Eigen::Vector3d x3Dci = feat.pt_n_per_frame[0] / feat.inv_depth;
+                    Eigen::Vector3d x3Dbi = q_bc * x3Dci + p_bc;
+                    Eigen::Vector3d x3Dw = frame_i->q_wb * x3Dbi + frame_i->p_wb;
+                    Eigen::Vector3d x3Dbj = frame_j->q_wb.inverse() * (x3Dw - frame_j->p_wb);
+                    Eigen::Vector3d x3Dcj = q_bc.inverse() * (x3Dbj - p_bc);
+
+                    if(x3Dcj(2) <= 0) {
+                        v_x3Dcj.emplace_back(-1, -1, -1);
+                    }
+                    else {
+                        v_x3Dcj.emplace_back(x3Dcj);
+                    }
+                }
+            }
+        }
+
+        push_keyframe_callback(frame_j, v_x3Dcj);
     }
 
     d_frames.pop_front();
