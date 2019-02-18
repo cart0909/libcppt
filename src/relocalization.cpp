@@ -1,6 +1,8 @@
 #include "relocalization.h"
 #include <glog/logging.h>
 #include <opencv2/core/eigen.hpp>
+#include <ceres/ceres.h>
+#include "ceres/pose_graph.h"
 
 Relocalization::Relocalization(const std::string& voc_filename, const std::string& brief_pattern_file,
                                CameraPtr camera_, const Sophus::SO3d& q_bc_, const Eigen::Vector3d& p_bc_)
@@ -9,6 +11,7 @@ Relocalization::Relocalization(const std::string& voc_filename, const std::strin
     voc = std::make_shared<BriefVocabulary>(voc_filename);
     db.setVocabulary(*voc, false, 0);
     detect_loop_thread = std::thread(&Relocalization::Process, this);
+    pose_graph_thread = std::thread(&Relocalization::Optimize4DoF, this);
 
     // load brief pattern
     cv::FileStorage fs(brief_pattern_file, cv::FileStorage::READ);
@@ -42,6 +45,7 @@ void Relocalization::Process() {
            v_frame_buffer.clear();
            return !v_frames.empty();
         });
+        lock.unlock();
 
         for(auto& frame : v_frames) {
             ProcessFrame(frame);
@@ -50,12 +54,14 @@ void Relocalization::Process() {
 }
 
 void Relocalization::ProcessFrame(FramePtr frame) {
-    int64_t frame_index = DetectLoop(frame);
-    if(frame_index == -1)
+    std::unique_lock<std::mutex> lock(mtx_frame_database);
+    int64_t candidate_index = DetectLoop(frame);
+    if(candidate_index == -1)
         return;
-    FramePtr old_frame = v_frame_database[frame_index];
+    FramePtr old_frame = v_frame_database[candidate_index];
 
     if(FindMatchesAndSolvePnP(old_frame, frame)) {
+        lock.unlock();
         // assume old_frame(0) vio_p_wb and vio_q_wb
         // world is true world
         //        Eigen::Vector3d p_w_b0 = old_frame->vio_p_wb;
@@ -90,7 +96,10 @@ void Relocalization::ProcessFrame(FramePtr frame) {
         //            it->vio_q_wb = q_wd * q_db;
         //            it->vio_p_wb = q_wd * p_db + p_wd;
         //        }
-        LOG(INFO) << "push to pose graph thread!";
+        mtx_optimize_buffer.lock();
+        v_optimize_buffer.emplace_back(frame->frame_id);
+        mtx_optimize_buffer.unlock();
+        cv_optimize_buffer.notify_one();
     }
 }
 
@@ -254,6 +263,59 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
 
 void Relocalization::Optimize4DoF() {
     while(1) {
+        bool optimize_flag = false;
+        uint64_t cur_index = 0;
+        std::unique_lock<std::mutex> lock(mtx_optimize_buffer);
+        cv_optimize_buffer.wait(lock, [&] {
+            if(!v_optimize_buffer.empty()) {
+                optimize_flag = true;
+                cur_index = v_optimize_buffer.back();
+                v_optimize_buffer.clear();
+            }
+            return optimize_flag;
+        });
+        lock.unlock();
 
+        LOG(INFO) << "optimize pose graph";
+        std::unique_lock<std::mutex> lock1(mtx_frame_database);
+
+        int size = cur_index + 1;
+        double* p_wb_raw = new double[size * 3];
+        double* yaw_wb_raw = new double[size];
+
+        ceres::Problem problem;
+        ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
+        ceres::LocalParameterization* angle_local_parameterization = AngleLocalParameterization::Create();
+
+        for(int i = 0; i < cur_index; ++i) {
+            Eigen::Vector3d p_wb = v_frame_database[i]->vio_p_wb;
+            Sophus::SO3d q_wb = v_frame_database[i]->vio_q_wb;
+            p_wb_raw[i * 3] = p_wb(0);
+            p_wb_raw[i * 3 + 1] = p_wb(1);
+            p_wb_raw[i * 3 + 2] = p_wb(2);
+
+            yaw_wb_raw[i] = Sophus::R2ypr(q_wb)(0);
+            if(yaw_wb_raw[i] * 2 > M_PI)
+                yaw_wb_raw[i] -= M_PI;
+
+            problem.AddParameterBlock(yaw_wb_raw + i, 1, angle_local_parameterization);
+            problem.AddParameterBlock(p_wb_raw + 3 * i, 3);
+
+            // add edge
+
+            // add loop
+        }
+
+        lock1.unlock();
+        ceres::Solver::Options options;
+        options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+        options.max_num_iterations = 5;
+        ceres::Solver::Summary summary;
+        ceres::Solve(options, &problem, &summary);
+        LOG(INFO) << summary.FullReport();
+
+        lock1.lock();
+
+        lock1.unlock();
     }
 }

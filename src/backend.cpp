@@ -64,6 +64,7 @@ void BackEnd::Process() {
             frame_buffer.clear();
             return (!measurements.empty() || request_reset_flag);
         });
+        lock.unlock();
 
         if(request_reset_flag) {
             Reset();

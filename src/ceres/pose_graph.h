@@ -77,7 +77,7 @@ public:
         T tw_ij[3] = {tj[0] - ti[0], tj[1] - ti[1], tj[2] - ti[2]};
 
         T Rwi[9];
-        ypr2R<T>(yaw_i[0], pitch_i, roll_i, Rwi);
+        ypr2R(yaw_i[0], T(pitch_i), T(roll_i), Rwi);
 
         T Riw[9];
         TransposeRotationMatrix(Rwi, Riw);
@@ -86,9 +86,9 @@ public:
         RotateVector(Riw, tw_ij, ti_ij);
 
         residuals[0] = ti_ij[0] - T(t_x);
-        residuals[0] = ti_ij[0] - T(t_x);
-        residuals[0] = ti_ij[0] - T(t_x);
-        residuals[0] = ti_ij[0] - T(t_x);
+        residuals[1] = ti_ij[1] - T(t_y);
+        residuals[2] = ti_ij[2] - T(t_z);
+        residuals[3] = NormalizeAngle(yaw_j[0] - yaw_i[0] - T(relative_yaw));
         return true;
     }
 

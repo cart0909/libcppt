@@ -57,6 +57,7 @@ private:
 
     std::thread detect_loop_thread, pose_graph_thread;
     BriefDatabase db;
+    std::mutex mtx_frame_database;
     std::vector<FramePtr> v_frame_database;
     std::shared_ptr<BriefVocabulary> voc;
 
@@ -67,7 +68,7 @@ private:
     Eigen::Vector3d p_bc;
 
     std::mutex mtx_optimize_buffer;
-    std::condition_variable cv_optmize_buffer;
-//    std::vector<uint64_t>
+    std::condition_variable cv_optimize_buffer;
+    std::vector<uint64_t> v_optimize_buffer;
 };
 SMART_PTR(Relocalization)
