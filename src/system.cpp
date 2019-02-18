@@ -55,7 +55,8 @@ System::System(const std::string& config_file) {
                                         param.p_rl[0], param.p_bc[0], param.q_rl[0], param.q_bc[0],
                                         param.gravity_magnitude);
 
-    reloc = std::make_shared<Relocalization>(param.voc_filename, param.brief_pattern_file, cam_m);
+    reloc = std::make_shared<Relocalization>(param.voc_filename, param.brief_pattern_file, cam_m,
+                                             param.q_bc[0], param.p_bc[0]);
     if(reloc) {
         backend->SetPushKeyFrameCallback(std::bind(&System::PushKeyFrame2Reloc, this,
                                                    std::placeholders::_1,

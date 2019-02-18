@@ -1,9 +1,10 @@
 #include "relocalization.h"
 #include <glog/logging.h>
+#include <opencv2/core/eigen.hpp>
 
 Relocalization::Relocalization(const std::string& voc_filename, const std::string& brief_pattern_file,
-                               CameraPtr camera_)
-    : camera(camera_)
+                               CameraPtr camera_, const Sophus::SO3d& q_bc_, const Eigen::Vector3d& p_bc_)
+    : camera(camera_), q_bc(q_bc_), p_bc(p_bc_)
 {
     voc = std::make_shared<BriefVocabulary>(voc_filename);
     db.setVocabulary(*voc, false, 0);
@@ -43,67 +44,53 @@ void Relocalization::Process() {
         });
 
         for(auto& frame : v_frames) {
-            int64_t index = DetectLoop(frame);
-            if(index == -1)
-                continue;
-            FramePtr candidate_frame = v_frame_database[index];
-
-            std::vector<cv::Point2f> pt_2d_i, pt_2d_j;
-            std::vector<cv::Point2f> pt_2d_i_norm, pt_2d_j_norm;
-            std::vector<cv::Point3f> v_x3Dci;
-            for(int i = 0, n = frame->v_extra_descriptor.size(); i < n; ++i) {
-                int best_index = -1;
-                int best_distance = 128;
-                int second_distance = best_distance;
-                for(int j = 0, m = candidate_frame->v_descriptor.size(); j < m; ++j) {
-                    int d = DVision::BRIEF::distance(frame->v_extra_descriptor[i],
-                                                     candidate_frame->v_descriptor[j]);
-
-                    if(d < best_distance) {
-                        best_index = j;
-                        second_distance = best_distance;
-                        best_distance = d;
-                    }
-                    else if(d < second_distance) {
-                        second_distance = d;
-                    }
-                }
-
-                if((float)best_distance < (float)second_distance * 0.75) {
-                    pt_2d_i.emplace_back(candidate_frame->v_pt_2d_uv[best_index]);
-                    pt_2d_i_norm.emplace_back(candidate_frame->v_pt_2d_normal[best_index]);
-                    v_x3Dci.emplace_back(candidate_frame->v_pt_3d[best_index]);
-                    pt_2d_j.emplace_back(frame->v_extra_pt_2d_uv[i]);
-                    pt_2d_j_norm.emplace_back(frame->v_extra_pt_2d_normal[i]);
-                }
-            }
-
-            if(pt_2d_i.size() > 25) { // magic number?
-                std::vector<uchar> status;
-
-                cv::Mat rvec, tvec;
-                if(cv::solvePnPRansac(v_x3Dci, pt_2d_j_norm, cv::Mat::eye(3, 3, CV_64F), cv::noArray(), rvec, tvec,
-                                      false, 100, 10.0 / camera->f(), 0.99, status)) {
-                    util::ReduceVector(pt_2d_i, status);
-                    util::ReduceVector(pt_2d_j, status);
-
-                    // debug
-                    cv::Mat img;
-                    cv::hconcat(candidate_frame->compressed_img, frame->compressed_img, img);
-                    for(int i = 0, n = pt_2d_i.size(); i < n; ++i) {
-                        auto pt_i = pt_2d_i[i] / 2;
-                        auto pt_j = pt_2d_j[i] / 2;
-                        int width = img.cols / 2;
-                        pt_j.x += width;
-                        cv::circle(img, pt_i, 2, cv::Scalar(0, 255, 255), -1);
-                        cv::circle(img, pt_j, 2, cv::Scalar(0, 255, 255), -1);
-                        cv::line(img, pt_i, pt_j, cv::Scalar(0, 255, 0), 1);
-                    }
-                    cv::imshow("reloc", img);
-                    cv::waitKey(1);
-                }
-            }
+            ProcessFrame(frame);
         }
+    }
+}
+
+void Relocalization::ProcessFrame(FramePtr frame) {
+    int64_t frame_index = DetectLoop(frame);
+    if(frame_index == -1)
+        return;
+    FramePtr old_frame = v_frame_database[frame_index];
+
+    if(FindMatchesAndSolvePnP(old_frame, frame)) {
+        // assume old_frame(0) vio_p_wb and vio_q_wb
+        // world is true world
+        //        Eigen::Vector3d p_w_b0 = old_frame->vio_p_wb;
+        //        Sophus::SO3d q_w_b0 = old_frame->vio_q_wb;
+
+        //        // and cur_frame(1) vio_p_wb and vio_q_wb
+        //        // world is drift world, d is drift world
+        //        Eigen::Vector3d p_d_b1 = frame->vio_p_wb;
+        //        Sophus::SO3d q_d_b1 = frame->vio_q_wb;
+
+        //        Eigen::Vector3d p_w_b1 = q_w_b0 * frame->pnp_p_old_cur + p_w_b0;
+        //        Sophus::SO3d q_w_b1 = q_w_b0 * frame->pnp_q_old_cur;
+
+        //        // then we calc the true world and drift world transformation matrix
+        //        Eigen::Vector3d p_b1_d = -(q_d_b1.inverse() * p_d_b1);
+        //        Eigen::Vector3d p_wd = q_w_b1 * (p_b1_d) + p_w_b1;
+        //        Sophus::SO3d q_wd = q_w_b1 * q_d_b1.inverse();
+
+        //        // strong assume!!!
+        //        // world and drift world only exist x, y, z, yaw angle drift
+        //        {
+        //            double yaw_drift = Sophus::R2ypr(q_wd)(0);
+        //            if(yaw_drift * 2 > M_PI)
+        //                yaw_drift -= M_PI;
+        //            q_wd = Sophus::ypr2R<double>(yaw_drift, 0, 0);
+        //        }
+
+        // shift all vio pose of whole sequence to the world frame
+        //        for(auto& it : v_frame_database) {
+        //            Eigen::Vector3d p_db = it->vio_p_wb;
+        //            Sophus::SO3d q_db = it->vio_q_wb;
+        //            it->vio_q_wb = q_wd * q_db;
+        //            it->vio_p_wb = q_wd * p_db + p_wd;
+        //        }
+        LOG(INFO) << "push to pose graph thread!";
     }
 }
 
@@ -171,7 +158,101 @@ int64_t Relocalization::DetectLoop(FramePtr frame) {
         return -1;
 }
 
-void Optimize4DoF() {
+bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) {
+    std::vector<cv::Point2f> matched_2d_cur, matched_2d_old;
+    std::vector<cv::Point2f> matched_2d_cur_norm, matched_2d_old_norm;
+    std::vector<cv::Point3f> matched_3d;
+    std::vector<uint64_t> matched_id;
+    std::vector<uchar> status;
+
+    for(int i = 0, n = frame->v_descriptor.size(); i < n; ++i) {
+        int best_dis = 80;
+        int best_index = -1;
+        for(int j = 0, m = old_frame->v_extra_descriptor.size(); j < m; ++j) {
+            int dis = DVision::BRIEF::distance(frame->v_descriptor[i], old_frame->v_extra_descriptor[j]);
+            if(dis < best_dis) {
+                best_dis = dis;
+                best_index = j;
+            }
+        }
+
+        if(best_index != -1) {
+            matched_id.emplace_back(frame->v_pt_id[i]);
+            matched_2d_cur.emplace_back(frame->v_pt_2d_uv[i]);
+            matched_2d_cur_norm.emplace_back(frame->v_pt_2d_normal[i]);
+            matched_3d.emplace_back(frame->v_pt_3d[i]);
+            matched_2d_old.emplace_back(old_frame->v_extra_pt_2d_uv[best_index]);
+            matched_2d_old_norm.emplace_back(old_frame->v_extra_pt_2d_normal[best_index]);
+        }
+    }
+
+    if(matched_2d_cur.size() > 25) { // 25 is magic number
+        Sophus::SO3d q_w_c0 = old_frame->q_wb * q_bc;
+        Sophus::SO3d q_w_c1 = frame->q_wb * q_bc;
+        Eigen::Vector3d p_w_c0 = old_frame->q_wb * p_bc + old_frame->p_wb;
+        Eigen::Vector3d p_w_c1 = frame->q_wb * p_bc + frame->p_wb;
+        Sophus::SO3d q_c0_c1 = q_w_c0.inverse() * q_w_c1;
+        Eigen::Vector3d p_c0_c1 = q_w_c0.inverse() * (p_w_c1 - p_w_c0);
+
+        cv::Mat R, rvec, tvec;
+        cv::eigen2cv(q_c0_c1.matrix(), R);
+        cv::Rodrigues(R, rvec);
+        cv::eigen2cv(p_c0_c1, tvec);
+        cv::Mat inliers;
+        if(cv::solvePnPRansac(matched_3d, matched_2d_old_norm, cv::Mat::eye(3, 3, CV_64F), cv::noArray(),
+                              rvec, tvec, true, 100, 8.0f / camera->f(), 0.99, inliers)) {
+
+            status.resize(matched_2d_cur.size(), 0);
+
+            for(int i = 0, n = inliers.rows; i < n; ++i)
+                status[inliers.at<int>(i)] = 1;
+
+            util::ReduceVector(matched_2d_cur, status);
+            util::ReduceVector(matched_2d_old, status);
+
+            if(matched_2d_cur.size() >= 25) {
+
+                Eigen::Vector3d tmp_t;
+                Eigen::Matrix3d tmp_R;
+                cv::Rodrigues(rvec, R);
+                cv::cv2eigen(R, tmp_R);
+                cv::cv2eigen(tvec, tmp_t);
+                frame->pnp_p_old_cur = tmp_t;
+                frame->pnp_q_old_cur.setQuaternion(Eigen::Quaterniond(tmp_R));
+                double yaw = Sophus::R2ypr(frame->pnp_q_old_cur)(0);
+                if(yaw * 2 > M_PI)
+                    yaw -= M_PI;
+                frame->pnp_yaw_old_cur = yaw;
+
+                if(std::abs(yaw) < M_PI / 6 && tmp_t.norm() < 20.0) {
+                    cv::Mat result;
+                    cv::hconcat(old_frame->compressed_img, frame->compressed_img, result);
+
+                    for(int i = 0, n = matched_2d_old.size(); i < n; ++i) {
+                        cv::Point2f pt_i = matched_2d_old[i] / 2;
+                        cv::Point2f pt_j = matched_2d_cur[i] / 2;
+                        int width = result.cols / 2;
+                        pt_j.x += width;
+                        cv::circle(result, pt_i, 2, cv::Scalar(0, 255, 255), -1);
+                        cv::circle(result, pt_j, 2, cv::Scalar(0, 255, 255), -1);
+                        cv::line(result, pt_i, pt_j, cv::Scalar(0, 255, 0), 1);
+                    }
+
+                    frame->has_loop = true;
+                    frame->matched_img = result;
+
+//                    Eigen::Vector3d ypr = Sophus::R2ypr(frame->pnp_q_old_cur) * 180 / M_PI;
+//                    LOG(INFO) << ypr(0) << " " << ypr(1) << " " << ypr(2) << " " <<
+//                                 tmp_t(0) << " " << tmp_t(1) << " " << tmp_t(2);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void Relocalization::Optimize4DoF() {
     while(1) {
 
     }
