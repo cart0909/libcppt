@@ -168,10 +168,10 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
     }
 
     if(matched_2d_cur.size() > 25) { // 25 is magic number
-        Sophus::SO3d q_w_c0 = old_frame->q_wb * q_bc;
-        Sophus::SO3d q_w_c1 = frame->q_wb * q_bc;
-        Eigen::Vector3d p_w_c0 = old_frame->q_wb * p_bc + old_frame->p_wb;
-        Eigen::Vector3d p_w_c1 = frame->q_wb * p_bc + frame->p_wb;
+        Sophus::SO3d q_w_c0 = old_frame->vio_q_wb * q_bc;
+        Sophus::SO3d q_w_c1 = frame->vio_q_wb * q_bc;
+        Eigen::Vector3d p_w_c0 = old_frame->vio_q_wb * p_bc + old_frame->vio_p_wb;
+        Eigen::Vector3d p_w_c1 = frame->vio_q_wb * p_bc + frame->vio_p_wb;
         Sophus::SO3d q_c0_c1 = q_w_c0.inverse() * q_w_c1;
         Eigen::Vector3d p_c0_c1 = q_w_c0.inverse() * (p_w_c1 - p_w_c0);
 
@@ -181,7 +181,7 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
         cv::eigen2cv(p_c0_c1, tvec);
         cv::Mat inliers;
         if(cv::solvePnPRansac(matched_3d, matched_2d_old_norm, cv::Mat::eye(3, 3, CV_64F), cv::noArray(),
-                              rvec, tvec, true, 100, 8.0f / camera->f(), 0.99, inliers)) {
+                              rvec, tvec, false, 100, 8.0f / camera->f(), 0.99, inliers)) {
 
             status.resize(matched_2d_cur.size(), 0);
 
@@ -198,8 +198,11 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                 cv::Rodrigues(rvec, R);
                 cv::cv2eigen(R, tmp_R);
                 cv::cv2eigen(tvec, tmp_t);
-                frame->pnp_p_old_cur = tmp_t;
-                frame->pnp_q_old_cur.setQuaternion(Eigen::Quaterniond(tmp_R));
+                Sophus::SE3d Tco_cc(Eigen::Quaterniond(tmp_R), tmp_t); // camera_old, camera_cur
+                Sophus::SE3d Tbc(q_bc, p_bc);
+                Sophus::SE3d Tbo_bc = Tbc * Tco_cc * Tbc.inverse(); // body_old, body_cur
+                frame->pnp_p_old_cur = Tbo_bc.translation();
+                frame->pnp_q_old_cur = Tbo_bc.so3();
                 double yaw = Sophus::R2ypr(frame->pnp_q_old_cur)(0);
                 frame->pnp_yaw_old_cur = yaw;
 
