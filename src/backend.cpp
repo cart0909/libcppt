@@ -405,10 +405,6 @@ void BackEnd::double2data() {
 
     Sophus::SO3d q_w1b0 = d_frames[0]->q_wb;
     double y_diff = Sophus::R2ypr(q_w0b0 * q_w1b0.inverse())(0);
-
-    if(y_diff * 2 > M_PI)
-        y_diff -= M_PI;
-
     Sophus::SO3d q_w0w1 = Sophus::ypr2R<double>(y_diff, 0, 0);
     Eigen::Vector3d p_w1b0 = d_frames[0]->p_wb;
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
