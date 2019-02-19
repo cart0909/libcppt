@@ -189,12 +189,22 @@ Eigen::Matrix<typename Derived::Scalar, 4, 4> Qright(const Sophus::SO3Base<Deriv
 
 template<typename Derived>
 Eigen::Matrix<typename Derived::Scalar, 3, 1> R2ypr(const Sophus::SO3Base<Derived>& q) {
-    return q.matrix().eulerAngles(2, 1, 0);
+    Eigen::Matrix<typename Derived::Scalar, 3, 3> R = q.matrix();
+    Eigen::Matrix<typename Derived::Scalar, 3, 1> ypr;
+    ypr(0) = std::atan2(R(1, 0), R(0, 0));
+    ypr(1) = std::atan2(-R(2, 0), R(0, 0) * std::cos(ypr(0)) + R(1, 0) * std::sin(ypr(0)));
+    ypr(2) = std::atan2(R(2, 1), R(2, 2));
+    return ypr;
 }
 
 template<typename Derived>
 Eigen::Matrix<typename Derived::Scalar, 3, 1> R2ypr(const Eigen::QuaternionBase<Derived>& q) {
-    return q.matrix().eulerAngles(2, 1, 0);
+    Eigen::Matrix<typename Derived::Scalar, 3, 3> R = q.toRotationMatrix();
+    Eigen::Matrix<typename Derived::Scalar, 3, 1> ypr;
+    ypr(0) = std::atan2(R(1, 0), R(0, 0));
+    ypr(1) = std::atan2(-R(2, 0), R(0, 0) * std::cos(ypr(0)) + R(1, 0) * std::sin(ypr(0)));
+    ypr(2) = std::atan2(R(2, 1), R(2, 2));
+    return ypr;
 }
 
 template<class Scalar>
