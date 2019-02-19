@@ -30,7 +30,7 @@ public:
         Eigen::Vector3d vio_p_wb, p_wb;
 
         bool has_loop = false;
-        int loop_index = -1;
+        int64_t loop_index = -1;
         Sophus::SO3d pnp_q_old_cur;
         Eigen::Vector3d pnp_p_old_cur;
         double pnp_yaw_old_cur;
@@ -42,7 +42,7 @@ public:
                    CameraPtr camera_, const Sophus::SO3d& q_bc_, const Eigen::Vector3d& p_bc_);
 
     void PushFrame(FramePtr frame);
-
+    std::function<void(uint64_t, double, const Sophus::SE3d&)> draw;
 private:
     void Process();
     void ProcessFrame(FramePtr frame);
@@ -69,6 +69,10 @@ private:
 
     std::mutex mtx_optimize_buffer;
     std::condition_variable cv_optimize_buffer;
-    std::vector<uint64_t> v_optimize_buffer;
+    std::vector<int64_t> v_optimize_buffer;
+
+    std::mutex mtx_w_viow;
+    Eigen::Vector3d p_w_viow;
+    Sophus::SO3d q_w_viow;
 };
 SMART_PTR(Relocalization)

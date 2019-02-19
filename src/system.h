@@ -37,6 +37,8 @@ public:
     inline void SetDrawMarginMpsCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
         backend->SetDrawMarginMpsCallback(callback);
     }
+    // for fast debug
+    RelocalizationPtr reloc;
 private:
     void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc);
 
@@ -57,7 +59,6 @@ private:
     Eigen::VecVector3d v_cache_gyr, v_cache_acc;
     std::vector<double> v_cache_imu_timestamps;
 
-    RelocalizationPtr reloc;
     std::mutex mtx_reloc_cache;
     std::deque<std::pair<FeatureTracker::FramePtr, BackEnd::FramePtr>> d_reloc_cache;
 };

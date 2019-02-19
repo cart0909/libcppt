@@ -61,45 +61,21 @@ void Relocalization::ProcessFrame(FramePtr frame) {
     FramePtr old_frame = v_frame_database[candidate_index];
 
     if(FindMatchesAndSolvePnP(old_frame, frame)) {
-        lock.unlock();
-        // assume old_frame(0) vio_p_wb and vio_q_wb
-        // world is true world
-        //        Eigen::Vector3d p_w_b0 = old_frame->vio_p_wb;
-        //        Sophus::SO3d q_w_b0 = old_frame->vio_q_wb;
-
-        //        // and cur_frame(1) vio_p_wb and vio_q_wb
-        //        // world is drift world, d is drift world
-        //        Eigen::Vector3d p_d_b1 = frame->vio_p_wb;
-        //        Sophus::SO3d q_d_b1 = frame->vio_q_wb;
-
-        //        Eigen::Vector3d p_w_b1 = q_w_b0 * frame->pnp_p_old_cur + p_w_b0;
-        //        Sophus::SO3d q_w_b1 = q_w_b0 * frame->pnp_q_old_cur;
-
-        //        // then we calc the true world and drift world transformation matrix
-        //        Eigen::Vector3d p_b1_d = -(q_d_b1.inverse() * p_d_b1);
-        //        Eigen::Vector3d p_wd = q_w_b1 * (p_b1_d) + p_w_b1;
-        //        Sophus::SO3d q_wd = q_w_b1 * q_d_b1.inverse();
-
-        //        // strong assume!!!
-        //        // world and drift world only exist x, y, z, yaw angle drift
-        //        {
-        //            double yaw_drift = Sophus::R2ypr(q_wd)(0);
-        //            if(yaw_drift * 2 > M_PI)
-        //                yaw_drift -= M_PI;
-        //            q_wd = Sophus::ypr2R<double>(yaw_drift, 0, 0);
-        //        }
-
-        // shift all vio pose of whole sequence to the world frame
-        //        for(auto& it : v_frame_database) {
-        //            Eigen::Vector3d p_db = it->vio_p_wb;
-        //            Sophus::SO3d q_db = it->vio_q_wb;
-        //            it->vio_q_wb = q_wd * q_db;
-        //            it->vio_p_wb = q_wd * p_db + p_wd;
-        //        }
         mtx_optimize_buffer.lock();
         v_optimize_buffer.emplace_back(frame->frame_id);
         mtx_optimize_buffer.unlock();
         cv_optimize_buffer.notify_one();
+    }
+
+    mtx_w_viow.lock();
+    frame->p_wb = q_w_viow * frame->vio_p_wb + p_w_viow;
+    frame->q_wb = q_w_viow * frame->vio_q_wb;
+    mtx_w_viow.unlock();
+
+    if(draw) {
+        Sophus::SE3d Twb = Sophus::SE3d(frame->q_wb, frame->p_wb);
+        Sophus::SE3d Twc = Twb * Sophus::SE3d(q_bc, p_bc);
+        draw(frame->frame_id, frame->timestamp, Twc);
     }
 }
 
@@ -229,8 +205,6 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                 frame->pnp_p_old_cur = tmp_t;
                 frame->pnp_q_old_cur.setQuaternion(Eigen::Quaterniond(tmp_R));
                 double yaw = Sophus::R2ypr(frame->pnp_q_old_cur)(0);
-                if(yaw * 2 > M_PI)
-                    yaw -= M_PI;
                 frame->pnp_yaw_old_cur = yaw;
 
                 if(std::abs(yaw) < M_PI / 6 && tmp_t.norm() < 20.0) {
@@ -248,6 +222,7 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                     }
 
                     frame->has_loop = true;
+                    frame->loop_index = old_frame->frame_id;
                     frame->matched_img = result;
 
 //                    Eigen::Vector3d ypr = Sophus::R2ypr(frame->pnp_q_old_cur) * 180 / M_PI;
@@ -263,16 +238,14 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
 
 void Relocalization::Optimize4DoF() {
     while(1) {
-        bool optimize_flag = false;
-        uint64_t cur_index = 0;
+        int64_t cur_index = -1;
         std::unique_lock<std::mutex> lock(mtx_optimize_buffer);
         cv_optimize_buffer.wait(lock, [&] {
             if(!v_optimize_buffer.empty()) {
-                optimize_flag = true;
                 cur_index = v_optimize_buffer.back();
                 v_optimize_buffer.clear();
             }
-            return optimize_flag;
+            return cur_index != -1;
         });
         lock.unlock();
 
@@ -281,29 +254,64 @@ void Relocalization::Optimize4DoF() {
 
         int size = cur_index + 1;
         double* p_wb_raw = new double[size * 3];
-        double* yaw_wb_raw = new double[size];
+        double* ypr_wb_raw = new double[size * 3];
 
         ceres::Problem problem;
         ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
         ceres::LocalParameterization* angle_local_parameterization = AngleLocalParameterization::Create();
 
-        for(int i = 0; i < cur_index; ++i) {
-            Eigen::Vector3d p_wb = v_frame_database[i]->vio_p_wb;
-            Sophus::SO3d q_wb = v_frame_database[i]->vio_q_wb;
-            p_wb_raw[i * 3] = p_wb(0);
-            p_wb_raw[i * 3 + 1] = p_wb(1);
-            p_wb_raw[i * 3 + 2] = p_wb(2);
+        for(int i = 0; i <= cur_index; ++i) {
+            Eigen::Vector3d p_w_bj = v_frame_database[i]->vio_p_wb;
+            Sophus::SO3d q_w_bj = v_frame_database[i]->vio_q_wb;
+            p_wb_raw[i * 3] = p_w_bj(0);
+            p_wb_raw[i * 3 + 1] = p_w_bj(1);
+            p_wb_raw[i * 3 + 2] = p_w_bj(2);
 
-            yaw_wb_raw[i] = Sophus::R2ypr(q_wb)(0);
-            if(yaw_wb_raw[i] * 2 > M_PI)
-                yaw_wb_raw[i] -= M_PI;
+            Eigen::Vector3d ypr_w_bj = Sophus::R2ypr(q_w_bj);
+            ypr_wb_raw[i * 3] = ypr_w_bj(0);
+            ypr_wb_raw[i * 3 + 1] = ypr_w_bj(1);
+            ypr_wb_raw[i * 3 + 2] = ypr_w_bj(2);
 
-            problem.AddParameterBlock(yaw_wb_raw + i, 1, angle_local_parameterization);
+            problem.AddParameterBlock(ypr_wb_raw + 3 * i, 1, angle_local_parameterization);
             problem.AddParameterBlock(p_wb_raw + 3 * i, 3);
 
+            if(i == 0) {
+                problem.SetParameterBlockConstant(ypr_wb_raw);
+                problem.SetParameterBlockConstant(p_wb_raw);
+            }
+
             // add edge
+            for(int j = 1; j < 5; ++j) {
+                if(i - j < 0)
+                    continue;
+                Eigen::Vector3d p_w_bi = v_frame_database[i - j]->vio_p_wb;
+                Sophus::SO3d q_w_bi = v_frame_database[i - j]->vio_q_wb;
+                Eigen::Vector3d p_bi_bj = q_w_bi.inverse() * (p_w_bj - p_w_bi);
+                Sophus::SO3d q_bi_bj = q_w_bi.inverse() * q_w_bj;
+                Eigen::Vector3d ypr_w_bi = Sophus::R2ypr(q_w_bi);
+                double yaw_bi_bj = Sophus::R2ypr(q_bi_bj)(0);
+                auto factor = FourDOFError::Create(p_bi_bj(0), p_bi_bj(1), p_bi_bj(2),
+                                                   yaw_bi_bj, ypr_w_bi(1), ypr_w_bi(2));
+                problem.AddResidualBlock(factor, NULL,
+                                         ypr_wb_raw + 3 * (i - j), p_wb_raw + 3 * (i - j),
+                                         ypr_wb_raw + 3 * i, p_wb_raw + 3 * i);
+            }
 
             // add loop
+            if(v_frame_database[i]->has_loop) {
+                int64_t loop_index = v_frame_database[i]->loop_index;
+                Sophus::SO3d q_w_bi = v_frame_database[loop_index]->q_wb;
+                Eigen::Vector3d ypr_w_bi = Sophus::R2ypr(q_w_bi);
+                double pnp_yaw_bi_bj = v_frame_database[loop_index]->pnp_yaw_old_cur;
+                Eigen::Vector3d pnp_p_bi_bj = v_frame_database[loop_index]->pnp_p_old_cur;
+                auto factor = FourDOFError::Create(pnp_p_bi_bj(0), pnp_p_bi_bj(1), pnp_p_bi_bj(2),
+                                                   pnp_yaw_bi_bj, ypr_w_bi(1), ypr_w_bi(2));
+                problem.AddResidualBlock(factor, loss_function,
+                                         ypr_wb_raw + 3 * loop_index,
+                                         p_wb_raw + 3 * loop_index,
+                                         ypr_wb_raw + 3 * i,
+                                         p_wb_raw + 3 * i);
+            }
         }
 
         lock1.unlock();
@@ -312,10 +320,38 @@ void Relocalization::Optimize4DoF() {
         options.max_num_iterations = 5;
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
-        LOG(INFO) << summary.FullReport();
+        LOG(INFO) << summary.BriefReport();
 
         lock1.lock();
+        for(int i = 0; i <= cur_index; ++i) {
+            v_frame_database[i]->p_wb(0) = p_wb_raw[i * 3];
+            v_frame_database[i]->p_wb(1) = p_wb_raw[i * 3 + 1];
+            v_frame_database[i]->p_wb(2) = p_wb_raw[i * 3 + 2];
+            v_frame_database[i]->q_wb = Sophus::ypr2R(ypr_wb_raw[i * 3],
+                                                      ypr_wb_raw[i * 3 + 1],
+                                                      ypr_wb_raw[i * 3 + 2]);
+        }
 
+        // update the world and vio world transformation matrix
+        {
+            Sophus::SE3d Tw_cur(v_frame_database[cur_index]->q_wb, v_frame_database[cur_index]->p_wb),
+                         Tviow_cur(v_frame_database[cur_index]->vio_q_wb, v_frame_database[cur_index]->vio_p_wb);
+            Sophus::SE3d Tw_viow = Tw_cur * Tviow_cur.inverse();
+            mtx_w_viow.lock();
+            p_w_viow = Tw_viow.translation();
+            q_w_viow = Tw_viow.so3();
+            mtx_w_viow.unlock();
+
+            for(int i = cur_index + 1, n = v_frame_database.size(); i < n; ++i) {
+                Eigen::Vector3d p_viow_b = v_frame_database[i]->vio_p_wb;
+                Sophus::SO3d q_viow_b = v_frame_database[i]->vio_q_wb;
+
+                v_frame_database[i]->p_wb = q_w_viow * p_viow_b + p_w_viow;
+                v_frame_database[i]->q_wb = q_w_viow * q_viow_b;
+            }
+        }
         lock1.unlock();
+
+        std::this_thread::sleep_for(std::chrono::seconds(2));
     }
 }

@@ -44,5 +44,9 @@ Relocalization::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame,
             frame->v_pt_3d.emplace_back(v_x3Dc[i](0), v_x3Dc[i](1), v_x3Dc[i](2));
         }
     }
+    frame->vio_p_wb = back_frame->p_wb;
+    frame->vio_q_wb = back_frame->q_wb;
+    frame->p_wb = back_frame->p_wb;
+    frame->q_wb = back_frame->q_wb;
     return frame;
 }

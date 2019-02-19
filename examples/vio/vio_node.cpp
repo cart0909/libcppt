@@ -28,7 +28,7 @@ using namespace sensor_msgs;
 class Node {
 public:
     using Measurements = vector<pair<pair<ImageConstPtr, ImageConstPtr>, vector<ImuConstPtr>>>;
-    Node() : camera_pose_visual(1, 0, 0, 1)
+    Node() : camera_pose_visual(1, 0, 0, 1), reloc_camera_pose_visual(1, 0, 0, 1)
     {
         camera_pose_visual.setScale(0.3);
         t_system = std::thread(&Node::SystemThread, this);
@@ -57,6 +57,8 @@ public:
                                                        std::placeholders::_2, std::placeholders::_3));
         system->SetDrawMarginMpsCallback(std::bind(&Node::PubMarginMps, this, std::placeholders::_1,
                                                    std::placeholders::_2, std::placeholders::_3));
+        system->reloc->draw = std::bind(&Node::PubRelocPath, this, std::placeholders::_1,
+                                        std::placeholders::_2, std::placeholders::_3);
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
@@ -255,6 +257,19 @@ public:
         pub_margin_mps.publish(margin_mps_msg);
     }
 
+    void PubRelocPath(uint64_t seq, double timestamp, const Sophus::SE3d& Twc) {
+        std_msgs::Header header;
+        header.frame_id = "world";
+        header.seq = seq;
+        header.stamp.fromSec(timestamp);
+        Eigen::Vector3d twc = Twc.translation();
+        Eigen::Quaterniond qwc = Twc.so3().unit_quaternion();
+        // camera pose
+        reloc_camera_pose_visual.reset();
+        reloc_camera_pose_visual.add_pose(twc, qwc);
+        reloc_camera_pose_visual.publish_by(pub_reloc_camera_pose, header);
+    }
+
     string imu_topic;
     string img_topic[2];
     string log_filename;
@@ -280,6 +295,12 @@ public:
     CameraPoseVisualization camera_pose_visual;
 
     double image_timestamp = -1.0f;
+
+    // show reloc
+    nav_msgs::Path reloc_path;
+    CameraPoseVisualization reloc_camera_pose_visual;
+    ros::Publisher pub_reloc_path;
+    ros::Publisher pub_reloc_camera_pose;
 };
 
 // global variable
@@ -327,6 +348,8 @@ int main(int argc, char** argv) {
     node.pub_keyframes = nh.advertise<visualization_msgs::Marker>("keyframes", 1000);
     node.pub_mappoints = nh.advertise<sensor_msgs::PointCloud>("mappoints", 1000);
     node.pub_margin_mps = nh.advertise<sensor_msgs::PointCloud>("margin_mps", 1000);
+    node.pub_reloc_path = nh.advertise<nav_msgs::Path>("reloc_path", 1000);
+    node.pub_reloc_camera_pose = nh.advertise<visualization_msgs::MarkerArray>("reloc_camera_pose", 1000);
     ROS_INFO_STREAM("Player is ready.");
 
     ros::spin();
