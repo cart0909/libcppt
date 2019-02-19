@@ -54,7 +54,6 @@ void Relocalization::Process() {
 }
 
 void Relocalization::ProcessFrame(FramePtr frame) {
-    std::unique_lock<std::mutex> lock(mtx_frame_database);
     int64_t candidate_index = DetectLoop(frame);
     if(candidate_index == -1)
         return;
@@ -71,12 +70,6 @@ void Relocalization::ProcessFrame(FramePtr frame) {
     frame->p_wb = q_w_viow * frame->vio_p_wb + p_w_viow;
     frame->q_wb = q_w_viow * frame->vio_q_wb;
     mtx_w_viow.unlock();
-
-    if(draw) {
-        Sophus::SE3d Twb = Sophus::SE3d(frame->q_wb, frame->p_wb);
-        Sophus::SE3d Twc = Twb * Sophus::SE3d(q_bc, p_bc);
-        draw(frame->frame_id, frame->timestamp, Twc);
-    }
 }
 
 int64_t Relocalization::DetectLoop(FramePtr frame) {
@@ -116,7 +109,10 @@ int64_t Relocalization::DetectLoop(FramePtr frame) {
     db.query(frame->v_extra_descriptor, ret, 4, frame->frame_id - 50);
 
     db.add(frame->v_extra_descriptor);
+
+    mtx_frame_database.lock();
     v_frame_database.emplace_back(frame);
+    mtx_frame_database.unlock();
 
     if(frame->frame_id <= 50)
         return -1;
@@ -225,6 +221,14 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                     frame->loop_index = old_frame->frame_id;
                     frame->matched_img = result;
 
+                    if(draw) {
+                        Sophus::SE3d Tw_bold = Sophus::SE3d(old_frame->vio_q_wb, old_frame->vio_p_wb);
+                        Sophus::SE3d Tw_bnew = Tw_bold * Sophus::SE3d(frame->pnp_q_old_cur, frame->pnp_p_old_cur);
+                        Sophus::SE3d Twc = Tw_bnew * Sophus::SE3d(q_bc, p_bc);
+                        draw(frame->frame_id, frame->timestamp, Twc);
+                        cv::imshow("reloc", frame->matched_img);
+                        cv::waitKey(1);
+                    }
 //                    Eigen::Vector3d ypr = Sophus::R2ypr(frame->pnp_q_old_cur) * 180 / M_PI;
 //                    LOG(INFO) << ypr(0) << " " << ypr(1) << " " << ypr(2) << " " <<
 //                                 tmp_t(0) << " " << tmp_t(1) << " " << tmp_t(2);
