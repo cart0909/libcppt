@@ -28,8 +28,9 @@ FeatureTracker::FramePtr FeatureTracker::InitFrame(const cv::Mat& img, double ti
     FramePtr frame(new Frame);
     frame->id = next_frame_id++;
     frame->timestamp = timestamp;
-
     frame->img = img;
+    cv::resize(img, frame->compressed_img, img.size() / 2);
+    cv::cvtColor(frame->compressed_img, frame->compressed_img, CV_GRAY2BGR);
     clahe->apply(img, frame->clahe);
     cv::buildOpticalFlowPyramid(frame->clahe, frame->img_pyr_grad, cv::Size(21, 21), 3);
     return frame;

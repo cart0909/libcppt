@@ -41,9 +41,20 @@ public:
     Relocalization(const std::string& voc_filename, const std::string& brief_pattern_file,
                    CameraPtr camera_, const Sophus::SO3d& q_bc_, const Eigen::Vector3d& p_bc_);
 
+    inline void SubRelocTwc(std::function<void(double, const Sophus::SE3d&)> callback) {
+        pub_reloc_Twc.emplace_back(callback);
+    }
+
+    inline void SubAddRelocPath(std::function<void(const Sophus::SE3d&)> callback) {
+        pub_add_reloc_path.emplace_back(callback);
+    }
+
+    inline void SubUpdateRelocPath(std::function<void(const std::vector<Sophus::SE3d>&)> callback) {
+        pub_update_reloc_path.emplace_back(callback);
+    }
+
     void PushFrame(FramePtr frame);
-    std::function<void(uint64_t, double, const Sophus::SE3d&)> draw;
-    std::function<void(const std::vector<Sophus::SE3d>&)> draw1;
+    void UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c);
 private:
     void Process();
     void ProcessFrame(FramePtr frame);
@@ -75,5 +86,11 @@ private:
     std::mutex mtx_w_viow;
     Eigen::Vector3d p_w_viow;
     Sophus::SO3d q_w_viow;
+
+    std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_reloc_Twc;
+
+    std::mutex mtx_reloc_path;
+    std::vector<std::function<void(const Sophus::SE3d&)>> pub_add_reloc_path;
+    std::vector<std::function<void(const std::vector<Sophus::SE3d>&)>> pub_update_reloc_path;
 };
 SMART_PTR(Relocalization)

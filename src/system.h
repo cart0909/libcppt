@@ -18,27 +18,29 @@ public:
                  const Eigen::VecVector3d& v_acc,
                  const std::vector<double>& v_imu_timestamp);
 
-    inline void SetDrawTrackingImgCallback(std::function<void(const cv::Mat&, uint64_t, double)> callback) {
-        draw_tracking_img = callback;
+    inline void SubTrackingImg(std::function<void(double, const cv::Mat&)> callback) {
+        pub_tracking_img.emplace_back(callback);
     }
 
-    inline void SetDrawMapPointCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
-        backend->SetDrawMapPointCallback(callback);
+    inline void SubVIOTwc(std::function<void(double, const Sophus::SE3d&)> callback) {
+        backend->SubVIOTwc(callback);
     }
 
-    inline void SetDrawPoseCallback(std::function<void(uint64_t, double, const Sophus::SE3d&)> callback) {
-        backend->SetDrawPoseCallback(callback);
+    inline void SubRelocTwc(std::function<void(double, const Sophus::SE3d&)> callback) {
+        if(reloc)
+            reloc->SubRelocTwc(callback);
     }
 
-    inline void SetDrawSlidingWindowCallback(std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> callback) {
-        backend->SetDrawSlidingWindowCallback(callback);
+    inline void SubAddRelocPath(std::function<void(const Sophus::SE3d&)> callback) {
+        if(reloc)
+            reloc->SubAddRelocPath(callback);
     }
 
-    inline void SetDrawMarginMpsCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
-        backend->SetDrawMarginMpsCallback(callback);
+    inline void SubUpdateRelocPath(std::function<void(const std::vector<Sophus::SE3d>&)> callback) {
+        if(reloc)
+            reloc->SubUpdateRelocPath(callback);
     }
-    // for fast debug
-    RelocalizationPtr reloc;
+
 private:
     void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc);
 
@@ -54,12 +56,13 @@ private:
     std::map<uint64_t, cv::Point2f> m_id_history;
     std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow;
 
-    std::function<void(const cv::Mat&, uint64_t, double)> draw_tracking_img;
+    std::vector<std::function<void(double, const cv::Mat&)>> pub_tracking_img;
 
     Eigen::VecVector3d v_cache_gyr, v_cache_acc;
     std::vector<double> v_cache_imu_timestamps;
 
     std::mutex mtx_reloc_cache;
     std::deque<std::pair<FeatureTracker::FramePtr, BackEnd::FramePtr>> d_reloc_cache;
+    RelocalizationPtr reloc;
 };
 SMART_PTR(System)

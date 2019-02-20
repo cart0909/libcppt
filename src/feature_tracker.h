@@ -14,6 +14,7 @@ public:
         std::vector<cv::Point2f> pt;
 
         cv::Mat img;
+        cv::Mat compressed_img;
         cv::Mat clahe;
         ImagePyr img_pyr_grad;
         double timestamp;

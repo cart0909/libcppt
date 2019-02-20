@@ -36,6 +36,17 @@ void Relocalization::PushFrame(FramePtr frame) {
     cv_frame_buffer.notify_one();
 }
 
+void Relocalization::UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c) {
+    mtx_w_viow.lock();
+    Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);
+    mtx_w_viow.unlock();
+    Sophus::SE3d Twc = Tw_viow * T_viow_c;
+
+    for(auto& pub : pub_reloc_Twc) {
+        pub(timestamp, Twc);
+    }
+}
+
 void Relocalization::Process() {
     while(1) {
         std::vector<FramePtr> v_frames;
@@ -48,13 +59,17 @@ void Relocalization::Process() {
         lock.unlock();
 
         for(auto& frame : v_frames) {
-            ProcessFrame(frame);
             mtx_w_viow.lock();
-            Sophus::SE3d Twc = Sophus::SE3d(q_w_viow, p_w_viow) * Sophus::SE3d(frame->vio_q_wb, frame->vio_p_wb) * Sophus::SE3d(q_bc, p_bc);
+            Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);
             mtx_w_viow.unlock();
-            if(draw) {
-                draw(frame->frame_id, frame->timestamp, Twc);
+            Sophus::SE3d Twc = Tw_viow * Sophus::SE3d(frame->q_wb, frame->p_wb) * Sophus::SE3d(q_bc, p_bc);
+
+            mtx_reloc_path.lock();
+            for(auto& pub : pub_add_reloc_path) {
+                pub(Twc);
             }
+            mtx_reloc_path.unlock();
+            ProcessFrame(frame);
         }
     }
 }
@@ -101,10 +116,7 @@ int64_t Relocalization::DetectLoop(FramePtr frame) {
 
     // release img memory
     // for debug using resize img
-    cv::resize(frame->img, frame->compressed_img, frame->img.size() / 2);
-    cv::cvtColor(frame->compressed_img, frame->compressed_img, CV_GRAY2BGR);
     frame->img = cv::Mat();
-
 
     DBoW2::QueryResults ret;
     db.query(frame->v_extra_descriptor, ret, 4, frame->frame_id - 50);
@@ -259,6 +271,7 @@ void Relocalization::Optimize4DoF() {
         ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
         ceres::LocalParameterization* angle_local_parameterization = AngleLocalParameterization::Create();
 
+        bool first_loop_detect = false;
         for(int i = 0; i <= cur_index; ++i) {
             Eigen::Vector3d p_w_bj = v_frame_database[i]->vio_p_wb;
             Sophus::SO3d q_w_bj = v_frame_database[i]->vio_q_wb;
@@ -273,11 +286,6 @@ void Relocalization::Optimize4DoF() {
 
             problem.AddParameterBlock(ypr_wb_raw + 3 * i, 1, angle_local_parameterization);
             problem.AddParameterBlock(p_wb_raw + 3 * i, 3);
-
-            if(i == 0) {
-                problem.SetParameterBlockConstant(ypr_wb_raw);
-                problem.SetParameterBlockConstant(p_wb_raw);
-            }
 
             // add edge
             for(int j = 1; j < 5; ++j) {
@@ -299,6 +307,13 @@ void Relocalization::Optimize4DoF() {
             // add loop
             if(v_frame_database[i]->has_loop) {
                 int64_t loop_index = v_frame_database[i]->loop_index;
+
+                if(!first_loop_detect) {
+                    first_loop_detect = true;
+                    problem.SetParameterBlockConstant(ypr_wb_raw + 3 * loop_index);
+                    problem.SetParameterBlockConstant(p_wb_raw + 3 * loop_index);
+                }
+
                 Sophus::SO3d q_w_bi = v_frame_database[loop_index]->vio_q_wb;
                 Eigen::Vector3d ypr_w_bi = Sophus::R2ypr(q_w_bi);
                 double pnp_yaw_bi_bj = v_frame_database[i]->pnp_yaw_old_cur;
@@ -317,6 +332,7 @@ void Relocalization::Optimize4DoF() {
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
         options.max_num_iterations = 5;
+        options.num_threads = 1;
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
         LOG(INFO) << summary.BriefReport();
@@ -350,12 +366,18 @@ void Relocalization::Optimize4DoF() {
             }
         }
 
-        std::vector<Sophus::SE3d> v_Twc;
-        for(auto& frame : v_frame_database) {
-            Sophus::SE3d Twc = Sophus::SE3d(frame->q_wb, frame->p_wb) * Sophus::SE3d(q_bc, p_bc);
-            v_Twc.emplace_back(Twc);
+        if(!pub_update_reloc_path.empty()) {
+            mtx_reloc_path.lock();
+            std::vector<Sophus::SE3d> v_Twc;
+            for(auto& frame : v_frame_database) {
+                Sophus::SE3d Twc = Sophus::SE3d(frame->q_wb, frame->p_wb) * Sophus::SE3d(q_bc, p_bc);
+                v_Twc.emplace_back(Twc);
+            }
+            mtx_reloc_path.unlock();
+
+            for(auto& pub : pub_update_reloc_path)
+                pub(v_Twc);
         }
-        draw1(v_Twc);
         lock1.unlock();
 
         std::this_thread::sleep_for(std::chrono::seconds(2));

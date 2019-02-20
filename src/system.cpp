@@ -58,9 +58,12 @@ System::System(const std::string& config_file) {
     reloc = std::make_shared<Relocalization>(param.voc_filename, param.brief_pattern_file, cam_m,
                                              param.q_bc[0], param.p_bc[0]);
     if(reloc) {
-        backend->SetPushKeyFrameCallback(std::bind(&System::PushKeyFrame2Reloc, this,
-                                                   std::placeholders::_1,
-                                                   std::placeholders::_2));
+        backend->SubKeyFrame(std::bind(&System::PushKeyFrame2Reloc, this,
+                                       std::placeholders::_1,
+                                       std::placeholders::_2));
+        backend->SubVIOTwc(std::bind(&Relocalization::UpdateVIOPose, reloc,
+                                     std::placeholders::_1,
+                                     std::placeholders::_2));
     }
 }
 
@@ -94,6 +97,44 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
         feat_frame = feature_tracker->Process(img_l, timestamp);
     }
 
+    if(!pub_tracking_img.empty()) {
+        std::map<uint64_t, cv::Point2f> m_id_history_tmp;
+        std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow_tmp;
+        for(int i = 0, n = feat_frame->pt_id.size(); i < n; ++i) {
+            auto it = m_id_history.find(feat_frame->pt_id[i]);
+            if(it != m_id_history.end()) {
+                m_id_history_tmp[it->first] = it->second;
+                auto d_pt = m_id_optical_flow[it->first];
+                m_id_optical_flow_tmp[it->first] = d_pt;
+                d_pt->emplace_back(feat_frame->pt[i]);
+                while(d_pt->size() > 5) {
+                    d_pt->pop_front();
+                }
+            }
+            else {
+                m_id_history_tmp[feat_frame->pt_id[i]] = feat_frame->pt[i];
+                m_id_optical_flow_tmp[feat_frame->pt_id[i]] = std::make_shared<std::deque<cv::Point2f>>();
+                m_id_optical_flow_tmp[feat_frame->pt_id[i]]->emplace_back(feat_frame->pt[i]);
+            }
+        }
+        m_id_history = std::move(m_id_history_tmp);
+        m_id_optical_flow = std::move(m_id_optical_flow_tmp);
+
+        cv::Mat tracking_img = feat_frame->compressed_img.clone();
+        for(auto& it : m_id_optical_flow) {
+            uint64_t pt_id = it.first;
+            std::deque<cv::Point2f>& history_pts = *it.second;
+            for(int i = 0, n = history_pts.size() - 1; i < n; ++i) {
+                cv::line(tracking_img, history_pts[i] / 2, history_pts[i+1] / 2, cv::Scalar(0, 255, 255), 2);
+            }
+            cv::circle(tracking_img, history_pts.back() / 2, 2, cv::Scalar(0, 255, 0), -1);
+        }
+
+        for(auto& pub : pub_tracking_img) {
+            pub(feat_frame->timestamp, tracking_img);
+        }
+    }
+
     if(feat_frame->id % 2 == 0) {
         v_cache_gyr.insert(v_cache_gyr.end(), v_gyr.begin(), v_gyr.end());
         v_cache_acc.insert(v_cache_acc.end(), v_acc.begin(), v_acc.end());
@@ -109,60 +150,12 @@ void System::Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestam
         }
 
         backend->PushFrame(back_frame);
-        {
-            std::map<uint64_t, cv::Point2f> m_id_history_tmp;
-            std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow_tmp;
-            for(int i = 0, n = feat_frame->pt_id.size(); i < n; ++i) {
-                auto it = m_id_history.find(feat_frame->pt_id[i]);
-                if(it != m_id_history.end()) {
-                    m_id_history_tmp[it->first] = it->second;
-                    auto d_pt = m_id_optical_flow[it->first];
-                    m_id_optical_flow_tmp[it->first] = d_pt;
-                    d_pt->emplace_back(feat_frame->pt[i]);
-                    while(d_pt->size() > 5) {
-                        d_pt->pop_front();
-                    }
-                }
-                else {
-                    m_id_history_tmp[feat_frame->pt_id[i]] = feat_frame->pt[i];
-                    m_id_optical_flow_tmp[feat_frame->pt_id[i]] = std::make_shared<std::deque<cv::Point2f>>();
-                    m_id_optical_flow_tmp[feat_frame->pt_id[i]]->emplace_back(feat_frame->pt[i]);
-                }
-            }
-            m_id_history = std::move(m_id_history_tmp);
-            m_id_optical_flow = std::move(m_id_optical_flow_tmp);
-        }
-
-        if(draw_tracking_img) {
-            cv::Mat tracking_img, tracking_img_r;
-            cv::cvtColor(feat_frame->img, tracking_img, CV_GRAY2BGR);
-            cv::cvtColor(stereo_frame->img_r, tracking_img_r, CV_GRAY2BGR);
-
-            for(auto& it : m_id_optical_flow) {
-                uint64_t pt_id = it.first;
-                std::deque<cv::Point2f>& history_pts = *it.second;
-                for(int i = 0, n = history_pts.size() - 1; i < n; ++i) {
-                    cv::line(tracking_img, history_pts[i], history_pts[i+1], cv::Scalar(0, 255, 255), 2);
-                }
-                cv::circle(tracking_img, history_pts.back(), 4, cv::Scalar(0, 255, 0), -1);
-            }
-
-            for(auto& it : stereo_frame->pt_r) {
-                if(it.x != -1.0f) {
-                    cv::circle(tracking_img_r, it, 4, cv::Scalar(0, 255, 0), -1);
-                }
-            }
-
-            cv::hconcat(tracking_img, tracking_img_r, tracking_img);
-            draw_tracking_img(tracking_img, feat_frame->id, feat_frame->timestamp);
-        }
     }
     else {
         v_cache_gyr = v_gyr;
         v_cache_acc = v_acc;
         v_cache_imu_timestamps = v_imu_timestamp;
     }
-
 }
 
 void System::PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc) {

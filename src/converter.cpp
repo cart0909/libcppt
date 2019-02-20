@@ -34,6 +34,7 @@ Relocalization::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame,
                                             const Eigen::VecVector3d& v_x3Dc) {
     Relocalization::FramePtr frame(new Relocalization::Frame);
     frame->img = feat_frame->img;
+    frame->compressed_img = feat_frame->compressed_img;
     frame->timestamp = feat_frame->timestamp;
     for(int i = 0, n = v_x3Dc.size(); i < n; ++i) {
         if(v_x3Dc[i](2) > 0) {
