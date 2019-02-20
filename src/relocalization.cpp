@@ -49,6 +49,12 @@ void Relocalization::Process() {
 
         for(auto& frame : v_frames) {
             ProcessFrame(frame);
+            mtx_w_viow.lock();
+            Sophus::SE3d Twc = Sophus::SE3d(q_w_viow, p_w_viow) * Sophus::SE3d(frame->vio_q_wb, frame->vio_p_wb) * Sophus::SE3d(q_bc, p_bc);
+            mtx_w_viow.unlock();
+            if(draw) {
+                draw(frame->frame_id, frame->timestamp, Twc);
+            }
         }
     }
 }
@@ -65,11 +71,6 @@ void Relocalization::ProcessFrame(FramePtr frame) {
         mtx_optimize_buffer.unlock();
         cv_optimize_buffer.notify_one();
     }
-
-    mtx_w_viow.lock();
-    frame->p_wb = q_w_viow * frame->vio_p_wb + p_w_viow;
-    frame->q_wb = q_w_viow * frame->vio_q_wb;
-    mtx_w_viow.unlock();
 }
 
 int64_t Relocalization::DetectLoop(FramePtr frame) {
@@ -107,7 +108,6 @@ int64_t Relocalization::DetectLoop(FramePtr frame) {
 
     DBoW2::QueryResults ret;
     db.query(frame->v_extra_descriptor, ret, 4, frame->frame_id - 50);
-
     db.add(frame->v_extra_descriptor);
 
     mtx_frame_database.lock();
@@ -203,7 +203,11 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                 Sophus::SE3d Tbo_bc = Tbc * Tco_cc * Tbc.inverse(); // body_old, body_cur
                 frame->pnp_p_old_cur = Tbo_bc.translation();
                 frame->pnp_q_old_cur = Tbo_bc.so3();
-                double yaw = Sophus::R2ypr(frame->pnp_q_old_cur)(0);
+
+                // compute relative_yaw
+                double yaw_w_old = Sophus::R2ypr(old_frame->vio_q_wb)(0);
+                double yaw_w_cur = Sophus::R2ypr(old_frame->vio_q_wb * frame->pnp_q_old_cur)(0);
+                double yaw = NormalizeAngle(yaw_w_cur - yaw_w_old); // old_cur
                 frame->pnp_yaw_old_cur = yaw;
 
                 if(std::abs(yaw) < M_PI / 6 && tmp_t.norm() < 20.0) {
@@ -223,18 +227,6 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                     frame->has_loop = true;
                     frame->loop_index = old_frame->frame_id;
                     frame->matched_img = result;
-
-                    if(draw) {
-                        Sophus::SE3d Tw_bold = Sophus::SE3d(old_frame->vio_q_wb, old_frame->vio_p_wb);
-                        Sophus::SE3d Tw_bnew = Tw_bold * Sophus::SE3d(frame->pnp_q_old_cur, frame->pnp_p_old_cur);
-                        Sophus::SE3d Twc = Tw_bnew * Sophus::SE3d(q_bc, p_bc);
-                        draw(frame->frame_id, frame->timestamp, Twc);
-                        cv::imshow("reloc", frame->matched_img);
-                        cv::waitKey(1);
-                    }
-//                    Eigen::Vector3d ypr = Sophus::R2ypr(frame->pnp_q_old_cur) * 180 / M_PI;
-//                    LOG(INFO) << ypr(0) << " " << ypr(1) << " " << ypr(2) << " " <<
-//                                 tmp_t(0) << " " << tmp_t(1) << " " << tmp_t(2);
                     return true;
                 }
             }
@@ -296,7 +288,7 @@ void Relocalization::Optimize4DoF() {
                 Eigen::Vector3d p_bi_bj = q_w_bi.inverse() * (p_w_bj - p_w_bi);
                 Sophus::SO3d q_bi_bj = q_w_bi.inverse() * q_w_bj;
                 Eigen::Vector3d ypr_w_bi = Sophus::R2ypr(q_w_bi);
-                double yaw_bi_bj = Sophus::R2ypr(q_bi_bj)(0);
+                double yaw_bi_bj = NormalizeAngle(ypr_w_bj(0) - ypr_w_bi(0));
                 auto factor = FourDOFError::Create(p_bi_bj(0), p_bi_bj(1), p_bi_bj(2),
                                                    yaw_bi_bj, ypr_w_bi(1), ypr_w_bi(2));
                 problem.AddResidualBlock(factor, NULL,
@@ -307,10 +299,10 @@ void Relocalization::Optimize4DoF() {
             // add loop
             if(v_frame_database[i]->has_loop) {
                 int64_t loop_index = v_frame_database[i]->loop_index;
-                Sophus::SO3d q_w_bi = v_frame_database[loop_index]->q_wb;
+                Sophus::SO3d q_w_bi = v_frame_database[loop_index]->vio_q_wb;
                 Eigen::Vector3d ypr_w_bi = Sophus::R2ypr(q_w_bi);
-                double pnp_yaw_bi_bj = v_frame_database[loop_index]->pnp_yaw_old_cur;
-                Eigen::Vector3d pnp_p_bi_bj = v_frame_database[loop_index]->pnp_p_old_cur;
+                double pnp_yaw_bi_bj = v_frame_database[i]->pnp_yaw_old_cur;
+                Eigen::Vector3d pnp_p_bi_bj = v_frame_database[i]->pnp_p_old_cur;
                 auto factor = FourDOFError::Create(pnp_p_bi_bj(0), pnp_p_bi_bj(1), pnp_p_bi_bj(2),
                                                    pnp_yaw_bi_bj, ypr_w_bi(1), ypr_w_bi(2));
                 problem.AddResidualBlock(factor, loss_function,
@@ -357,6 +349,13 @@ void Relocalization::Optimize4DoF() {
                 v_frame_database[i]->q_wb = q_w_viow * q_viow_b;
             }
         }
+
+        std::vector<Sophus::SE3d> v_Twc;
+        for(auto& frame : v_frame_database) {
+            Sophus::SE3d Twc = Sophus::SE3d(frame->q_wb, frame->p_wb) * Sophus::SE3d(q_bc, p_bc);
+            v_Twc.emplace_back(Twc);
+        }
+        draw1(v_Twc);
         lock1.unlock();
 
         std::this_thread::sleep_for(std::chrono::seconds(2));

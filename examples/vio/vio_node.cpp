@@ -57,8 +57,12 @@ public:
                                                        std::placeholders::_2, std::placeholders::_3));
         system->SetDrawMarginMpsCallback(std::bind(&Node::PubMarginMps, this, std::placeholders::_1,
                                                    std::placeholders::_2, std::placeholders::_3));
-        system->reloc->draw = std::bind(&Node::PubRelocPath, this, std::placeholders::_1,
-                                        std::placeholders::_2, std::placeholders::_3);
+
+        if(system->reloc) {
+            system->reloc->draw = std::bind(&Node::PubRelocPath, this, std::placeholders::_1,
+                                            std::placeholders::_2, std::placeholders::_3);
+            system->reloc->draw1 = std::bind(&Node::PubRelocPath2, this, std::placeholders::_1);
+        }
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
@@ -264,10 +268,40 @@ public:
         header.stamp.fromSec(timestamp);
         Eigen::Vector3d twc = Twc.translation();
         Eigen::Quaterniond qwc = Twc.so3().unit_quaternion();
+//        geometry_msgs::PoseStamped pose_stamped;
+//        pose_stamped.header = header;
+//        pose_stamped.pose.orientation.w = qwc.w();
+//        pose_stamped.pose.orientation.x = qwc.x();
+//        pose_stamped.pose.orientation.y = qwc.y();
+//        pose_stamped.pose.orientation.z = qwc.z();
+//        pose_stamped.pose.position.x = twc(0);
+//        pose_stamped.pose.position.y = twc(1);
+//        pose_stamped.pose.position.z = twc(2);
+//        reloc_path.poses.emplace_back(pose_stamped);
+//        pub_reloc_path.publish(reloc_path);
         // camera pose
         reloc_camera_pose_visual.reset();
         reloc_camera_pose_visual.add_pose(twc, qwc);
         reloc_camera_pose_visual.publish_by(pub_reloc_camera_pose, header);
+    }
+
+    void PubRelocPath2(const std::vector<Sophus::SE3d>& v_Twc) {
+        reloc_path.poses.clear();
+        for(auto& Twc : v_Twc) {
+            Eigen::Vector3d twc = Twc.translation();
+            Eigen::Quaterniond qwc = Twc.unit_quaternion();
+            geometry_msgs::PoseStamped pose_stamped;
+            pose_stamped.header.frame_id = "world";
+            pose_stamped.pose.orientation.w = qwc.w();
+            pose_stamped.pose.orientation.x = qwc.x();
+            pose_stamped.pose.orientation.y = qwc.y();
+            pose_stamped.pose.orientation.z = qwc.z();
+            pose_stamped.pose.position.x = twc(0);
+            pose_stamped.pose.position.y = twc(1);
+            pose_stamped.pose.position.z = twc(2);
+            reloc_path.poses.emplace_back(pose_stamped);
+        }
+        pub_reloc_path.publish(reloc_path);
     }
 
     string imu_topic;
@@ -349,6 +383,7 @@ int main(int argc, char** argv) {
     node.pub_mappoints = nh.advertise<sensor_msgs::PointCloud>("mappoints", 1000);
     node.pub_margin_mps = nh.advertise<sensor_msgs::PointCloud>("margin_mps", 1000);
     node.pub_reloc_path = nh.advertise<nav_msgs::Path>("reloc_path", 1000);
+    node.reloc_path.header.frame_id = "world";
     node.pub_reloc_camera_pose = nh.advertise<visualization_msgs::MarkerArray>("reloc_camera_pose", 1000);
     ROS_INFO_STREAM("Player is ready.");
 

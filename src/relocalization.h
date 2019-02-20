@@ -43,6 +43,7 @@ public:
 
     void PushFrame(FramePtr frame);
     std::function<void(uint64_t, double, const Sophus::SE3d&)> draw;
+    std::function<void(const std::vector<Sophus::SE3d>&)> draw1;
 private:
     void Process();
     void ProcessFrame(FramePtr frame);

@@ -184,8 +184,6 @@ void System::PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVe
             ++count;
     }
 
-    if(count >= 50) {
-        Relocalization::FramePtr reloc_frame = Converter::Convert(feat_frame, back_frame, v_x3Dc);
-        reloc->PushFrame(reloc_frame);
-    }
+    Relocalization::FramePtr reloc_frame = Converter::Convert(feat_frame, back_frame, v_x3Dc);
+    reloc->PushFrame(reloc_frame);
 }
