@@ -134,6 +134,7 @@ system.cpp
 backend.cpp
 converter.cpp
 relocalization.cpp
+pose_faster.cpp
 ceres/local_parameterization_se3.cpp
 ceres/projection_factor.cpp
 vins/marginalization_factor.cpp

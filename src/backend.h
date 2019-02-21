@@ -146,7 +146,6 @@ private:
     double min_parallax;
     MarginType marginalization_flag;
 
-
     // ceres data
     void data2double();
     void double2data();

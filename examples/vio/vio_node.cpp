@@ -28,9 +28,11 @@ using namespace sensor_msgs;
 class Node {
 public:
     using Measurements = vector<pair<pair<ImageConstPtr, ImageConstPtr>, vector<ImuConstPtr>>>;
-    Node() : vio_pose_visual(0, 1, 0, 1), reloc_pose_visual(1, 0, 0, 1), loop_edge_visual(0, 1, 0, 1)
+    Node() : vio_pose_visual(0, 1, 0, 1), reloc_pose_visual(1, 0, 0, 1), loop_edge_visual(0, 1, 0, 1),
+        fast_pose_visual(1, 1, 0, 1)
     {
         vio_pose_visual.setScale(0.3);
+        fast_pose_visual.setScale(0.3);
         t_system = std::thread(&Node::SystemThread, this);
     }
     ~Node() {}
@@ -302,6 +304,10 @@ public:
 
     mutex mtx_loop_edge_index;
     vector<pair<uint64_t, uint64_t>> v_loop_edge_index;
+
+    // fast pose
+    CameraPoseVisualization fast_pose_visual;
+    ros::Publisher pub_fast_pose;
 };
 
 // global variable
@@ -334,6 +340,7 @@ int main(int argc, char** argv) {
     node.pub_reloc_pose = nh.advertise<visualization_msgs::MarkerArray>("reloc_pose", 1000);
     node.pub_loop_edge = nh.advertise<visualization_msgs::MarkerArray>("loop_edge", 1000);
     node.pub_reloc_img = nh.advertise<sensor_msgs::Image>("reloc_img", 1000);
+    node.pub_fast_pose = nh.advertise<visualization_msgs::MarkerArray>("fast_pose", 1000);
     ROS_INFO_STREAM("Player is ready.");
 
     ros::spin();
