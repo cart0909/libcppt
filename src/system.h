@@ -41,6 +41,16 @@ public:
             reloc->SubUpdateRelocPath(callback);
     }
 
+    inline void SubRelocImg(std::function<void(const cv::Mat&)> callback) {
+        if(reloc)
+            reloc->SubRelocImg(callback);
+    }
+
+    inline void SubLoopEdge(std::function<void(const std::pair<uint64_t, uint64_t>&)> callback) {
+        if(reloc)
+            reloc->SubLoopEdge(callback);
+    }
+
 private:
     void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc);
 

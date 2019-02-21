@@ -64,10 +64,10 @@ void Relocalization::Process() {
             mtx_w_viow.unlock();
             Sophus::SE3d Twc = Tw_viow * Sophus::SE3d(frame->vio_q_wb, frame->vio_p_wb) * Sophus::SE3d(q_bc, p_bc);
             mtx_reloc_path.lock();
-            for(auto& pub : pub_add_reloc_path) {
+            for(auto& pub : pub_add_reloc_path)
                 pub(Twc);
-            }
             mtx_reloc_path.unlock();
+
             ProcessFrame(frame);
         }
     }
@@ -80,6 +80,8 @@ void Relocalization::ProcessFrame(FramePtr frame) {
     FramePtr old_frame = v_frame_database[candidate_index];
 
     if(FindMatchesAndSolvePnP(old_frame, frame)) {
+        for(auto& pub : pub_loop_edge)
+            pub(std::make_pair(old_frame->frame_id, frame->frame_id));
         mtx_optimize_buffer.lock();
         v_optimize_buffer.emplace_back(frame->frame_id);
         mtx_optimize_buffer.unlock();
@@ -238,6 +240,11 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                     frame->has_loop = true;
                     frame->loop_index = old_frame->frame_id;
                     frame->matched_img = result;
+
+                    for(auto& pub : pub_reloc_img) {
+                        pub(frame->matched_img);
+                    }
+
                     return true;
                 }
             }

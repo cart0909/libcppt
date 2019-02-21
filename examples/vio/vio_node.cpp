@@ -28,7 +28,7 @@ using namespace sensor_msgs;
 class Node {
 public:
     using Measurements = vector<pair<pair<ImageConstPtr, ImageConstPtr>, vector<ImuConstPtr>>>;
-    Node() : vio_pose_visual(1, 0, 0, 1), reloc_pose_visual(1, 0, 0, 1), loop_edge_visual(0, 1, 0, 1)
+    Node() : vio_pose_visual(0, 1, 0, 1), reloc_pose_visual(1, 0, 0, 1), loop_edge_visual(0, 1, 0, 1)
     {
         vio_pose_visual.setScale(0.3);
         t_system = std::thread(&Node::SystemThread, this);
@@ -55,6 +55,8 @@ public:
                                       std::placeholders::_2));
         system->SubAddRelocPath(std::bind(&Node::AddRelocPath, this, std::placeholders::_1));
         system->SubUpdateRelocPath(std::bind(&Node::UpdateRelocPath, this, std::placeholders::_1));
+        system->SubLoopEdge(std::bind(&Node::PushLoopEdgeIndex, this, std::placeholders::_1));
+        system->SubRelocImg(std::bind(&Node::PubRelocImg, this, std::placeholders::_1));
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
@@ -162,6 +164,14 @@ public:
         pub_track_img.publish(track_cvimage.toImageMsg());
     }
 
+    void PubRelocImg(const cv::Mat& reloc_img) {
+        cv_bridge::CvImage reloc_cvimg;
+        reloc_cvimg.header.frame_id = "world";
+        reloc_cvimg.image = reloc_img;
+        reloc_cvimg.encoding = sensor_msgs::image_encodings::BGR8;
+        pub_reloc_img.publish(reloc_cvimg.toImageMsg());
+    }
+
     void PubCurPose(double timestamp, const Sophus::SE3d& Twc) {
         // public latest frame
         Eigen::Vector3d twc = Twc.translation();
@@ -210,9 +220,22 @@ public:
         pose_stamped.pose.position.z = twc(2);
         reloc_path.poses.emplace_back(pose_stamped);
         pub_reloc_path.publish(reloc_path);
+
+        loop_edge_visual.reset();
+        mtx_loop_edge_index.lock();
+        for(auto& it : v_loop_edge_index) {
+            auto& pos_i = reloc_path.poses[it.first].pose.position,
+                  pos_j = reloc_path.poses[it.second].pose.position;
+            loop_edge_visual.add_loopedge(Eigen::Vector3d(pos_i.x, pos_i.y, pos_i.z),
+                                          Eigen::Vector3d(pos_j.x, pos_j.y, pos_j.z));
+        }
+        mtx_loop_edge_index.unlock();
+        loop_edge_visual.publish_by(pub_loop_edge, pose_stamped.header);
     }
 
     void UpdateRelocPath(const std::vector<Sophus::SE3d>& v_Twc) {
+        std_msgs::Header header;
+        header.frame_id = "world";
         reloc_path.poses.clear();
         for(auto& Twc : v_Twc) {
             Eigen::Vector3d twc = Twc.translation();
@@ -229,6 +252,22 @@ public:
             reloc_path.poses.emplace_back(pose_stamped);
         }
         pub_reloc_path.publish(reloc_path);
+
+        loop_edge_visual.reset();
+        mtx_loop_edge_index.lock();
+        for(auto& it : v_loop_edge_index) {
+            auto& pos_i = reloc_path.poses[it.first].pose.position,
+                  pos_j = reloc_path.poses[it.second].pose.position;
+            loop_edge_visual.add_loopedge(Eigen::Vector3d(pos_i.x, pos_i.y, pos_i.z),
+                                          Eigen::Vector3d(pos_j.x, pos_j.y, pos_j.z));
+        }
+        mtx_loop_edge_index.unlock();
+        loop_edge_visual.publish_by(pub_loop_edge, header);
+    }
+
+    void PushLoopEdgeIndex(const std::pair<uint64_t, uint64_t>& edge) {
+        unique_lock<mutex> lock(mtx_loop_edge_index);
+        v_loop_edge_index.emplace_back(edge);
     }
 
     string imu_topic;
@@ -258,6 +297,11 @@ public:
     CameraPoseVisualization loop_edge_visual;
     ros::Publisher pub_reloc_path;
     ros::Publisher pub_reloc_pose;
+    ros::Publisher pub_loop_edge;
+    ros::Publisher pub_reloc_img;
+
+    mutex mtx_loop_edge_index;
+    vector<pair<uint64_t, uint64_t>> v_loop_edge_index;
 };
 
 // global variable
@@ -288,6 +332,8 @@ int main(int argc, char** argv) {
     node.pub_reloc_path = nh.advertise<nav_msgs::Path>("reloc_path", 1000);
     node.reloc_path.header.frame_id = "world";
     node.pub_reloc_pose = nh.advertise<visualization_msgs::MarkerArray>("reloc_pose", 1000);
+    node.pub_loop_edge = nh.advertise<visualization_msgs::MarkerArray>("loop_edge", 1000);
+    node.pub_reloc_img = nh.advertise<sensor_msgs::Image>("reloc_img", 1000);
     ROS_INFO_STREAM("Player is ready.");
 
     ros::spin();

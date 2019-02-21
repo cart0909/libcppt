@@ -53,6 +53,14 @@ public:
         pub_update_reloc_path.emplace_back(callback);
     }
 
+    inline void SubRelocImg(std::function<void(const cv::Mat&)> callback) {
+        pub_reloc_img.emplace_back(callback);
+    }
+
+    inline void SubLoopEdge(std::function<void(const std::pair<uint64_t, uint64_t>&)> callback) {
+        pub_loop_edge.emplace_back(callback);
+    }
+
     void PushFrame(FramePtr frame);
     void UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c);
 private:
@@ -88,9 +96,11 @@ private:
     Sophus::SO3d q_w_viow;
 
     std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_reloc_Twc;
+    std::vector<std::function<void(const cv::Mat&)>> pub_reloc_img;
 
     std::mutex mtx_reloc_path;
     std::vector<std::function<void(const Sophus::SE3d&)>> pub_add_reloc_path;
     std::vector<std::function<void(const std::vector<Sophus::SE3d>&)>> pub_update_reloc_path;
+    std::vector<std::function<void(const std::pair<uint64_t, uint64_t>&)>> pub_loop_edge;
 };
 SMART_PTR(Relocalization)
