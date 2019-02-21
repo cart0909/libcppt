@@ -28,3 +28,26 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
     backend_frame->v_imu_timestamp = v_imu_timestamp;
     return backend_frame;
 }
+
+Relocalization::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame,
+                                            BackEnd::FramePtr back_frame,
+                                            const Eigen::VecVector3d& v_x3Dc) {
+    Relocalization::FramePtr frame(new Relocalization::Frame);
+    frame->img = feat_frame->img;
+    frame->compressed_img = feat_frame->compressed_img;
+    frame->timestamp = feat_frame->timestamp;
+    for(int i = 0, n = v_x3Dc.size(); i < n; ++i) {
+        if(v_x3Dc[i](2) > 0) {
+            frame->v_pt_id.emplace_back(feat_frame->pt_id[i]);
+            frame->v_pt_2d_uv.emplace_back(feat_frame->pt[i]);
+            frame->v_pt_2d_normal.emplace_back(back_frame->pt_normal_plane[i](0),
+                                               back_frame->pt_normal_plane[i](1));
+            frame->v_pt_3d.emplace_back(v_x3Dc[i](0), v_x3Dc[i](1), v_x3Dc[i](2));
+        }
+    }
+    frame->vio_p_wb = back_frame->p_wb;
+    frame->vio_q_wb = back_frame->q_wb;
+    frame->p_wb = back_frame->p_wb;
+    frame->q_wb = back_frame->q_wb;
+    return frame;
+}

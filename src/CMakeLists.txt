@@ -122,7 +122,6 @@ ${DBOW2_INCLUDE_DIRS}/DVision/BRIEF.cpp
 include_directories(
 ${THRID_PARTY_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}
-${DBOW2_INCLUDE_DIRS}/..
 )
 
 add_library(${PROJECT_NAME} SHARED
@@ -135,6 +134,7 @@ system.cpp
 backend.cpp
 converter.cpp
 relocalization.cpp
+pose_faster.cpp
 ceres/local_parameterization_se3.cpp
 ceres/projection_factor.cpp
 vins/marginalization_factor.cpp

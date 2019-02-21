@@ -62,6 +62,9 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     param.gyr_bias_noise = fs["gyr_w"];
     param.gravity_magnitude = fs["g_norm"];
 
+    fs["voc_path"] >> param.voc_filename;
+    fs["brief_pattern_path"] >> param.brief_pattern_file;
+
     Log(param);
     fs.release();
     return param;
@@ -145,4 +148,6 @@ void ConfigLoader::Log(const Param& param) {
     LOG(INFO) << "acc_bias_noise: " << param.acc_bias_noise;
     LOG(INFO) << "gyr_bias_noise: " << param.gyr_bias_noise;
     LOG(INFO) << "gravity_magnitude: " << param.gravity_magnitude;
+    LOG(INFO) << "voc_path: " << param.voc_filename;
+    LOG(INFO) << "brief_pattern_path: " << param.brief_pattern_file;
 }

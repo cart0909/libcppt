@@ -64,6 +64,7 @@ void BackEnd::Process() {
             frame_buffer.clear();
             return (!measurements.empty() || request_reset_flag);
         });
+        lock.unlock();
 
         if(request_reset_flag) {
             Reset();
@@ -128,7 +129,8 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
         if(state == TIGHTLY) {
             SlidingWindow();
-            DrawUI();
+            Publish();
+//            DrawUI();
         }
     }
 }
@@ -236,6 +238,43 @@ void BackEnd::SlidingWindowOld() {
             feat.start_id--;
             ++it;
         }
+    }
+
+    if(!pub_keyframe.empty()) {
+        FramePtr frame_j = d_frames[d_frames.size() - 2];
+        Eigen::VecVector3d v_x3Dcj;
+
+        for(int i = 0, n = frame_j->pt_id.size(); i < n; ++i) {
+            uint64_t pt_id = frame_j->pt_id[i];
+            auto it = m_features.find(pt_id);
+            if(it == m_features.end()) {
+                v_x3Dcj.emplace_back(-1, -1, -1);
+            }
+            else {
+                auto& feat = it->second;
+                if(feat.inv_depth == -1.0) {
+                    v_x3Dcj.emplace_back(-1, -1, -1);
+                }
+                else {
+                    FramePtr frame_i = d_frames[feat.start_id];
+                    Eigen::Vector3d x3Dci = feat.pt_n_per_frame[0] / feat.inv_depth;
+                    Eigen::Vector3d x3Dbi = q_bc * x3Dci + p_bc;
+                    Eigen::Vector3d x3Dw = frame_i->q_wb * x3Dbi + frame_i->p_wb;
+                    Eigen::Vector3d x3Dbj = frame_j->q_wb.inverse() * (x3Dw - frame_j->p_wb);
+                    Eigen::Vector3d x3Dcj = q_bc.inverse() * (x3Dbj - p_bc);
+
+                    if(x3Dcj(2) <= 0) {
+                        v_x3Dcj.emplace_back(-1, -1, -1);
+                    }
+                    else {
+                        v_x3Dcj.emplace_back(x3Dcj);
+                    }
+                }
+            }
+        }
+
+        for(auto& pub : pub_keyframe)
+            pub(frame_j, v_x3Dcj);
     }
 
     d_frames.pop_front();
@@ -876,44 +915,53 @@ void BackEnd::Marginalize() {
     }
 }
 
-void BackEnd::DrawUI() {
-    if(d_frames.empty())
-        return;
-
-    auto frame = d_frames.back();
-
-    if(draw_pose) {
-        draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb * q_bc, frame->q_wb * p_bc + frame->p_wb));
-    }
-
-    if(draw_mps) {
-        Eigen::VecVector3d mps;
-
-        for(auto& it : m_features) {
-            auto& feat = it.second;
-            if(feat.inv_depth == -1.0f)
-                continue;
-            Sophus::SE3d Twb(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
-            Sophus::SE3d Tbc(q_bc, p_bc);
-            Eigen::Vector3d x3Dc = feat.pt_n_per_frame[0] / feat.inv_depth;
-            Eigen::Vector3d x3Dw = Twb * Tbc * x3Dc;
-            mps.emplace_back(x3Dw);
-        }
-
-        draw_mps(frame->id, frame->timestamp, mps);
-    }
-
-    if(draw_sw) {
-        std::vector<Sophus::SE3d> v_Twc;
-
-        for(int i = 0, n = d_frames.size(); i < n - 1; ++i) {
-            v_Twc.emplace_back(d_frames[i]->q_wb * q_bc, d_frames[i]->q_wb * p_bc + d_frames[i]->p_wb);
-        }
-
-        draw_sw(frame->id, frame->timestamp, v_Twc);
-    }
-
-    if(draw_margin_mps && (marginalization_flag == MARGIN_OLD)) {
-        draw_margin_mps(frame->id, frame->timestamp, margin_mps);
+void BackEnd::Publish() {
+    if(!pub_vio_Twc.empty()) {
+        FramePtr frame = d_frames.back();
+        Sophus::SE3d Twc = Sophus::SE3d(frame->q_wb, frame->p_wb) * Sophus::SE3d(q_bc, p_bc);
+        for(auto& pub : pub_vio_Twc)
+            pub(frame->timestamp, Twc);
     }
 }
+
+//void BackEnd::DrawUI() {
+//    if(d_frames.empty())
+//        return;
+
+//    auto frame = d_frames.back();
+
+//    if(draw_pose) {
+//        draw_pose(frame->id, frame->timestamp, Sophus::SE3d(frame->q_wb * q_bc, frame->q_wb * p_bc + frame->p_wb));
+//    }
+
+//    if(draw_mps) {
+//        Eigen::VecVector3d mps;
+
+//        for(auto& it : m_features) {
+//            auto& feat = it.second;
+//            if(feat.inv_depth == -1.0f)
+//                continue;
+//            Sophus::SE3d Twb(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
+//            Sophus::SE3d Tbc(q_bc, p_bc);
+//            Eigen::Vector3d x3Dc = feat.pt_n_per_frame[0] / feat.inv_depth;
+//            Eigen::Vector3d x3Dw = Twb * Tbc * x3Dc;
+//            mps.emplace_back(x3Dw);
+//        }
+
+//        draw_mps(frame->id, frame->timestamp, mps);
+//    }
+
+//    if(draw_sw) {
+//        std::vector<Sophus::SE3d> v_Twc;
+
+//        for(int i = 0, n = d_frames.size(); i < n - 1; ++i) {
+//            v_Twc.emplace_back(d_frames[i]->q_wb * q_bc, d_frames[i]->q_wb * p_bc + d_frames[i]->p_wb);
+//        }
+
+//        draw_sw(frame->id, frame->timestamp, v_Twc);
+//    }
+
+//    if(draw_margin_mps && (marginalization_flag == MARGIN_OLD)) {
+//        draw_margin_mps(frame->id, frame->timestamp, margin_mps);
+//    }
+//}

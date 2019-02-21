@@ -88,20 +88,12 @@ public:
 
     void PushFrame(FramePtr frame);
 
-    inline void SetDrawMapPointCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
-        draw_mps = callback;
+    inline void SubVIOTwc(std::function<void(double, const Sophus::SE3d)> callback) {
+        pub_vio_Twc.emplace_back(callback);
     }
 
-    inline void SetDrawMarginMpsCallback(std::function<void(uint64_t, double, const Eigen::VecVector3d&)> callback) {
-        draw_margin_mps = callback;
-    }
-
-    inline void SetDrawPoseCallback(std::function<void(uint64_t, double, const Sophus::SE3d&)> callback) {
-        draw_pose = callback;
-    }
-
-    inline void SetDrawSlidingWindowCallback(std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> callback) {
-        draw_sw = callback;
+    inline void SubKeyFrame(std::function<void(FramePtr, const Eigen::VecVector3d&)> callback) {
+        pub_keyframe.emplace_back(callback);
     }
 
     inline void ResetRequest() {
@@ -124,7 +116,8 @@ private:
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
     void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
     void Marginalize();
-    void DrawUI();
+    void Publish();
+//    void DrawUI();
 
     std::thread thread_;
     std::mutex  m_buffer;
@@ -153,7 +146,6 @@ private:
     double min_parallax;
     MarginType marginalization_flag;
 
-
     // ceres data
     void data2double();
     void double2data();
@@ -174,9 +166,13 @@ private:
     MarginalizationInfo* last_margin_info;
 
     Eigen::VecVector3d margin_mps;
-    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_mps;
-    std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
-    std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> draw_sw;
-    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_margin_mps;
+//    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_mps;
+//    std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
+//    std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> draw_sw;
+//    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_margin_mps;
+//    std::function<void(FramePtr, const Eigen::VecVector3d&)> push_keyframe_callback;
+
+    std::vector<std::function<void(double, const Sophus::SE3d)>> pub_vio_Twc;
+    std::vector<std::function<void(FramePtr, const Eigen::VecVector3d&)>> pub_keyframe;
 };
 SMART_PTR(BackEnd)

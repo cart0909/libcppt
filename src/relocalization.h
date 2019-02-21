@@ -3,11 +3,12 @@
 #include <thread>
 #include <memory>
 #include <condition_variable>
-#include "DBoW2/DBoW2/DBoW2.h"
-#include "DBoW2/DVision/DVision.h"
-#include "DBoW2/DBoW2/TemplatedDatabase.h"
-#include "DBoW2/DBoW2/TemplatedVocabulary.h"
+#include "3rdParty/DBoW2/DBoW2/DBoW2.h"
+#include "3rdParty/DBoW2/DVision/DVision.h"
+#include "3rdParty/DBoW2/DBoW2/TemplatedDatabase.h"
+#include "3rdParty/DBoW2/DBoW2/TemplatedVocabulary.h"
 #include "util.h"
+#include "camera.h"
 
 class Relocalization {
 public:
@@ -15,55 +16,91 @@ public:
         uint64_t frame_id;
         double timestamp;
         cv::Mat img;
+        cv::Mat compressed_img;
         std::vector<uint64_t> v_pt_id;
-        std::vector<cv::Point2f> v_pt_2d;
-        std::vector<cv::Point3f> v_pt_3d;
+        std::vector<cv::Point2f> v_pt_2d_uv;
+        std::vector<cv::Point2f> v_pt_2d_normal; // un vn
+        std::vector<cv::Point3f> v_pt_3d; // x3Dc
         std::vector<DVision::BRIEF::bitset> v_descriptor;
 
-        std::vector<cv::KeyPoint> v_extra_keypoint;
+        std::vector<cv::Point2f> v_extra_pt_2d_uv;
+        std::vector<cv::Point2f> v_extra_pt_2d_normal;
         std::vector<DVision::BRIEF::bitset> v_extra_descriptor;
-        Sophus::SE3d q_wc;
-        Eigen::Vector3d p_wc;
+        Sophus::SO3d vio_q_wb, q_wb;
+        Eigen::Vector3d vio_p_wb, p_wb;
+
+        bool has_loop = false;
+        int64_t loop_index = -1;
+        Sophus::SO3d pnp_q_old_cur;
+        Eigen::Vector3d pnp_p_old_cur;
+        double pnp_yaw_old_cur;
+        cv::Mat matched_img;
     };
     SMART_PTR(Frame)
 
-    Relocalization(const std::string& voc_filename) {
-        voc = std::make_shared<BriefVocabulary>(voc_filename);
-        db.setVocabulary(*voc, false, 0);
-        detect_loop_thread = std::thread(&Relocalization::DetectLoop, this);
+    Relocalization(const std::string& voc_filename, const std::string& brief_pattern_file,
+                   CameraPtr camera_, const Sophus::SO3d& q_bc_, const Eigen::Vector3d& p_bc_);
+
+    inline void SubRelocTwc(std::function<void(double, const Sophus::SE3d&)> callback) {
+        pub_reloc_Twc.emplace_back(callback);
     }
 
-    void PushFrame(FramePtr frame) {
-        m_frame_buffer.lock();
-        v_frame_buffer.emplace_back(frame);
-        m_frame_buffer.unlock();
-        cv_frame_buffer.notify_one();
+    inline void SubAddRelocPath(std::function<void(const Sophus::SE3d&)> callback) {
+        pub_add_reloc_path.emplace_back(callback);
     }
 
-    void DetectLoop() {
-        while(1) {
-            std::vector<FramePtr> v_frames;
-            std::unique_lock<std::mutex> lock(m_frame_buffer);
-            cv_frame_buffer.wait(lock, [&] {
-               v_frames = v_frame_buffer;
-               v_frame_buffer.clear();
-               return !v_frames.empty();
-            });
-        }
+    inline void SubUpdateRelocPath(std::function<void(const std::vector<Sophus::SE3d>&)> callback) {
+        pub_update_reloc_path.emplace_back(callback);
     }
 
-    void Optimize4DoF() {
-        while(1) {
-
-        }
+    inline void SubRelocImg(std::function<void(const cv::Mat&)> callback) {
+        pub_reloc_img.emplace_back(callback);
     }
 
+    inline void SubLoopEdge(std::function<void(const std::pair<uint64_t, uint64_t>&)> callback) {
+        pub_loop_edge.emplace_back(callback);
+    }
+
+    void PushFrame(FramePtr frame);
+    void UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c);
 private:
+    void Process();
+    void ProcessFrame(FramePtr frame);
+    int64_t DetectLoop(FramePtr frame);
+    bool FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame);
+    void Optimize4DoF();
+
+    uint64_t next_frame_id = 0;
     std::mutex m_frame_buffer;
     std::condition_variable cv_frame_buffer;
     std::vector<FramePtr> v_frame_buffer;
 
     std::thread detect_loop_thread, pose_graph_thread;
     BriefDatabase db;
+    std::mutex mtx_frame_database;
+    std::vector<FramePtr> v_frame_database;
     std::shared_ptr<BriefVocabulary> voc;
+
+    DVision::BRIEF brief_extractor[2];
+    CameraPtr camera;
+
+    Sophus::SO3d q_bc;
+    Eigen::Vector3d p_bc;
+
+    std::mutex mtx_optimize_buffer;
+    std::condition_variable cv_optimize_buffer;
+    std::vector<int64_t> v_optimize_buffer;
+
+    std::mutex mtx_w_viow;
+    Eigen::Vector3d p_w_viow;
+    Sophus::SO3d q_w_viow;
+
+    std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_reloc_Twc;
+    std::vector<std::function<void(const cv::Mat&)>> pub_reloc_img;
+
+    std::mutex mtx_reloc_path;
+    std::vector<std::function<void(const Sophus::SE3d&)>> pub_add_reloc_path;
+    std::vector<std::function<void(const std::vector<Sophus::SE3d>&)>> pub_update_reloc_path;
+    std::vector<std::function<void(const std::pair<uint64_t, uint64_t>&)>> pub_loop_edge;
 };
+SMART_PTR(Relocalization)
