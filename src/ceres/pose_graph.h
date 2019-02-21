@@ -66,8 +66,10 @@ void RotateVector(const T* R, const T* t, T* r_t) {
 class FourDOFError {
 public:
     FourDOFError(double t_x_, double t_y_, double t_z_,
-                 double relative_yaw_, double pitch_i_, double roll_i_)
-        : t_x(t_x_), t_y(t_y_), t_z(t_z_), relative_yaw(relative_yaw_), pitch_i(pitch_i_), roll_i(roll_i_)
+                 double relative_yaw_, double pitch_i_, double roll_i_,
+                 double t_cov_, double r_cov_)
+        : t_x(t_x_), t_y(t_y_), t_z(t_z_), relative_yaw(relative_yaw_), pitch_i(pitch_i_), roll_i(roll_i_),
+          t_cov(t_cov_), r_cov(r_cov_)
     {}
 
     template<class T>
@@ -85,21 +87,23 @@ public:
         T ti_ij[3];
         RotateVector(Riw, tw_ij, ti_ij);
 
-        residuals[0] = ti_ij[0] - T(t_x);
-        residuals[1] = ti_ij[1] - T(t_y);
-        residuals[2] = ti_ij[2] - T(t_z);
-        residuals[3] = NormalizeAngle(yaw_j[0] - yaw_i[0] - T(relative_yaw));
+        residuals[0] = (ti_ij[0] - T(t_x)) / T(t_cov);
+        residuals[1] = (ti_ij[1] - T(t_y)) / T(t_cov);
+        residuals[2] = (ti_ij[2] - T(t_z)) / T(t_cov);
+        residuals[3] = (NormalizeAngle(yaw_j[0] - yaw_i[0] - T(relative_yaw))) / T(r_cov);
         return true;
     }
 
     static ceres::CostFunction* Create(double t_x, double t_y, double t_z,
-                                       double relative_yaw, double pitch_i, double roll_i) {
+                                       double relative_yaw, double pitch_i, double roll_i,
+                                       double t_cov = 1, double r_cov = 1) {
         return new ceres::AutoDiffCostFunction<FourDOFError, 4, 1, 3, 1, 3>(
-                    new FourDOFError(t_x, t_y, t_z, relative_yaw, pitch_i, roll_i));
+                    new FourDOFError(t_x, t_y, t_z, relative_yaw, pitch_i, roll_i, t_cov, r_cov));
     }
 
     double t_x, t_y, t_z; // vector i to j observed by i frame
     double relative_yaw;
     double pitch_i, roll_i;
+    double t_cov, r_cov;
 };
 

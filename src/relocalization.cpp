@@ -62,8 +62,7 @@ void Relocalization::Process() {
             mtx_w_viow.lock();
             Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);
             mtx_w_viow.unlock();
-            Sophus::SE3d Twc = Tw_viow * Sophus::SE3d(frame->q_wb, frame->p_wb) * Sophus::SE3d(q_bc, p_bc);
-
+            Sophus::SE3d Twc = Tw_viow * Sophus::SE3d(frame->vio_q_wb, frame->vio_p_wb) * Sophus::SE3d(q_bc, p_bc);
             mtx_reloc_path.lock();
             for(auto& pub : pub_add_reloc_path) {
                 pub(Twc);
@@ -217,8 +216,8 @@ bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) 
                 frame->pnp_q_old_cur = Tbo_bc.so3();
 
                 // compute relative_yaw
-                double yaw_w_old = Sophus::R2ypr(old_frame->vio_q_wb)(0);
-                double yaw_w_cur = Sophus::R2ypr(old_frame->vio_q_wb * frame->pnp_q_old_cur)(0);
+                double yaw_w_old = Sophus::R2ypr(old_frame->vio_q_wb * frame->pnp_q_old_cur.inverse())(0);
+                double yaw_w_cur = Sophus::R2ypr(frame->vio_q_wb)(0);
                 double yaw = NormalizeAngle(yaw_w_cur - yaw_w_old); // old_cur
                 frame->pnp_yaw_old_cur = yaw;
 
@@ -319,7 +318,8 @@ void Relocalization::Optimize4DoF() {
                 double pnp_yaw_bi_bj = v_frame_database[i]->pnp_yaw_old_cur;
                 Eigen::Vector3d pnp_p_bi_bj = v_frame_database[i]->pnp_p_old_cur;
                 auto factor = FourDOFError::Create(pnp_p_bi_bj(0), pnp_p_bi_bj(1), pnp_p_bi_bj(2),
-                                                   pnp_yaw_bi_bj, ypr_w_bi(1), ypr_w_bi(2));
+                                                   pnp_yaw_bi_bj, ypr_w_bi(1), ypr_w_bi(2),
+                                                   10.0, 15.0);
                 problem.AddResidualBlock(factor, loss_function,
                                          ypr_wb_raw + 3 * loop_index,
                                          p_wb_raw + 3 * loop_index,
@@ -335,7 +335,7 @@ void Relocalization::Optimize4DoF() {
         options.num_threads = 1;
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
-        LOG(INFO) << summary.BriefReport();
+//        LOG(INFO) << summary.FullReport();
 
         lock1.lock();
         for(int i = 0; i <= cur_index; ++i) {
@@ -349,12 +349,10 @@ void Relocalization::Optimize4DoF() {
 
         // update the world and vio world transformation matrix
         {
-            Sophus::SE3d Tw_cur(v_frame_database[cur_index]->q_wb, v_frame_database[cur_index]->p_wb),
-                         Tviow_cur(v_frame_database[cur_index]->vio_q_wb, v_frame_database[cur_index]->vio_p_wb);
-            Sophus::SE3d Tw_viow = Tw_cur * Tviow_cur.inverse();
+            double relative_yaw = Sophus::R2ypr(v_frame_database[cur_index]->q_wb)(0) - Sophus::R2ypr(v_frame_database[cur_index]->vio_q_wb)(0);
             mtx_w_viow.lock();
-            p_w_viow = Tw_viow.translation();
-            q_w_viow = Tw_viow.so3();
+            q_w_viow = Sophus::ypr2R<double>(relative_yaw, 0, 0);
+            p_w_viow = v_frame_database[cur_index]->p_wb - q_w_viow * v_frame_database[cur_index]->vio_p_wb;
             mtx_w_viow.unlock();
 
             for(int i = cur_index + 1, n = v_frame_database.size(); i < n; ++i) {
