@@ -6,6 +6,7 @@
 #include "stereo_matcher.h"
 #include "backend.h"
 #include "relocalization.h"
+#include "pose_faster.h"
 
 class System {
 public:
@@ -51,6 +52,12 @@ public:
             reloc->SubLoopEdge(callback);
     }
 
+    inline bool Predict(const Eigen::Vector3d& gyr, const Eigen::Vector3d& acc, double t, Sophus::SE3d& Twc) {
+        if(pose_faster)
+            return pose_faster->Predict(gyr, acc, t, Twc);
+        return  false;
+    }
+
 private:
     void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc);
 
@@ -74,5 +81,7 @@ private:
     std::mutex mtx_reloc_cache;
     std::deque<std::pair<FeatureTracker::FramePtr, BackEnd::FramePtr>> d_reloc_cache;
     RelocalizationPtr reloc;
+
+    PoseFasterPtr pose_faster;
 };
 SMART_PTR(System)

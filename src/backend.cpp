@@ -922,6 +922,10 @@ void BackEnd::Publish() {
         for(auto& pub : pub_vio_Twc)
             pub(frame->timestamp, Twc);
     }
+
+    for(auto& pub : pub_frame) {
+        pub(d_frames.back());
+    }
 }
 
 //void BackEnd::DrawUI() {

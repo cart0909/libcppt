@@ -3,8 +3,7 @@ Panels:
     Help Height: 0
     Name: Displays
     Property Tree Widget:
-      Expanded:
-        - /reloc1/reloc_path1
+      Expanded: ~
       Splitter Ratio: 0.4651159942150116
     Tree Height: 491
   - Class: rviz/Selection
@@ -113,13 +112,13 @@ Visualization Manager:
     - Class: rviz/Group
       Displays:
         - Class: rviz/MarkerArray
-          Enabled: true
+          Enabled: false
           Marker Topic: /cppt_vio/reloc_pose
           Name: reloc_pose
           Namespaces:
-            CameraPoseVisualization: true
+            {}
           Queue Size: 100
-          Value: true
+          Value: false
         - Alpha: 1
           Buffer Length: 1
           Class: rviz/Path
@@ -165,6 +164,14 @@ Visualization Manager:
           Value: true
       Enabled: true
       Name: reloc
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /cppt_vio/fast_pose
+      Name: fast_pose
+      Namespaces:
+        CameraPoseVisualization: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -188,25 +195,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 7.586649417877197
+      Distance: 7.525247573852539
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.1587672233581543
-        Y: -0.09873068332672119
-        Z: 3.1781921279616654e-5
+        X: -0.8151051998138428
+        Y: -0.6847574710845947
+        Z: 3.511978138703853e-5
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7052026987075806
+      Pitch: 0.8097972869873047
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz)
-      Yaw: 3.2108314037323
+      Yaw: 3.175835371017456
     Saved: ~
 Window Geometry:
   Displays:

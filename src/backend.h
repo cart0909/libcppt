@@ -96,6 +96,10 @@ public:
         pub_keyframe.emplace_back(callback);
     }
 
+    inline void SubFrame(std::function<void(FramePtr)> callback) {
+        pub_frame.emplace_back(callback);
+    }
+
     inline void ResetRequest() {
         request_reset_flag = true;
     }
@@ -174,5 +178,6 @@ private:
 
     std::vector<std::function<void(double, const Sophus::SE3d)>> pub_vio_Twc;
     std::vector<std::function<void(FramePtr, const Eigen::VecVector3d&)>> pub_keyframe;
+    std::vector<std::function<void(FramePtr)>> pub_frame;
 };
 SMART_PTR(BackEnd)

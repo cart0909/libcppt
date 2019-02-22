@@ -83,6 +83,14 @@ public:
         unique_lock<mutex> lock(m_buf);
         imu_buf.emplace(imu_msg);
         cv_system.notify_one();
+
+        Sophus::SE3d Twc;
+        if(system->Predict(Eigen::Vector3d(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z),
+                           Eigen::Vector3d(imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z),
+                           imu_msg->header.stamp.toSec(), Twc))
+        {
+            PubFastPose(imu_msg->header.stamp.toSec(), Twc);
+        }
     }
 
     Measurements GetMeasurements() {
@@ -195,6 +203,17 @@ public:
         vio_pose_visual.reset();
         vio_pose_visual.add_pose(twc, qwc);
         vio_pose_visual.publish_by(pub_vio_pose, vio_path.header);
+    }
+
+    void PubFastPose(double timestamp, const Sophus::SE3d& Twc) {
+        std_msgs::Header header;
+        header.frame_id = "world";
+        header.stamp.fromSec(timestamp);
+        Eigen::Vector3d twc = Twc.translation();
+        Eigen::Quaterniond qwc = Twc.unit_quaternion();
+        fast_pose_visual.reset();
+        fast_pose_visual.add_pose(twc, qwc);
+        fast_pose_visual.publish_by(pub_fast_pose, header);
     }
 
     void PubRelocPose(double timestamp, const Sophus::SE3d& Twc) {
