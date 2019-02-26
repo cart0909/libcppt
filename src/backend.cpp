@@ -281,7 +281,6 @@ void BackEnd::SlidingWindowOld() {
 }
 
 void BackEnd::SlidingWindowSecondNew() {
-
     // [ 0, 1, ..., size-2, size-1]
     //  kf kf       second     new
     //              XXXXXX
@@ -564,6 +563,7 @@ void BackEnd::SolveBA() {
 }
 
 void BackEnd::SolveBAImu() {
+    Tracer::TraceBegin("BA");
     data2double();
     ceres::Problem problem;
     ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
@@ -624,7 +624,7 @@ void BackEnd::SolveBAImu() {
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.trust_region_strategy_type = ceres::DOGLEG;
     options.max_num_iterations = 10;
-    options.num_threads = 4;
+    options.num_threads = 1;
     options.max_solver_time_in_seconds = 0.05; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
 
@@ -635,7 +635,7 @@ void BackEnd::SolveBAImu() {
 
     for(int i = 1, n = d_frames.size(); i < n; ++i)
         d_frames[i]->imupreinte->repropagate(d_frames[i-1]->ba, d_frames[i-1]->bg);
-
+    Tracer::TraceEnd();
     Marginalize();
 }
 
@@ -769,6 +769,7 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
 
 void BackEnd::Marginalize() {
     if(marginalization_flag == MARGIN_OLD) {
+        ScopedTrace st("margin_old");
         margin_mps.clear();
         auto loss_function = new ceres::HuberLoss(std::sqrt(5.991));
         auto margin_info = new MarginalizationInfo();
@@ -874,6 +875,7 @@ void BackEnd::Marginalize() {
         para_margin_block = parameter_blocks;
     }
     else if(marginalization_flag == MARGIN_SECOND_NEW) {
+        ScopedTrace st("margin_2nd");
         auto it = std::find(para_margin_block.begin(), para_margin_block.end(), para_pose + 7 * (d_frames.size() - 2));
         if(last_margin_info && it != para_margin_block.end()) {
             auto margin_info = new MarginalizationInfo();

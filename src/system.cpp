@@ -4,6 +4,7 @@
 #include <glog/logging.h>
 
 System::System(const std::string& config_file) {
+    cv::setNumThreads(0);
     reset_flag = false;
     param = ConfigLoader::Load(config_file);
 

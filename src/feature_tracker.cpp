@@ -25,6 +25,7 @@ FeatureTracker::FramePtr FeatureTracker::Process(const cv::Mat& img, double time
 }
 
 FeatureTracker::FramePtr FeatureTracker::InitFrame(const cv::Mat& img, double timestamp) {
+    ScopedTrace st("init_frame");
     FramePtr frame(new Frame);
     frame->id = next_frame_id++;
     frame->timestamp = timestamp;
@@ -37,6 +38,7 @@ FeatureTracker::FramePtr FeatureTracker::InitFrame(const cv::Mat& img, double ti
 }
 
 void FeatureTracker::ExtractFAST(FramePtr frame) {
+    ScopedTrace st("FAST");
     cv::Mat mask(camera->height, camera->width, CV_8U, cv::Scalar(255));
     std::vector<std::pair<uint, size_t>> v_count_idx(frame->pt.size());
     std::vector<uchar> v_keep(frame->pt.size(), 1);
@@ -82,7 +84,7 @@ void FeatureTracker::ExtractFAST(FramePtr frame) {
 void FeatureTracker::TrackFeatures(FramePtr ref_frame, FramePtr cur_frame) {
     if(ref_frame->pt.empty())
         return;
-
+    ScopedTrace st("opt_flow");
     // clone ref frame data to cur frame
     std::vector<cv::Point2f> ref_frame_pts = ref_frame->pt;
     cur_frame->pt_id = ref_frame->pt_id;

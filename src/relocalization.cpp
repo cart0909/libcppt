@@ -102,6 +102,7 @@ void Relocalization::ProcessFrame(FramePtr frame) {
 }
 
 int64_t Relocalization::DetectLoop(FramePtr frame) {
+    ScopedTrace st("detect_loop");
     // re-id
     frame->frame_id = next_frame_id++;
 
@@ -165,6 +166,7 @@ int64_t Relocalization::DetectLoop(FramePtr frame) {
 }
 
 bool Relocalization::FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame) {
+    ScopedTrace st("match_pnp");
     std::vector<cv::Point2f> matched_2d_cur, matched_2d_old;
     std::vector<cv::Point2f> matched_2d_cur_norm, matched_2d_old_norm;
     std::vector<cv::Point3f> matched_3d;
@@ -277,7 +279,7 @@ void Relocalization::Optimize4DoF() {
             return cur_index != -1;
         });
         lock.unlock();
-
+        Tracer::TraceBegin("pose_graph");
         LOG(INFO) << "optimize pose graph";
         std::unique_lock<std::mutex> lock1(mtx_frame_database);
 
@@ -396,7 +398,7 @@ void Relocalization::Optimize4DoF() {
                 pub(v_Twc);
         }
         lock1.unlock();
-
+        Tracer::TraceEnd();
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }
 }

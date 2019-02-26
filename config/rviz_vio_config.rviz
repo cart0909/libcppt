@@ -24,7 +24,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: track_img
+    SyncSource: ""
   - Class: rviz/Displays
     Help Height: 78
     Name: Displays
@@ -169,7 +169,7 @@ Visualization Manager:
       Marker Topic: /cppt_vio/fast_pose
       Name: fast_pose
       Namespaces:
-        CameraPoseVisualization: true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true

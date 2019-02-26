@@ -214,7 +214,7 @@ void MarginalizationInfo::marginalize()
     Eigen::VectorXd b(pos);
     A.setZero();
     b.setZero();
-    /*
+
     for (auto it : factors)
     {
         for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
@@ -238,39 +238,38 @@ void MarginalizationInfo::marginalize()
             b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals;
         }
     }
-    ROS_INFO("summing up costs %f ms", t_summing.toc());
-    */
+//    ROS_INFO("summing up costs %f ms", t_summing.toc());
     //multi thread
 
 
-    pthread_t tids[NUM_THREADS];
-    ThreadsStruct threadsstruct[NUM_THREADS];
-    int i = 0;
-    for (auto it : factors)
-    {
-        threadsstruct[i].sub_factors.push_back(it);
-        i++;
-        i = i % NUM_THREADS;
-    }
-    for (int i = 0; i < NUM_THREADS; i++)
-    {
-        threadsstruct[i].A = Eigen::MatrixXd::Zero(pos,pos);
-        threadsstruct[i].b = Eigen::VectorXd::Zero(pos);
-        threadsstruct[i].parameter_block_size = parameter_block_size;
-        threadsstruct[i].parameter_block_idx = parameter_block_idx;
-        int ret = pthread_create( &tids[i], NULL, ThreadsConstructA ,(void*)&(threadsstruct[i]));
-        if (ret != 0)
-        {
-            ROS_WARN("pthread_create error");
-            ROS_BREAK();
-        }
-    }
-    for( int i = NUM_THREADS - 1; i >= 0; i--)  
-    {
-        pthread_join( tids[i], NULL ); 
-        A += threadsstruct[i].A;
-        b += threadsstruct[i].b;
-    }
+//    pthread_t tids[NUM_THREADS];
+//    ThreadsStruct threadsstruct[NUM_THREADS];
+//    int i = 0;
+//    for (auto it : factors)
+//    {
+//        threadsstruct[i].sub_factors.push_back(it);
+//        i++;
+//        i = i % NUM_THREADS;
+//    }
+//    for (int i = 0; i < NUM_THREADS; i++)
+//    {
+//        threadsstruct[i].A = Eigen::MatrixXd::Zero(pos,pos);
+//        threadsstruct[i].b = Eigen::VectorXd::Zero(pos);
+//        threadsstruct[i].parameter_block_size = parameter_block_size;
+//        threadsstruct[i].parameter_block_idx = parameter_block_idx;
+//        int ret = pthread_create( &tids[i], NULL, ThreadsConstructA ,(void*)&(threadsstruct[i]));
+//        if (ret != 0)
+//        {
+//            ROS_WARN("pthread_create error");
+//            ROS_BREAK();
+//        }
+//    }
+//    for( int i = NUM_THREADS - 1; i >= 0; i--)
+//    {
+//        pthread_join( tids[i], NULL );
+//        A += threadsstruct[i].A;
+//        b += threadsstruct[i].b;
+//    }
     //ROS_DEBUG("thread summing up costs %f ms", t_thread_summing.toc());
     //ROS_INFO("A diff %f , b diff %f ", (A - tmp_A).sum(), (b - tmp_b).sum());
 

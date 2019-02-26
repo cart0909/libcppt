@@ -20,7 +20,7 @@ StereoMatcher::FramePtr StereoMatcher::Process(FeatureTracker::FrameConstPtr fea
 
     if(feat_frame->pt.empty())
         return frame;
-
+    ScopedTrace st("stereo_match");
     // optical flow
     std::vector<uchar> status;
     std::vector<float> err;
@@ -77,6 +77,7 @@ StereoMatcher::FramePtr StereoMatcher::Process(FeatureTracker::FrameConstPtr fea
 }
 
 StereoMatcher::FramePtr StereoMatcher::InitFrame(const cv::Mat& img_r) {
+    ScopedTrace st("init_rFrame");
     FramePtr frame(new Frame);
     frame->img_r = img_r;
     clahe->apply(frame->img_r, frame->clahe_r);
