@@ -1,10 +1,12 @@
 #include "stereo_matcher.h"
 #include <glog/logging.h>
 
-StereoMatcher::StereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_, Eigen::Vector3d prl_, Sophus::SO3d qrl_)
-    : cam_l(cam_l_), cam_r(cam_r_), prl(prl_), qrl(qrl_)
+StereoMatcher::StereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_, Eigen::Vector3d prl_, Sophus::SO3d qrl_,
+                             double clahe_parameter, float dist_epipolar_threshold_)
+    : cam_l(cam_l_), cam_r(cam_r_), prl(prl_), qrl(qrl_), dist_epipolar_threshold(dist_epipolar_threshold_)
 {
-    clahe = cv::createCLAHE(3.0f);
+    if(clahe_parameter > 0)
+        clahe = cv::createCLAHE(clahe_parameter);
 }
 
 StereoMatcher::~StereoMatcher() {
@@ -80,7 +82,12 @@ StereoMatcher::FramePtr StereoMatcher::InitFrame(const cv::Mat& img_r) {
     ScopedTrace st("init_rFrame");
     FramePtr frame(new Frame);
     frame->img_r = img_r;
-    clahe->apply(frame->img_r, frame->clahe_r);
-    cv::buildOpticalFlowPyramid(frame->clahe_r, frame->img_pyr_grad_r, cv::Size(21, 21), 3);
+    if(clahe) {
+        clahe->apply(frame->img_r, frame->clahe_r);
+        cv::buildOpticalFlowPyramid(frame->clahe_r, frame->img_pyr_grad_r, cv::Size(21, 21), 3);
+    }
+    else {
+        cv::buildOpticalFlowPyramid(frame->img_r, frame->img_pyr_grad_r, cv::Size(21, 21), 3);
+    }
     return frame;
 }

@@ -11,11 +11,17 @@ BackEnd::BackEnd(double focal_length_,
                  double gyr_w_, double acc_w_,
                  const Eigen::Vector3d& p_rl_, const Eigen::Vector3d& p_bc_,
                  const Sophus::SO3d& q_rl_, const Sophus::SO3d& q_bc_,
-                 double gravity_magnitude_, int window_size_, double min_parallax_)
+                 double gravity_magnitude_, int window_size_, double min_parallax_,
+                 double max_solver_time_in_seconds_, int max_num_iterations_,
+                 double cv_huber_loss_parameter_, double triangulate_default_depth_,
+                 double max_imu_sum_t_, int min_init_stereo_num_)
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_),
       gyr_n(gyr_n_), acc_n(acc_n_), gyr_w(gyr_w_), acc_w(acc_w_), window_size(window_size_),
       next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f),
-      gravity_magnitude(gravity_magnitude_), gw(0, 0, gravity_magnitude_), last_margin_info(nullptr)
+      gravity_magnitude(gravity_magnitude_), gw(0, 0, gravity_magnitude_), last_margin_info(nullptr),
+      max_solver_time_in_seconds(max_solver_time_in_seconds_), max_num_iterations(max_num_iterations_),
+      cv_huber_loss_parameter(cv_huber_loss_parameter_), triangulate_default_depth(triangulate_default_depth_),
+      max_imu_sum_t(max_imu_sum_t_), min_init_stereo_num(min_init_stereo_num_)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
@@ -39,6 +45,7 @@ BackEnd::BackEnd(double focal_length_,
     request_reset_flag = false;
 
     thread_ = std::thread(&BackEnd::Process, this);
+    is_busy = false;
 }
 
 BackEnd::~BackEnd() {
@@ -65,6 +72,7 @@ void BackEnd::Process() {
             return (!measurements.empty() || request_reset_flag);
         });
         lock.unlock();
+        is_busy = true;
 
         if(request_reset_flag) {
             Reset();
@@ -75,6 +83,8 @@ void BackEnd::Process() {
         for(auto& frame : measurements) {
             ProcessFrame(frame);
         }
+
+        is_busy = false;
     }
 }
 
@@ -95,14 +105,14 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
         int num_mps = Triangulate(0);
 
-        if(num_mps >= 30 && frame->v_imu_timestamp.size() >= 5) {
+        if(num_mps >= min_init_stereo_num && frame->v_imu_timestamp.size() >= 5) {
             frame->q_wb = InitFirstIMUPose(frame->v_acc);
             frame->imupreinte = std::make_shared<IntegrationBase>(frame->v_acc[0], frame->v_gyr[0], frame->ba, frame->bg, acc_n, gyr_n, acc_w, gyr_w);
             last_imu_t = frame->v_imu_timestamp.back();
             state = CV_ONLY;
         }
         else {
-            LOG(INFO) << "Stereo init fail, no imu info or number of mappoints less than 30: " << num_mps;
+            LOG(INFO) << "Stereo init fail, no imu info or number of mappoints less than " <<  min_init_stereo_num  << ": " << num_mps;
             Reset();
         }
     }
@@ -381,10 +391,12 @@ int BackEnd::Triangulate(int sw_idx) {
         Eigen::Vector4d X = Eigen::JacobiSVD<Eigen::MatrixXd>(A, Eigen::ComputeThinV).matrixV().rightCols<1>();
         X /= X(3);
 
-        if(X(2) < 0.1)
-            continue;
-
-        feat.inv_depth = 1.0 / X(2);
+        if(X(2) < 0.1) {
+            feat.inv_depth = 1.0 / triangulate_default_depth;
+        }
+        else {
+            feat.inv_depth = 1.0 / X(2);
+        }
         ++num_triangulate;
     }
     return num_triangulate;
@@ -506,7 +518,7 @@ void BackEnd::double2data() {
 void BackEnd::SolveBA() {
     data2double();
     ceres::Problem problem;
-    ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
+    ceres::LossFunction *loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
@@ -553,9 +565,9 @@ void BackEnd::SolveBA() {
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.trust_region_strategy_type = ceres::DOGLEG;
-    options.max_num_iterations = 10;
-    options.num_threads = 4;
-    options.max_solver_time_in_seconds = 0.05; // 50 ms for solver and 50 ms for other
+    options.max_num_iterations = max_num_iterations;
+    options.num_threads = 1;
+    options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
@@ -566,13 +578,13 @@ void BackEnd::SolveBAImu() {
     Tracer::TraceBegin("BA");
     data2double();
     ceres::Problem problem;
-    ceres::LossFunction *loss_function = new ceres::HuberLoss(std::sqrt(5.991));
+    ceres::LossFunction *loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         problem.AddParameterBlock(para_pose + i * 7, 7, local_para_se3);
 
-        if(i != 0 && d_frames[i]->imupreinte->sum_dt < 10.0) {
+        if(i != 0 && d_frames[i]->imupreinte->sum_dt < max_imu_sum_t) {
             auto factor = new IMUFactor(d_frames[i]->imupreinte, gw);
             problem.AddResidualBlock(factor, NULL,
                                      para_pose + (i - 1) * 7,
@@ -623,9 +635,9 @@ void BackEnd::SolveBAImu() {
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.trust_region_strategy_type = ceres::DOGLEG;
-    options.max_num_iterations = 10;
+    options.max_num_iterations = max_num_iterations;
     options.num_threads = 1;
-    options.max_solver_time_in_seconds = 0.05; // 50 ms for solver and 50 ms for other
+    options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
@@ -771,7 +783,7 @@ void BackEnd::Marginalize() {
     if(marginalization_flag == MARGIN_OLD) {
         ScopedTrace st("margin_old");
         margin_mps.clear();
-        auto loss_function = new ceres::HuberLoss(std::sqrt(5.991));
+        auto loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
         auto margin_info = new MarginalizationInfo();
         data2double();
 
@@ -791,7 +803,7 @@ void BackEnd::Marginalize() {
         }
 
         // imu
-        if(d_frames[1]->imupreinte->sum_dt < 10.0) {
+        if(d_frames[1]->imupreinte->sum_dt < max_imu_sum_t) {
             auto factor = new IMUFactor(d_frames[1]->imupreinte, gw);
             auto residual_block_info = new ResidualBlockInfo(factor, NULL,
                                                              std::vector<double*>{para_pose, para_speed_bias,

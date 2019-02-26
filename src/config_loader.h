@@ -24,6 +24,24 @@ public:
         double gyr_bias_noise;
         double gravity_magnitude;
 
+        double clahe_parameter;
+        int fast_threshold;
+        int min_dist;
+        double frontend_pub_period;
+        float Fundamental_reproj_threshold;
+
+        double max_solver_time_in_seconds;
+        int max_num_iterations;
+        double keyframe_parallax;
+        double cv_huber_loss_parameter;
+        int sliding_window_size;
+        double triangulate_default_depth;
+        double max_imu_sum_t;
+        int min_init_stereo_num;
+
+        int enable_reloc;
+        int enable_pose_faster;
+
         std::string voc_filename;
         std::string brief_pattern_file;
     };

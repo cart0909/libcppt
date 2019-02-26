@@ -55,7 +55,7 @@ public:
     inline bool Predict(const Eigen::Vector3d& gyr, const Eigen::Vector3d& acc, double t, Sophus::SE3d& Twc) {
         if(pose_faster)
             return pose_faster->Predict(gyr, acc, t, Twc);
-        return  false;
+        return false;
     }
 
 private:

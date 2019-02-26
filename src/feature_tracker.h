@@ -4,7 +4,8 @@
 
 class FeatureTracker {
 public:
-    FeatureTracker(CameraPtr camera_);
+    FeatureTracker(CameraPtr camera_, double clahe_parameter, int fast_threshold_,
+                   int min_dist, float reproj_threshold_);
     ~FeatureTracker();
 
     struct Frame {
@@ -23,9 +24,9 @@ public:
 
     FramePtr InitFirstFrame(const cv::Mat& img, double timestamp);
     FramePtr Process(const cv::Mat& img, double timestamp);
+    void ExtractFAST(FramePtr frame);
 private:
     FramePtr InitFrame(const cv::Mat& img, double timestamp);
-    void ExtractFAST(FramePtr frame);
     void TrackFeatures(FramePtr ref_frame, FramePtr cur_frame);
 
     uint64_t next_frame_id = 0;
@@ -34,8 +35,8 @@ private:
     FramePtr last_frame;
     cv::Ptr<cv::CLAHE> clahe;
 
-    int fast_threshold = 20;
-    int feat_min_dist = 32;
-    float reproj_threshold = 3.0f;
+    int fast_threshold;
+    int feat_min_dist;
+    float reproj_threshold;
 };
 SMART_PTR(FeatureTracker)

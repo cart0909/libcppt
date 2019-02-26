@@ -65,6 +65,22 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     fs["voc_path"] >> param.voc_filename;
     fs["brief_pattern_path"] >> param.brief_pattern_file;
 
+    param.clahe_parameter = fs["clahe"];
+    param.fast_threshold = fs["fast_threshold"];
+    param.min_dist = fs["min_dist"];
+    param.Fundamental_reproj_threshold = fs["F_threshold"];
+
+    param.max_solver_time_in_seconds = fs["max_solver_time_in_seconds"];
+    param.max_num_iterations = fs["max_num_iterations"];
+    param.keyframe_parallax = fs["keyframe_parallax"];
+    param.cv_huber_loss_parameter = fs["cv_huber_loss_parameter"];
+    param.sliding_window_size = fs["sliding_window_size"];
+    param.triangulate_default_depth = fs["triangulate_default_depth"];
+    param.max_imu_sum_t = fs["max_imu_sum_t"];
+    param.min_init_stereo_num = fs["minmin_init_stereo_num"];
+
+    param.enable_reloc = fs["enable_reloc"];
+    param.enable_pose_faster = fs["enable_pose_faster"];
     Log(param);
     fs.release();
     return param;

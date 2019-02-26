@@ -1,7 +1,11 @@
 #include "feature_tracker.h"
 
-FeatureTracker::FeatureTracker(CameraPtr camera_) : camera(camera_) {
-    clahe = cv::createCLAHE(3.0);
+FeatureTracker::FeatureTracker(CameraPtr camera_, double clahe_parameter, int fast_threshold_,
+                               int min_dist, float reproj_threshold_)
+    : camera(camera_), fast_threshold(fast_threshold_), feat_min_dist(min_dist), reproj_threshold(reproj_threshold_)
+{
+    if(clahe_parameter > 0)
+        clahe = cv::createCLAHE(clahe_parameter);
 }
 FeatureTracker::~FeatureTracker() {}
 
@@ -17,9 +21,6 @@ FeatureTracker::FramePtr FeatureTracker::InitFirstFrame(const cv::Mat& img, doub
 FeatureTracker::FramePtr FeatureTracker::Process(const cv::Mat& img, double timestamp) {
     FramePtr frame = InitFrame(img, timestamp);
     TrackFeatures(last_frame, frame);
-    if(frame->id % 2 == 0) {
-        ExtractFAST(frame);
-    }
     last_frame = frame;
     return frame;
 }
@@ -32,8 +33,13 @@ FeatureTracker::FramePtr FeatureTracker::InitFrame(const cv::Mat& img, double ti
     frame->img = img;
     cv::resize(img, frame->compressed_img, img.size() / 2);
     cv::cvtColor(frame->compressed_img, frame->compressed_img, CV_GRAY2BGR);
-    clahe->apply(img, frame->clahe);
-    cv::buildOpticalFlowPyramid(frame->clahe, frame->img_pyr_grad, cv::Size(21, 21), 3);
+    if(clahe) {
+        clahe->apply(img, frame->clahe);
+        cv::buildOpticalFlowPyramid(frame->clahe, frame->img_pyr_grad, cv::Size(21, 21), 3);
+    }
+    else {
+        cv::buildOpticalFlowPyramid(frame->img, frame->img_pyr_grad, cv::Size(21, 21), 3);
+    }
     return frame;
 }
 

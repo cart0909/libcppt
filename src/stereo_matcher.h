@@ -7,7 +7,8 @@ class StereoMatcher {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    StereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_, Eigen::Vector3d prl_, Sophus::SO3d qrl_);
+    StereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_, Eigen::Vector3d prl_, Sophus::SO3d qrl_,
+                  double clahe_parameter, float dist_epipolar_threshold_);
     ~StereoMatcher();
 
     struct Frame {
@@ -29,6 +30,6 @@ private:
     Sophus::SO3d qrl;
     cv::Ptr<cv::CLAHE> clahe;
 
-    float dist_epipolar_threshold = 3.0f;
+    float dist_epipolar_threshold;
 };
 SMART_PTR(StereoMatcher)
