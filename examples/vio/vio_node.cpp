@@ -15,6 +15,7 @@
 #include <sophus/se3.hpp>
 #include <nav_msgs/Path.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <geometry_msgs/TransformStamped.h>
 // catch ctrl+c signal
 #include <signal.h>
 
@@ -214,6 +215,18 @@ public:
         fast_pose_visual.reset();
         fast_pose_visual.add_pose(twc, qwc);
         fast_pose_visual.publish_by(pub_fast_pose, header);
+
+        geometry_msgs::TransformStamped transform_stamped;
+        transform_stamped.header = header;
+        transform_stamped.transform.rotation.w = qwc.w();
+        transform_stamped.transform.rotation.x = qwc.x();
+        transform_stamped.transform.rotation.y = qwc.y();
+        transform_stamped.transform.rotation.z = qwc.z();
+
+        transform_stamped.transform.translation.x = twc(0);
+        transform_stamped.transform.translation.y = twc(1);
+        transform_stamped.transform.translation.z = twc(2);
+        pub_transform.publish(transform_stamped);
     }
 
     void PubRelocPose(double timestamp, const Sophus::SE3d& Twc) {
@@ -327,6 +340,9 @@ public:
     // fast pose
     CameraPoseVisualization fast_pose_visual;
     ros::Publisher pub_fast_pose;
+
+    // for dense mapping
+    ros::Publisher pub_transform;
 };
 
 // global variable
@@ -360,6 +376,7 @@ int main(int argc, char** argv) {
     node.pub_loop_edge = nh.advertise<visualization_msgs::MarkerArray>("loop_edge", 1000);
     node.pub_reloc_img = nh.advertise<sensor_msgs::Image>("reloc_img", 1000);
     node.pub_fast_pose = nh.advertise<visualization_msgs::MarkerArray>("fast_pose", 1000);
+    node.pub_transform = nh.advertise<geometry_msgs::TransformStamped>("transform", 1000);
     ROS_INFO_STREAM("Player is ready.");
 
     ros::spin();
