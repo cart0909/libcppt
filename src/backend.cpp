@@ -437,6 +437,11 @@ void BackEnd::data2double() {
         }
         para_features[num_mps++] = feat.inv_depth;
     }
+
+    std::memcpy(para_ex_bc, q_bc.data(), sizeof(double) * 4);
+    std::memcpy(para_ex_bc + 4, p_bc.data(), sizeof(double) * 3);
+    std::memcpy(para_ex_sm, q_rl.data(), sizeof(double) * 4);
+    std::memcpy(para_ex_sm + 4, p_rl.data(), sizeof(double) * 3);
 }
 
 void BackEnd::double2data() {
@@ -513,6 +518,11 @@ void BackEnd::double2data() {
     for(auto& it : v_outlier_feat_id) {
         m_features.erase(it);
     }
+
+    std::memcpy(q_bc.data(), para_ex_bc, sizeof(double) * 4);
+    std::memcpy(p_bc.data(), para_ex_bc + 4, sizeof(double) * 3);
+    std::memcpy(q_rl.data(), para_ex_sm, sizeof(double) * 4);
+    std::memcpy(p_rl.data(), para_ex_sm + 4, sizeof(double) * 3);
 }
 
 void BackEnd::SolveBA() {
@@ -581,6 +591,14 @@ void BackEnd::SolveBAImu() {
     ceres::LossFunction *loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
+    problem.AddParameterBlock(para_ex_bc, 7, local_para_se3);
+    problem.AddParameterBlock(para_ex_sm, 7, local_para_se3);
+
+    if(!enable_estimate_extrinsic || d_frames.back()->v_wb.norm() < 0.2) {
+        problem.SetParameterBlockConstant(para_ex_bc);
+        problem.SetParameterBlockConstant(para_ex_sm);
+    }
+
     for(int i = 0, n = d_frames.size(); i < n; ++i) {
         problem.AddParameterBlock(para_pose + i * 7, 7, local_para_se3);
 
@@ -613,19 +631,19 @@ void BackEnd::SolveBAImu() {
             Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
 
             if(j != 0) {
-                auto factor = new ProjectionFactor(pt_i, pt_j, q_bc, p_bc, focal_length);
-                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
+                auto factor = new ProjectionExFactor(pt_i, pt_j, focal_length);
+                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
             }
 
             if(feat.pt_r_n_per_frame[j](0) != -1.0f) {
                 Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
                 if(j == 0) {
-                    auto factor = new SelfProjectionFactor(pt_j, pt_jr, q_rl, p_rl, focal_length);
-                    problem.AddResidualBlock(factor, loss_function, para_features + mp_idx);
+                    auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_features + mp_idx);
                 }
                 else {
-                    auto factor = new SlaveProjectionFactor(pt_i, pt_jr, q_rl, p_rl, q_bc, p_bc, focal_length);
-                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
+                    auto factor = new SlaveProjectionExFactor(pt_i, pt_jr, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_features + mp_idx);
                 }
             }
         }
@@ -842,27 +860,27 @@ void BackEnd::Marginalize() {
                 Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
 
                 if(j != 0) {
-                    auto factor = new ProjectionFactor(pt_i, pt_j, q_bc, p_bc, focal_length);
+                    auto factor = new ProjectionExFactor(pt_i, pt_j, focal_length);
                     auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
-                                                                     std::vector<double*>{para_pose, para_pose + id_j * 7, para_features + feature_index},
-                                                                     std::vector<int>{0, 2});
+                                                                     std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_features + feature_index},
+                                                                     std::vector<int>{0, 3});
                     margin_info->addResidualBlockInfo(residual_block_info);
                 }
 
                 if(feat.pt_r_n_per_frame[j](0) != -1.0f) {
                     Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
                     if(j == 0) {
-                        auto factor = new SelfProjectionFactor(pt_j, pt_jr, q_rl, p_rl, focal_length);
+                        auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
                         auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
-                                                                         std::vector<double*>{para_features + feature_index},
-                                                                         std::vector<int>{0});
+                                                                         std::vector<double*>{para_ex_sm, para_features + feature_index},
+                                                                         std::vector<int>{1});
                         margin_info->addResidualBlockInfo(residual_block_info);
                     }
                     else {
-                        auto factor = new SlaveProjectionFactor(pt_i, pt_jr, q_rl, p_rl, q_bc, p_bc, focal_length);
+                        auto factor = new SlaveProjectionExFactor(pt_i, pt_jr, focal_length);
                         auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
-                                                                         std::vector<double*>{para_pose, para_pose + id_j * 7, para_features + feature_index},
-                                                                         std::vector<int>{0, 2});
+                                                                         std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_features + feature_index},
+                                                                         std::vector<int>{0, 4});
                         margin_info->addResidualBlockInfo(residual_block_info);
                     }
                 }
@@ -877,6 +895,9 @@ void BackEnd::Marginalize() {
             addr_shift[reinterpret_cast<long>(para_pose + 7 * i)] = para_pose + 7 * (i - 1);
             addr_shift[reinterpret_cast<long>(para_speed_bias + 9 * i)] = para_speed_bias + 9 * (i - 1);
         }
+
+        addr_shift[reinterpret_cast<long>(para_ex_bc)] = para_ex_bc;
+        addr_shift[reinterpret_cast<long>(para_ex_sm)] = para_ex_sm;
 
         std::vector<double*> parameter_blocks = margin_info->getParameterBlocks(addr_shift);
 
@@ -918,6 +939,9 @@ void BackEnd::Marginalize() {
                     addr_shift[reinterpret_cast<long>(para_speed_bias + 9 * i)] = para_speed_bias + 9 * i;
                 }
             }
+
+            addr_shift[reinterpret_cast<long>(para_ex_bc)] = para_ex_bc;
+            addr_shift[reinterpret_cast<long>(para_ex_sm)] = para_ex_sm;
 
             std::vector<double*> parameter_blocks = margin_info->getParameterBlocks(addr_shift);
 

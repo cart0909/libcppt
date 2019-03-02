@@ -43,7 +43,7 @@ public:
     Eigen::Matrix2d sqrt_info;
 };
 
-// imaster -> jslave
+// imaster -> islave
 class SelfProjectionFactor : public ceres::SizedCostFunction<2, 1>
 {
 public:
@@ -59,5 +59,50 @@ public:
     Eigen::Vector3d pt_l, pt_r;
     Sophus::SO3d q_rl;
     Eigen::Vector3d p_rl;
+    Eigen::Matrix2d sqrt_info;
+};
+
+class ProjectionExFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 1>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    ProjectionExFactor(const Eigen::Vector3d& pt_i_, const Eigen::Vector3d& pt_j_,
+                       double focal_length);
+
+    bool Evaluate(double const * const* parameters_raw,
+                  double* residuals_raw,
+                  double** jacobians_raw) const;
+
+    Eigen::Vector3d pt_i, pt_j;
+    Eigen::Matrix2d sqrt_info;
+};
+
+class SlaveProjectionExFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 7, 1>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    SlaveProjectionExFactor(const Eigen::Vector3d& pt_mi_, const Eigen::Vector3d& pt_sj_,
+                            double focal_length);
+
+    bool Evaluate(double const * const* parameters_raw,
+                  double* residuals_raw,
+                  double** jacobians_raw) const;
+
+    Eigen::Vector3d pt_mi, pt_sj;
+    Eigen::Matrix2d sqrt_info;
+};
+
+class SelfProjectionExFactor : public ceres::SizedCostFunction<2, 7, 1>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    SelfProjectionExFactor(const Eigen::Vector3d& pt_l_, const Eigen::Vector3d& pt_r_,
+                           double focal_length);
+
+    bool Evaluate(double const * const* parameters_raw,
+                  double* residuals_raw,
+                  double** jacobians_raw) const;
+
+    Eigen::Vector3d pt_l, pt_r;
     Eigen::Matrix2d sqrt_info;
 };

@@ -162,6 +162,9 @@ private:
     double* para_speed_bias; // vwb bg ba
     size_t  para_features_capacity = 1000;
     double* para_features; // inv_z
+    bool enable_estimate_extrinsic = false;
+    double para_ex_bc[7];
+    double para_ex_sm[7];
 
     // maintain system
     std::atomic<bool> request_reset_flag;
