@@ -14,7 +14,7 @@ BackEnd::BackEnd(double focal_length_,
                  double gravity_magnitude_, int window_size_, double min_parallax_,
                  double max_solver_time_in_seconds_, int max_num_iterations_,
                  double cv_huber_loss_parameter_, double triangulate_default_depth_,
-                 double max_imu_sum_t_, int min_init_stereo_num_)
+                 double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic)
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_),
       gyr_n(gyr_n_), acc_n(acc_n_), gyr_w(gyr_w_), acc_w(acc_w_), window_size(window_size_),
       next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f),
@@ -46,6 +46,7 @@ BackEnd::BackEnd(double focal_length_,
 
     thread_ = std::thread(&BackEnd::Process, this);
     is_busy = false;
+    enable_estimate_extrinsic = estimate_extrinsic;
 }
 
 BackEnd::~BackEnd() {

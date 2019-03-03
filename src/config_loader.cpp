@@ -81,6 +81,7 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
 
     param.enable_reloc = fs["enable_reloc"];
     param.enable_pose_faster = fs["enable_pose_faster"];
+    param.estimate_extrinsic = fs["estimate_extrinsic"];
     Log(param);
     fs.release();
     return param;

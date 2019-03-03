@@ -41,6 +41,7 @@ public:
 
         int enable_reloc;
         int enable_pose_faster;
+        int estimate_extrinsic;
 
         std::string voc_filename;
         std::string brief_pattern_file;

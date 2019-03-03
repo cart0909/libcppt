@@ -86,7 +86,7 @@ public:
             double gravity_magnitude_, int window_size_, double min_parallax_,
             double max_solver_time_in_seconds_, int max_num_iterations_,
             double cv_huber_loss_parameter_, double triangulate_default_depth_,
-            double max_imu_sum_t_, int min_init_stereo_num_);
+            double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic);
     ~BackEnd();
 
     void PushFrame(FramePtr frame);
@@ -162,7 +162,7 @@ private:
     double* para_speed_bias; // vwb bg ba
     size_t  para_features_capacity = 1000;
     double* para_features; // inv_z
-    bool enable_estimate_extrinsic = false;
+    int enable_estimate_extrinsic;
     double para_ex_bc[7];
     double para_ex_sm[7];
 

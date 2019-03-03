@@ -51,14 +51,18 @@ System::System(const std::string& config_file) {
 
     feature_tracker = std::make_shared<FeatureTracker>(cam_m, param.clahe_parameter, param.fast_threshold,
                                                        param.min_dist, param.Fundamental_reproj_threshold);
-    stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.p_rl[0], param.q_rl[0],
-                                                     param.clahe_parameter, param.Fundamental_reproj_threshold);
+    if(param.estimate_extrinsic)
+        stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.clahe_parameter, param.Fundamental_reproj_threshold);
+    else
+        stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.p_rl[0], param.q_rl[0],
+                                                         param.clahe_parameter, param.Fundamental_reproj_threshold);
+
     backend = std::make_shared<BackEnd>(cam_m->f(), param.gyr_noise, param.acc_noise,
                                         param.gyr_bias_noise, param.acc_bias_noise,
                                         param.p_rl[0], param.p_bc[0], param.q_rl[0], param.q_bc[0],
                                         param.gravity_magnitude, param.sliding_window_size, param.keyframe_parallax,
                                         param.max_solver_time_in_seconds, param.max_num_iterations, param.cv_huber_loss_parameter,
-                                        param.triangulate_default_depth, param.max_imu_sum_t, param.min_init_stereo_num);
+                                        param.triangulate_default_depth, param.max_imu_sum_t, param.min_init_stereo_num, param.estimate_extrinsic);
 
     if(param.enable_reloc)
         reloc = std::make_shared<Relocalization>(param.voc_filename, param.brief_pattern_file, cam_m,
