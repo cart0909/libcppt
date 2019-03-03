@@ -31,7 +31,7 @@ FeatureTracker::FramePtr FeatureTracker::InitFrame(const cv::Mat& img, double ti
     frame->id = next_frame_id++;
     frame->timestamp = timestamp;
     frame->img = img;
-    cv::resize(img, frame->compressed_img, img.size() / 2);
+    cv::resize(img, frame->compressed_img, img.size() / 2, 0, 0, CV_INTER_NN);
     cv::cvtColor(frame->compressed_img, frame->compressed_img, CV_GRAY2BGR);
     if(clahe) {
         clahe->apply(img, frame->clahe);
