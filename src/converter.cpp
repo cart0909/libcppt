@@ -15,7 +15,7 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
         backend_frame->pt_normal_plane.emplace_back(Pl);
         backend_frame->pt_r.emplace_back(stereo_frame->pt_r[i].x, stereo_frame->pt_r[i].y);
         if(stereo_frame->pt_r[i].x == -1) {
-            backend_frame->pt_r_normal_plane.emplace_back(-1, -1, -1);
+            backend_frame->pt_r_normal_plane.emplace_back(-1, -1, 0);
         }
         else {
             Pr = cam_slave->BackProject(backend_frame->pt_r[i]);

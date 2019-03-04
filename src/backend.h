@@ -43,16 +43,9 @@ public:
 
     struct Feature {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-        enum MapPointState {
-            NEED_INIT,
-            SUCCESS,
-            FAIL
-        };
-
         Feature(uint64_t feat_id_, int start_id_)
             : feat_id(feat_id_), start_id(start_id_),
-              mappoint_state(NEED_INIT), inv_depth(-1.0f) {}
+              inv_depth(-1.0f), last_time(-1.0f), last_r_time(-1.0f) {}
 
         uint64_t feat_id;
         int start_id;
@@ -62,7 +55,7 @@ public:
             for(int i = 0, n = pt_n_per_frame.size(); i < n; ++i) {
                 if(start_id + i > sw_idx)
                     break;
-                if(pt_r_n_per_frame[i](0) != -1.0)
+                if(pt_r_n_per_frame[i](2) != 0)
                     num_meas += 2;
                 else
                     num_meas += 1;
@@ -72,9 +65,14 @@ public:
 
         Eigen::DeqVector3d pt_n_per_frame;
         Eigen::DeqVector3d pt_r_n_per_frame;
-
-        MapPointState mappoint_state;
         double inv_depth;
+
+        // estimate time delay
+        Eigen::DeqVector3d velocity_per_frame;
+        Eigen::DeqVector3d velocity_r_per_frame;
+        Eigen::Vector3d last_pt_n;
+        Eigen::Vector3d last_pt_r_n;
+        double last_time, last_r_time;
     };
     SMART_PTR(Feature)
 
@@ -194,5 +192,9 @@ private:
     double triangulate_default_depth;
     double max_imu_sum_t;
     int min_init_stereo_num;
+
+    bool estimate_time_delay = false;
+    double time_delay = 0.0f;
+    double para_Td[1];
 };
 SMART_PTR(BackEnd)

@@ -151,20 +151,44 @@ BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
     int size_frames = d_frames.size();
     for(int i = 0; i < frame->pt_id.size(); ++i) {
         auto it = m_features.find(frame->pt_id[i]);
-        Feature* feat = nullptr;
         if(it == m_features.end()) {
             auto result = m_features.emplace(std::make_pair(frame->pt_id[i], Feature(frame->pt_id[i], size_frames - 1)));
             if(!result.second)
                 throw std::runtime_error("m_features insert fail?");
-            feat = &result.first->second;
+            Feature& feat = result.first->second;
+            feat.pt_n_per_frame.emplace_back(frame->pt_normal_plane[i]);
+            feat.pt_r_n_per_frame.emplace_back(frame->pt_r_normal_plane[i]);
+            feat.velocity_per_frame.emplace_back(0, 0, 0);
+            feat.velocity_r_per_frame.emplace_back(0, 0, 0);
+            feat.last_time = frame->timestamp;
+            feat.last_pt_n = frame->pt_normal_plane[i];
+            if(frame->pt_r_normal_plane[i](2) != 0) {
+                feat.last_r_time = frame->timestamp;
+                feat.last_pt_r_n = frame->pt_r_normal_plane[i];
+            }
         }
         else {
             ++last_track_num;
-            feat = &it->second;
+            Feature& feat = it->second;
+            feat.pt_n_per_frame.emplace_back(frame->pt_normal_plane[i]);
+            feat.pt_r_n_per_frame.emplace_back(frame->pt_r_normal_plane[i]);
+            double delta_t = frame->timestamp - feat.last_time;
+            Eigen::Vector3d velocity = Eigen::Vector3d::Zero();
+            velocity.head<2>() = (frame->pt_normal_plane[i].head<2>() - feat.last_pt_n.head<2>()) / delta_t;
+            feat.velocity_per_frame.emplace_back(velocity);
+            feat.last_time = frame->timestamp;
+            feat.last_pt_n = frame->pt_normal_plane[i];
+            if(frame->pt_r_normal_plane[i](2) != 0) {
+                delta_t = frame->timestamp - feat.last_r_time;
+                velocity.head<2>() = (frame->pt_r_normal_plane[i].head<2>() - feat.last_pt_r_n.head<2>()) / delta_t;
+                feat.velocity_r_per_frame.emplace_back(velocity);
+                feat.last_r_time = frame->timestamp;
+                feat.last_pt_r_n = frame->pt_r_normal_plane[i];
+            }
+            else {
+                feat.velocity_r_per_frame.emplace_back(0, 0, 0);
+            }
         }
-
-        feat->pt_n_per_frame.emplace_back(frame->pt_normal_plane[i]);
-        feat->pt_r_n_per_frame.emplace_back(frame->pt_r_normal_plane[i]);
     }
 
 
@@ -236,6 +260,8 @@ void BackEnd::SlidingWindowOld() {
 
                 feat.pt_n_per_frame.pop_front();
                 feat.pt_r_n_per_frame.pop_front();
+                feat.velocity_per_frame.pop_front();
+                feat.velocity_r_per_frame.pop_front();
 
                 if(feat.pt_n_per_frame.empty()) {
                     it = m_features.erase(it);
@@ -308,6 +334,8 @@ void BackEnd::SlidingWindowSecondNew() {
             if(feat.pt_n_per_frame.size() > j) {
                 feat.pt_n_per_frame.erase(feat.pt_n_per_frame.begin() + j);
                 feat.pt_r_n_per_frame.erase(feat.pt_r_n_per_frame.begin() + j);
+                feat.velocity_per_frame.erase(feat.velocity_per_frame.begin() + j);
+                feat.velocity_r_per_frame.erase(feat.velocity_r_per_frame.begin() + j);
             }
 
             if(feat.pt_n_per_frame.empty()) {
@@ -379,7 +407,7 @@ int BackEnd::Triangulate(int sw_idx) {
             A.row(A_idx++) = P.row(0) - feat.pt_n_per_frame[i](0) * P.row(2);
             A.row(A_idx++) = P.row(1) - feat.pt_n_per_frame[i](1) * P.row(2);
 
-            if(feat.pt_r_n_per_frame[i](0) != -1) {
+            if(feat.pt_r_n_per_frame[i](2) != 0) {
                 Sophus::SE3d Trl(q_rl, p_rl);
                 Sophus::SE3d Tri_0 = Trl * Ti0;
                 P << Tri_0.rotationMatrix(), Tri_0.translation();
@@ -443,6 +471,10 @@ void BackEnd::data2double() {
     std::memcpy(para_ex_bc + 4, p_bc.data(), sizeof(double) * 3);
     std::memcpy(para_ex_sm, q_rl.data(), sizeof(double) * 4);
     std::memcpy(para_ex_sm + 4, p_rl.data(), sizeof(double) * 3);
+
+    if(estimate_time_delay) {
+        para_Td[0] = time_delay;
+    }
 }
 
 void BackEnd::double2data() {
@@ -500,7 +532,7 @@ void BackEnd::double2data() {
                     ++num_factors;
                 }
 
-                if(feat.pt_r_n_per_frame[i](0) != -1.0f) {
+                if(feat.pt_r_n_per_frame[i](2) != 0) {
                     Eigen::Vector3d x3Drj = q_rl * x3Dcj + p_rl;
                     Eigen::Vector2d residual = (x3Drj.head<2>() / x3Drj(2)) - feat.pt_r_n_per_frame[i].head<2>();
                     ave_reproj_error_norm += residual.norm();
@@ -524,6 +556,10 @@ void BackEnd::double2data() {
     std::memcpy(p_bc.data(), para_ex_bc + 4, sizeof(double) * 3);
     std::memcpy(q_rl.data(), para_ex_sm, sizeof(double) * 4);
     std::memcpy(p_rl.data(), para_ex_sm + 4, sizeof(double) * 3);
+
+    if(estimate_time_delay) {
+        time_delay = para_Td[0];
+    }
 }
 
 void BackEnd::SolveBA() {
@@ -558,7 +594,7 @@ void BackEnd::SolveBA() {
                 problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_features + mp_idx);
             }
 
-            if(feat.pt_r_n_per_frame[j](0) != -1.0f) {
+            if(feat.pt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
                 if(j == 0) {
                     auto factor = new SelfProjectionFactor(pt_j, pt_jr, q_rl, p_rl, focal_length);
@@ -636,7 +672,7 @@ void BackEnd::SolveBAImu() {
                 problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
             }
 
-            if(feat.pt_r_n_per_frame[j](0) != -1.0f) {
+            if(feat.pt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
                 if(j == 0) {
                     auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
@@ -868,7 +904,7 @@ void BackEnd::Marginalize() {
                     margin_info->addResidualBlockInfo(residual_block_info);
                 }
 
-                if(feat.pt_r_n_per_frame[j](0) != -1.0f) {
+                if(feat.pt_r_n_per_frame[j](2) != 0) {
                     Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
                     if(j == 0) {
                         auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
