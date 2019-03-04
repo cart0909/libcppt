@@ -137,6 +137,7 @@ relocalization.cpp
 pose_faster.cpp
 ceres/local_parameterization_se3.cpp
 ceres/projection_factor.cpp
+ceres/projection_td_factor.cpp
 vins/marginalization_factor.cpp
 vins/integration_base.cpp
 vins/imu_factor.cpp
