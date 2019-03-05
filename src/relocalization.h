@@ -61,23 +61,18 @@ public:
         pub_loop_edge.emplace_back(callback);
     }
 
-    void PushFrame(FramePtr frame);
+    void ProcessFrame(FramePtr frame);
     void UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c);
     Sophus::SE3d ShiftPoseWorld(const Sophus::SE3d& Tviow);
     Eigen::Vector3d ShiftVectorWorld(const Eigen::Vector3d& Vviow);
 private:
-    void Process();
-    void ProcessFrame(FramePtr frame);
     int64_t DetectLoop(FramePtr frame);
     bool FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame);
     void Optimize4DoF();
 
     uint64_t next_frame_id = 0;
-    std::mutex m_frame_buffer;
-    std::condition_variable cv_frame_buffer;
-    std::vector<FramePtr> v_frame_buffer;
 
-    std::thread detect_loop_thread, pose_graph_thread;
+    std::thread pose_graph_thread;
     BriefDatabase db;
     std::mutex mtx_frame_database;
     std::vector<FramePtr> v_frame_database;

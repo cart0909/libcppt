@@ -44,8 +44,6 @@ BackEnd::BackEnd(double focal_length_,
 
     request_reset_flag = false;
 
-    thread_ = std::thread(&BackEnd::Process, this);
-    is_busy = false;
     enable_estimate_extrinsic = estimate_extrinsic;
 }
 
@@ -53,40 +51,6 @@ BackEnd::~BackEnd() {
     delete [] para_pose;
     delete [] para_speed_bias;
     delete [] para_features;
-}
-
-void BackEnd::PushFrame(FramePtr frame) {
-    m_buffer.lock();
-    frame_buffer.emplace_back(frame);
-    frame->id = next_frame_id++;
-    m_buffer.unlock();
-    cv_buffer.notify_one();
-}
-
-void BackEnd::Process() {
-    while(1) {
-        std::vector<FramePtr> measurements;
-        std::unique_lock<std::mutex> lock(m_buffer);
-        cv_buffer.wait(lock, [&] {
-            measurements = std::vector<FramePtr>(frame_buffer.begin(), frame_buffer.end());
-            frame_buffer.clear();
-            return (!measurements.empty() || request_reset_flag);
-        });
-        lock.unlock();
-        is_busy = true;
-
-        if(request_reset_flag) {
-            Reset();
-            request_reset_flag = false;
-            continue;
-        }
-
-        for(auto& frame : measurements) {
-            ProcessFrame(frame);
-        }
-
-        is_busy = false;
-    }
 }
 
 void BackEnd::ProcessFrame(FramePtr frame) {
@@ -144,6 +108,15 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 //            DrawUI();
         }
     }
+}
+
+bool BackEnd::GetNewKeyFrameAndMapPoints(FramePtr& keyframe, Eigen::VecVector3d& v_x3Dc) {
+    if(state == TIGHTLY && marginalization_flag == MARGIN_OLD) {
+        keyframe = new_keyframe;
+        v_x3Dc = v_new_keyframe_x3Dc;
+        return true;
+    }
+    return false;
 }
 
 BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
@@ -277,42 +250,37 @@ void BackEnd::SlidingWindowOld() {
         }
     }
 
-    if(!pub_keyframe.empty()) {
-        FramePtr frame_j = d_frames[d_frames.size() - 2];
-        Eigen::VecVector3d v_x3Dcj;
-
-        for(int i = 0, n = frame_j->pt_id.size(); i < n; ++i) {
-            uint64_t pt_id = frame_j->pt_id[i];
-            auto it = m_features.find(pt_id);
-            if(it == m_features.end()) {
-                v_x3Dcj.emplace_back(-1, -1, -1);
+    FramePtr frame_j = d_frames[d_frames.size() - 2];
+    v_new_keyframe_x3Dc.clear();
+    for(int i = 0, n = frame_j->pt_id.size(); i < n; ++i) {
+        uint64_t pt_id = frame_j->pt_id[i];
+        auto it = m_features.find(pt_id);
+        if(it == m_features.end()) {
+            v_new_keyframe_x3Dc.emplace_back(-1, -1, -1);
+        }
+        else {
+            auto& feat = it->second;
+            if(feat.inv_depth == -1.0) {
+                v_new_keyframe_x3Dc.emplace_back(-1, -1, -1);
             }
             else {
-                auto& feat = it->second;
-                if(feat.inv_depth == -1.0) {
-                    v_x3Dcj.emplace_back(-1, -1, -1);
+                FramePtr frame_i = d_frames[feat.start_id];
+                Eigen::Vector3d x3Dci = feat.pt_n_per_frame[0] / feat.inv_depth;
+                Eigen::Vector3d x3Dbi = q_bc * x3Dci + p_bc;
+                Eigen::Vector3d x3Dw = frame_i->q_wb * x3Dbi + frame_i->p_wb;
+                Eigen::Vector3d x3Dbj = frame_j->q_wb.inverse() * (x3Dw - frame_j->p_wb);
+                Eigen::Vector3d x3Dcj = q_bc.inverse() * (x3Dbj - p_bc);
+
+                if(x3Dcj(2) <= 0) {
+                    v_new_keyframe_x3Dc.emplace_back(-1, -1, -1);
                 }
                 else {
-                    FramePtr frame_i = d_frames[feat.start_id];
-                    Eigen::Vector3d x3Dci = feat.pt_n_per_frame[0] / feat.inv_depth;
-                    Eigen::Vector3d x3Dbi = q_bc * x3Dci + p_bc;
-                    Eigen::Vector3d x3Dw = frame_i->q_wb * x3Dbi + frame_i->p_wb;
-                    Eigen::Vector3d x3Dbj = frame_j->q_wb.inverse() * (x3Dw - frame_j->p_wb);
-                    Eigen::Vector3d x3Dcj = q_bc.inverse() * (x3Dbj - p_bc);
-
-                    if(x3Dcj(2) <= 0) {
-                        v_x3Dcj.emplace_back(-1, -1, -1);
-                    }
-                    else {
-                        v_x3Dcj.emplace_back(x3Dcj);
-                    }
+                    v_new_keyframe_x3Dc.emplace_back(x3Dcj);
                 }
             }
         }
-
-        for(auto& pub : pub_keyframe)
-            pub(frame_j, v_x3Dcj);
     }
+    new_keyframe = frame_j;
 
     d_frames.pop_front();
 }

@@ -74,7 +74,7 @@ max_imu_sum_t: 10.0               # (s)
 min_init_stereo_num: 30
 
 #reloc parameters
-enable_reloc: 1                    # start loop closure
+enable_reloc: 1                     # start loop closure
 #load_previous_pose_graph: 0        # load and reuse previous pose graph; load from 'pose_graph_save_path'
 #fast_relocalization: 0             # useful in real-time and large project
 #pose_graph_save_path: "/home/tony-ws1/output/pose_graph/" # save and load path
@@ -95,4 +95,4 @@ td: 0.0                             # initial value of time offset. unit: s. rea
 voc_path: "/catkin_ws/src/libcppt/config/voc/brief_k10L6.bin"
 brief_pattern_path: "/catkin_ws/src/libcppt/config/brief/brief_pattern.yml"
 
-enable_pose_faster: 1            # pose will align with imu fps
+enable_pose_faster: 0            # pose will align with imu fps

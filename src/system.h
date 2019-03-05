@@ -14,10 +14,8 @@ public:
     ~System();
 
     void Reset();
-    void Process(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp,
-                 const Eigen::VecVector3d& v_gyr,
-                 const Eigen::VecVector3d& v_acc,
-                 const std::vector<double>& v_imu_timestamp);
+    void PushImages(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
+    void PushImuData(const Eigen::Vector3d& gyr, const Eigen::Vector3d& acc, double timestamp);
 
     inline void SubTrackingImg(std::function<void(double, const cv::Mat&)> callback) {
         pub_tracking_img.emplace_back(callback);
@@ -59,29 +57,56 @@ public:
     }
 
 private:
-    void PushKeyFrame2Reloc(BackEnd::FramePtr back_frame, const Eigen::VecVector3d& v_x3Dc);
+    void FrontEndProcess();
+    void BackEndProcess();
+    void RelocProcess();
+    void PubTrackingImg(FeatureTracker::FramePtr feat_frame);
 
     std::atomic<bool> reset_flag;
     bool b_first_frame = true;
     ConfigLoader::Param param;
     CameraPtr cam_m; // camera master
     CameraPtr cam_s; // camera slave
+
     FeatureTrackerPtr feature_tracker;
+    std::thread frontend_thread;
+    std::mutex mtx_frontend;
+    std::condition_variable cv_frontend;
+    std::deque<std::tuple<cv::Mat, cv::Mat, double>> frontend_buffer_img;
+    Eigen::DeqVector3d frontend_buffer_gyr;
+    Eigen::DeqVector3d frontend_buffer_acc;
+    std::deque<double> frontend_buffer_imu_t;
+
+    std::atomic<bool> backend_busy;
     StereoMatcherPtr stereo_matcher;
     BackEndPtr backend;
+    std::thread backend_thread;
+    std::mutex mtx_backend;
+    std::condition_variable cv_backend;
+    std::deque<std::pair<FeatureTracker::FramePtr, cv::Mat>> backend_buffer_img;
+    Eigen::DeqVector3d backend_buffer_gyr;
+    Eigen::DeqVector3d backend_buffer_acc;
+    std::deque<double> backend_buffer_imu_t;
+
+    RelocalizationPtr reloc;
+    std::thread reloc_thread;
+    std::mutex mtx_reloc;
+    std::condition_variable cv_reloc;
+    std::deque<std::pair<FeatureTracker::FramePtr, BackEnd::FramePtr>> reloc_buffer_frame;
+    std::deque<std::pair<BackEnd::FramePtr, Eigen::VecVector3d>> reloc_buffer_keyframe;
+
+    PoseFasterPtr pose_faster;
 
     std::map<uint64_t, cv::Point2f> m_id_history;
     std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow;
-
     std::vector<std::function<void(double, const cv::Mat&)>> pub_tracking_img;
-
     Eigen::VecVector3d v_cache_gyr, v_cache_acc;
     std::vector<double> v_cache_imu_timestamps;
 
-    std::mutex mtx_reloc_cache;
-    std::deque<std::pair<FeatureTracker::FramePtr, BackEnd::FramePtr>> d_reloc_cache;
-    RelocalizationPtr reloc;
+    std::mutex mtx_pose_gen;
+    PoseFasterPtr vio_pose_gen, reloc_pose_gen;
 
-    PoseFasterPtr pose_faster;
+    std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_vio_pose;
+    std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_reloc_pose;
 };
 SMART_PTR(System)

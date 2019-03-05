@@ -10,7 +10,6 @@ Relocalization::Relocalization(const std::string& voc_filename, const std::strin
 {
     voc = std::make_shared<BriefVocabulary>(voc_filename);
     db.setVocabulary(*voc, false, 0);
-    detect_loop_thread = std::thread(&Relocalization::Process, this);
     pose_graph_thread = std::thread(&Relocalization::Optimize4DoF, this);
 
     // load brief pattern
@@ -27,13 +26,6 @@ Relocalization::Relocalization(const std::string& voc_filename, const std::strin
 
     brief_extractor[0].importPairs(x1, y1, x2, y2);
     brief_extractor[1].importPairs(x1, y1, x2, y2);
-}
-
-void Relocalization::PushFrame(FramePtr frame) {
-    m_frame_buffer.lock();
-    v_frame_buffer.emplace_back(frame);
-    m_frame_buffer.unlock();
-    cv_frame_buffer.notify_one();
 }
 
 void Relocalization::UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c) {
@@ -59,33 +51,16 @@ Eigen::Vector3d Relocalization::ShiftVectorWorld(const Eigen::Vector3d& Vviow) {
     return q_w_viow * Vviow;
 }
 
-void Relocalization::Process() {
-    while(1) {
-        std::vector<FramePtr> v_frames;
-        std::unique_lock<std::mutex> lock(m_frame_buffer);
-        cv_frame_buffer.wait(lock, [&] {
-           v_frames = v_frame_buffer;
-           v_frame_buffer.clear();
-           return !v_frames.empty();
-        });
-        lock.unlock();
-
-        for(auto& frame : v_frames) {
-            mtx_w_viow.lock();
-            Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);
-            mtx_w_viow.unlock();
-            Sophus::SE3d Twc = Tw_viow * Sophus::SE3d(frame->vio_q_wb, frame->vio_p_wb) * Sophus::SE3d(q_bc, p_bc);
-            mtx_reloc_path.lock();
-            for(auto& pub : pub_add_reloc_path)
-                pub(Twc);
-            mtx_reloc_path.unlock();
-
-            ProcessFrame(frame);
-        }
-    }
-}
-
 void Relocalization::ProcessFrame(FramePtr frame) {
+    mtx_w_viow.lock();
+    Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);
+    mtx_w_viow.unlock();
+    Sophus::SE3d Twc = Tw_viow * Sophus::SE3d(frame->vio_q_wb, frame->vio_p_wb) * Sophus::SE3d(q_bc, p_bc);
+    mtx_reloc_path.lock();
+    for(auto& pub : pub_add_reloc_path)
+        pub(Twc);
+    mtx_reloc_path.unlock();
+
     int64_t candidate_index = DetectLoop(frame);
     if(candidate_index == -1)
         return;

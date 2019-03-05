@@ -34,7 +34,6 @@ public:
     {
         vio_pose_visual.setScale(0.3);
         fast_pose_visual.setScale(0.3);
-        t_system = std::thread(&Node::SystemThread, this);
     }
     ~Node() {}
 
@@ -63,27 +62,21 @@ public:
     }
 
     void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
-        unique_lock<mutex> lock(m_buf);
         if(image_timestamp != -1.0f && std::abs(img_msg->header.stamp.toSec() - image_timestamp) > 10) { // 10 ms
             // reset system
             ROS_WARN_STREAM("System detect different image flow, trying to reset the system.");
-            while(!img_buf.empty())
-                img_buf.pop();
-
-            while(!imu_buf.empty())
-                imu_buf.pop();
-
             system->Reset();
         }
-        img_buf.emplace(img_msg, img_r_msg);
-        image_timestamp = img_msg->header.stamp.toSec();
-        cv_system.notify_one();
+        cv::Mat img_l, img_r;
+        img_l = cv_bridge::toCvCopy(img_msg, "mono8")->image;
+        img_r = cv_bridge::toCvCopy(img_r_msg, "mono8")->image;
+        system->PushImages(img_l, img_r, img_msg->header.stamp.toSec());
     }
 
     void ImuCallback(const ImuConstPtr& imu_msg) {
-        unique_lock<mutex> lock(m_buf);
-        imu_buf.emplace(imu_msg);
-        cv_system.notify_one();
+        Eigen::Vector3d gyr = Eigen::Vector3d(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
+        Eigen::Vector3d acc = Eigen::Vector3d(imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z);
+        system->PushImuData(gyr, acc, imu_msg->header.stamp.toSec());
 
         Sophus::SE3d Twc;
         if(system->Predict(Eigen::Vector3d(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z),
@@ -93,78 +86,6 @@ public:
             PubFastPose(imu_msg->header.stamp.toSec(), Twc);
         }
     }
-
-    Measurements GetMeasurements() {
-        // The buffer mutex is locked before this function be called.
-        Measurements measurements;
-
-        while (1) {
-            if (imu_buf.empty() || img_buf.empty())
-                return measurements;
-
-            double img_ts = img_buf.front().first->header.stamp.toSec();
-            // catch the imu data before image_timestamp
-            // ---------------^-----------^ image
-            //                f           f+1
-            // --x--x--x--x--x--x--x--x--x- imu
-            //   f                       b
-            // --o--o--o--o--o^-?---------- collect data in frame f
-
-            // if ts(imu(b)) < ts(img(f)), wait imu data
-            if (imu_buf.back()->header.stamp.toSec() < img_ts) {
-                return measurements;
-            }
-            // if ts(imu(f)) > ts(img(f)), img data faster than imu data, drop the img(f)
-            if (imu_buf.front()->header.stamp.toSec() > img_ts) {
-                img_buf.pop();
-                continue;
-            }
-
-            pair<ImageConstPtr, ImageConstPtr> img_msg = img_buf.front();
-            img_buf.pop();
-
-            vector<ImuConstPtr> IMUs;
-            while (imu_buf.front()->header.stamp.toSec() < img_ts) {
-                IMUs.emplace_back(imu_buf.front());
-                imu_buf.pop();
-            }
-            // IMUs.emplace_back(imu_buf.front()); // ??
-            measurements.emplace_back(img_msg, IMUs);
-        }
-    }
-
-    void SystemThread() {
-        while(1) {
-            Measurements measurements;
-            std::unique_lock<std::mutex> lock(m_buf);
-            cv_system.wait(lock, [&] {
-                return (measurements = GetMeasurements()).size() != 0;
-            });
-            lock.unlock();
-
-            // TODO
-            for(auto& meas : measurements) {
-                ImageConstPtr img_msg = meas.first.first;
-                ImageConstPtr img_msg_right = meas.first.second;
-                vector<ImuConstPtr>& v_imu_msg = meas.second;
-                double timestamp = img_msg->header.stamp.toSec();
-                cv::Mat img_left, img_right;
-                img_left = cv_bridge::toCvCopy(img_msg, "mono8")->image;
-                img_right = cv_bridge::toCvCopy(img_msg_right, "mono8")->image;
-
-                Eigen::VecVector3d v_gyr, v_acc;
-                std::vector<double> v_imu_t;
-                for(auto& imu_msg : v_imu_msg) {
-                    v_imu_t.emplace_back(imu_msg->header.stamp.toSec());
-                    v_gyr.emplace_back(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
-                    v_acc.emplace_back(imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z);
-                }
-
-                system->Process(img_left, img_right, timestamp, v_gyr, v_acc, v_imu_t);
-            }
-        }
-    }
-
 
     void PubTrackImg(double timestamp, const cv::Mat& track_img) {
         cv_bridge::CvImage track_cvimage;
@@ -307,13 +228,6 @@ public:
     string imu_topic;
     string img_topic[2];
     string log_filename;
-
-    mutex m_buf;
-    queue<ImuConstPtr> imu_buf;
-    queue<pair<ImageConstPtr, ImageConstPtr>> img_buf;
-
-    condition_variable cv_system;
-    thread t_system;
 
     SystemPtr system;
 

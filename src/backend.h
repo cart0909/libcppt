@@ -87,8 +87,6 @@ public:
             double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic);
     ~BackEnd();
 
-    void PushFrame(FramePtr frame);
-
     inline void SubVIOTwc(std::function<void(double, const Sophus::SE3d)> callback) {
         pub_vio_Twc.emplace_back(callback);
     }
@@ -105,11 +103,10 @@ public:
         request_reset_flag = true;
     }
 
-    // return whether busy
-    std::atomic<bool> is_busy;
-private:
-    void Process();
     void ProcessFrame(FramePtr frame);
+    bool GetNewKeyFrameAndMapPoints(FramePtr& keyframe, Eigen::VecVector3d& v_x3Dc);
+    State state;
+private:
     MarginType AddFeaturesCheckParallax(FramePtr frame);
     void SlidingWindow();
     void SlidingWindowOld();
@@ -125,11 +122,6 @@ private:
     void Marginalize();
     void Publish();
 //    void DrawUI();
-
-    std::thread thread_;
-    std::mutex  m_buffer;
-    std::condition_variable cv_buffer;
-    std::deque<FramePtr> frame_buffer;
 
     double focal_length;
     Eigen::Vector3d p_rl, p_bc;
@@ -148,7 +140,6 @@ private:
     std::deque<FramePtr> d_frames; // [ 0,  1, ..., 8 ,         9 |  10] size 11
                                    //  kf  kf      kf  second new   new
     uint64_t next_frame_id;
-    State state;
 
     double min_parallax;
     MarginType marginalization_flag;
@@ -196,5 +187,8 @@ private:
     bool estimate_time_delay = false;
     double time_delay = 0.0f;
     double para_Td[1];
+
+    FramePtr new_keyframe;
+    Eigen::VecVector3d v_new_keyframe_x3Dc;
 };
 SMART_PTR(BackEnd)
