@@ -38,6 +38,7 @@ public:
         Eigen::VecVector3d v_gyr, v_acc;
         std::vector<double> v_imu_timestamp;
         IntegrationBasePtr imupreinte;
+        double td; // time delay
     };
     SMART_PTR(Frame)
 
@@ -106,6 +107,11 @@ public:
     void ProcessFrame(FramePtr frame);
     bool GetNewKeyFrameAndMapPoints(FramePtr& keyframe, Eigen::VecVector3d& v_x3Dc);
     State state;
+
+    inline double GetTd() const {
+        return time_delay;
+    }
+
 private:
     MarginType AddFeaturesCheckParallax(FramePtr frame);
     void SlidingWindow();
@@ -184,7 +190,7 @@ private:
     double max_imu_sum_t;
     int min_init_stereo_num;
 
-    bool estimate_time_delay = false;
+    bool estimate_time_delay = true;
     double time_delay = 0.0f;
     double para_Td[1];
 

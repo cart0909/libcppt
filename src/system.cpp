@@ -171,16 +171,17 @@ void System::BackEndProcess() {
         FeatureTracker::FramePtr feat_frame;
         cv::Mat img_r;
         double img_t = -1.0f;
+        double td = backend->GetTd();
         std::unique_lock<std::mutex> lock(mtx_backend);
         cv_backend.wait(lock, [&] {
             while(1) {
                 if(backend_buffer_img.empty() || backend_buffer_imu_t.empty())
                     return false;
 
-                if(backend_buffer_imu_t.back() < backend_buffer_img.front().first->timestamp)
+                if(backend_buffer_imu_t.back() < backend_buffer_img.front().first->timestamp + td)
                     return false;
 
-                if(backend_buffer_imu_t.front() > backend_buffer_img.front().first->timestamp) {
+                if(backend_buffer_imu_t.front() > backend_buffer_img.front().first->timestamp + td) {
                     backend_buffer_img.pop_front();
                     continue;
                 }
@@ -190,7 +191,7 @@ void System::BackEndProcess() {
                 img_t = feat_frame->timestamp;
                 backend_buffer_img.pop_front();
 
-                while(backend_buffer_imu_t.front() < img_t) {
+                while(backend_buffer_imu_t.front() < img_t + td) {
                     v_gyr.emplace_back(backend_buffer_gyr.front());
                     v_acc.emplace_back(backend_buffer_acc.front());
                     v_imu_t.emplace_back(backend_buffer_imu_t.front());
@@ -210,6 +211,7 @@ void System::BackEndProcess() {
         StereoMatcher::FramePtr stereo_frame = stereo_matcher->Process(feat_frame, img_r);
         BackEnd::FramePtr back_frame = Converter::Convert(feat_frame, cam_m, stereo_frame, cam_s,
                                                           v_gyr, v_acc, v_imu_t);
+        back_frame->td = td;
         backend->ProcessFrame(back_frame);
 
         if(reloc) {

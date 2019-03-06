@@ -1,4 +1,5 @@
 #include "pose_faster.h"
+#include <glog/logging.h>
 
 static void PredictNextPose(Eigen::Vector3d& pwb, Sophus::SO3d& qwb, Eigen::Vector3d& vwb,
                      Eigen::Vector3d& gyr_0, Eigen::Vector3d& acc_0, double& t0,
