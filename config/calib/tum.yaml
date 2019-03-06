@@ -93,4 +93,4 @@ td: 0.0                             # initial value of time offset. unit: s. rea
 voc_path: "/catkin_ws/src/libcppt/config/voc/brief_k10L6.bin"
 brief_pattern_path: "/catkin_ws/src/libcppt/config/brief/brief_pattern.yml"
 
-enable_pose_faster: 1            # pose will align with imu fps
+enable_pose_faster: 0            # pose will align with imu fps

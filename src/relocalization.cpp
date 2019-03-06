@@ -259,8 +259,9 @@ void Relocalization::Optimize4DoF() {
         std::unique_lock<std::mutex> lock1(mtx_frame_database);
 
         int size = cur_index + 1;
-        double* p_wb_raw = new double[size * 3];
-        double* ypr_wb_raw = new double[size * 3];
+        // thank c++11 =)
+        double p_wb_raw[size * 3];
+        double ypr_wb_raw[size * 3];
 
         ceres::Problem problem;
         ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
@@ -373,6 +374,7 @@ void Relocalization::Optimize4DoF() {
                 pub(v_Twc);
         }
         lock1.unlock();
+
         Tracer::TraceEnd();
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }

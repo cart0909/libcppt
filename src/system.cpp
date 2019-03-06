@@ -71,7 +71,6 @@ System::System(const std::string& config_file) {
         backend->SubVIOTwc(std::bind(&Relocalization::UpdateVIOPose, reloc,
                                      std::placeholders::_1,
                                      std::placeholders::_2));
-        reloc_pose_gen = std::make_shared<PoseFaster>(param.q_bc[0], param.p_bc[0], param.gravity_magnitude);
         reloc_thread = std::thread(&System::RelocProcess, this);
     }
 
@@ -97,8 +96,6 @@ System::System(const std::string& config_file) {
     frontend_thread = std::thread(&System::FrontEndProcess, this);
     backend_thread = std::thread(&System::BackEndProcess, this);
     backend_busy = false;
-
-    vio_pose_gen = std::make_shared<PoseFaster>(param.q_bc[0], param.p_bc[0], param.gravity_magnitude);
 }
 
 System::~System() {}
@@ -116,25 +113,12 @@ void System::PushImages(const cv::Mat& img_l, const cv::Mat& img_r, double times
 }
 
 void System::PushImuData(const Eigen::Vector3d& gyr, const Eigen::Vector3d& acc, double timestamp) {
-    mtx_frontend.lock();
-    frontend_buffer_gyr.emplace_back(gyr);
-    frontend_buffer_acc.emplace_back(acc);
-    frontend_buffer_imu_t.emplace_back(timestamp);
-    mtx_frontend.unlock();
-    cv_frontend.notify_one();
-
     mtx_backend.lock();
     backend_buffer_gyr.emplace_back(gyr);
     backend_buffer_acc.emplace_back(acc);
     backend_buffer_imu_t.emplace_back(timestamp);
     mtx_backend.unlock();
     cv_backend.notify_one();
-
-//    Sophus::SE3d Twc;
-//    if(vio_pose_gen->Predict(gyr, acc, timestamp, Twc)) {
-//        for(auto& pub : pub_vio_pose)
-//            pub(timestamp, Twc);
-//    }
 }
 
 void System::FrontEndProcess() {
@@ -162,20 +146,6 @@ void System::FrontEndProcess() {
             backend->ResetRequest();
         }
 
-        // using imu predict current pose
-//        {
-//            bool vio_pose_exist = false;
-//            Sophus::SE3d Tvio_c;
-//            for(int i = 0, n = v_gyr.size(); i < n; ++i) {
-//                vio_pose_exist = vio_pose_gen->Predict(v_gyr[i], v_acc[i], v_imu_t[i], Tvio_c);
-//            }
-
-//            if(vio_pose_exist)
-//                for(auto& pub : pub_vio_pose) {
-//                    pub(timestamp, Tvio_c);
-//                }
-//        }
-
         FeatureTracker::FramePtr feat_frame;
         if(b_first_frame) {
             feat_frame = feature_tracker->InitFirstFrame(img_l, timestamp);
@@ -190,9 +160,6 @@ void System::FrontEndProcess() {
             backend_buffer_img.emplace_back(feat_frame, img_r);
             mtx_backend.unlock();
             cv_backend.notify_one();
-        }
-        else {
-            PubTrackingImg(feat_frame);
         }
     }
 }
@@ -238,18 +205,6 @@ void System::BackEndProcess() {
         lock.unlock();
         backend_busy = true;
 
-//        static bool first_frame = true;
-//        static double first_frame_t = -1.0f;
-
-//        if(first_frame) {
-//            first_frame_t = img_t;
-//            first_frame = false;
-//        }
-
-//        LOG(INFO) << "img t: " << img_t - first_frame_t;
-//        for(auto& it : v_imu_t)
-//            LOG(INFO) << it - first_frame_t;
-
         feature_tracker->ExtractFAST(feat_frame);
         PubTrackingImg(feat_frame);
         StereoMatcher::FramePtr stereo_frame = stereo_matcher->Process(feat_frame, img_r);
@@ -271,19 +226,6 @@ void System::BackEndProcess() {
             reloc_buffer_frame.emplace_back(feat_frame, back_frame);
             mtx_reloc.unlock();
             cv_reloc.notify_one();
-        }
-
-        if(backend->state == BackEnd::TIGHTLY) {
-            vio_pose_gen->UpdatePoseInfo(back_frame->p_wb, back_frame->q_wb, back_frame->v_wb,
-                                         back_frame->v_gyr.back(), back_frame->v_acc.back(), back_frame->v_imu_timestamp.back(),
-                                         back_frame->ba, back_frame->bg);
-            if(reloc) {
-                Sophus::SE3d Twb = reloc->ShiftPoseWorld(Sophus::SE3d(back_frame->q_wb, back_frame->p_wb));
-                Eigen::Vector3d v_wb = reloc->ShiftVectorWorld(back_frame->v_wb);
-                reloc_pose_gen->UpdatePoseInfo(Twb.translation(), Twb.rotationMatrix(), v_wb,
-                                               back_frame->v_gyr.back(), back_frame->v_acc.back(), back_frame->v_imu_timestamp.back(),
-                                               back_frame->ba, back_frame->bg);
-            }
         }
         backend_busy = false;
     }
@@ -332,7 +274,7 @@ void System::PubTrackingImg(FeatureTracker::FramePtr feat_frame) {
                 auto d_pt = m_id_optical_flow[it->first];
                 m_id_optical_flow_tmp[it->first] = d_pt;
                 d_pt->emplace_back(feat_frame->pt[i]);
-                while(d_pt->size() > 5) {
+                while(d_pt->size() > 2) {
                     d_pt->pop_front();
                 }
             }

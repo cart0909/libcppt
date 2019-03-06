@@ -73,9 +73,6 @@ private:
     std::mutex mtx_frontend;
     std::condition_variable cv_frontend;
     std::deque<std::tuple<cv::Mat, cv::Mat, double>> frontend_buffer_img;
-    Eigen::DeqVector3d frontend_buffer_gyr;
-    Eigen::DeqVector3d frontend_buffer_acc;
-    std::deque<double> frontend_buffer_imu_t;
 
     std::atomic<bool> backend_busy;
     StereoMatcherPtr stereo_matcher;
@@ -102,11 +99,5 @@ private:
     std::vector<std::function<void(double, const cv::Mat&)>> pub_tracking_img;
     Eigen::VecVector3d v_cache_gyr, v_cache_acc;
     std::vector<double> v_cache_imu_timestamps;
-
-    std::mutex mtx_pose_gen;
-    PoseFasterPtr vio_pose_gen, reloc_pose_gen;
-
-    std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_vio_pose;
-    std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_reloc_pose;
 };
 SMART_PTR(System)

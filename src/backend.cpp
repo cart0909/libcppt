@@ -662,7 +662,6 @@ void BackEnd::SolveBAImu() {
     options.num_threads = 1;
     options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
-
     ceres::Solve(options, &problem, &summary);
 //    LOG(INFO) << summary.FullReport();
 

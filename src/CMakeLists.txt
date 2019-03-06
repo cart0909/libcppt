@@ -59,7 +59,7 @@ if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
 endif()
 
 # enable openmp flag
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -DEIGEN_DONT_PARALLELIZE")
 
 # Debug / Release / RelWithDebInfo
 set(CMAKE_BUILD_TYPE Release)
