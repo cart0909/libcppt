@@ -15,14 +15,16 @@ BackEnd::BackEnd(double focal_length_,
                  double gravity_magnitude_, int window_size_, double min_parallax_,
                  double max_solver_time_in_seconds_, int max_num_iterations_,
                  double cv_huber_loss_parameter_, double triangulate_default_depth_,
-                 double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic)
+                 double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic,
+                 int estimate_td, double init_td)
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_),
       gyr_n(gyr_n_), acc_n(acc_n_), gyr_w(gyr_w_), acc_w(acc_w_), window_size(window_size_),
       next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f),
       gravity_magnitude(gravity_magnitude_), gw(0, 0, gravity_magnitude_), last_margin_info(nullptr),
       max_solver_time_in_seconds(max_solver_time_in_seconds_), max_num_iterations(max_num_iterations_),
       cv_huber_loss_parameter(cv_huber_loss_parameter_), triangulate_default_depth(triangulate_default_depth_),
-      max_imu_sum_t(max_imu_sum_t_), min_init_stereo_num(min_init_stereo_num_)
+      max_imu_sum_t(max_imu_sum_t_), min_init_stereo_num(min_init_stereo_num_), estimate_time_delay(estimate_td),
+      time_delay(init_td)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
@@ -140,6 +142,9 @@ BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
                 feat.last_r_time = frame->timestamp;
                 feat.last_pt_r_n = frame->pt_r_normal_plane[i];
             }
+            else {
+                feat.last_r_time = -1.0f;
+            }
         }
         else {
             ++last_track_num;
@@ -153,9 +158,14 @@ BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
             feat.last_time = frame->timestamp;
             feat.last_pt_n = frame->pt_normal_plane[i];
             if(frame->pt_r_normal_plane[i](2) != 0) {
-                delta_t = frame->timestamp - feat.last_r_time;
-                velocity.head<2>() = (frame->pt_r_normal_plane[i].head<2>() - feat.last_pt_r_n.head<2>()) / delta_t;
-                feat.velocity_r_per_frame.emplace_back(velocity);
+                if(feat.last_r_time == -1.0f) {
+                    feat.velocity_r_per_frame.emplace_back(0, 0, 0);
+                }
+                else {
+                    delta_t = frame->timestamp - feat.last_r_time;
+                    velocity.head<2>() = (frame->pt_r_normal_plane[i].head<2>() - feat.last_pt_r_n.head<2>()) / delta_t;
+                    feat.velocity_r_per_frame.emplace_back(velocity);
+                }
                 feat.last_r_time = frame->timestamp;
                 feat.last_pt_r_n = frame->pt_r_normal_plane[i];
             }
@@ -689,8 +699,7 @@ void BackEnd::SolveBAImu() {
     options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    LOG(INFO) << summary.FullReport();
-//    LOG(INFO) << para_Td[0];
+//    LOG(INFO) << summary.FullReport();
 
     double2data();
 

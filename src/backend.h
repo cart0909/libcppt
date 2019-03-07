@@ -85,7 +85,8 @@ public:
             double gravity_magnitude_, int window_size_, double min_parallax_,
             double max_solver_time_in_seconds_, int max_num_iterations_,
             double cv_huber_loss_parameter_, double triangulate_default_depth_,
-            double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic);
+            double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic,
+            int estimate_td, double init_td);
     ~BackEnd();
 
     inline void SubVIOTwc(std::function<void(double, const Sophus::SE3d)> callback) {
@@ -190,8 +191,8 @@ private:
     double max_imu_sum_t;
     int min_init_stereo_num;
 
-    bool estimate_time_delay = true;
-    double time_delay = 0.0f;
+    bool estimate_time_delay;
+    double time_delay;
     double para_Td[1];
 
     FramePtr new_keyframe;

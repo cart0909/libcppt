@@ -26,8 +26,8 @@ bool ProjectionTdFactor::Evaluate(double const * const *parameters_raw, double* 
 
     Eigen::Vector3d pt_i_td, pt_j_td;
     // original formular pt_td = pt + td * velocity
-    pt_i_td = pt_i - (td - td_i) * velocity_i;
-    pt_j_td = pt_j - (td - td_j) * velocity_j;
+    pt_i_td = pt_i - (td - td_i) * velocity_i; // t(pt_i) = img_t + td_i
+    pt_j_td = pt_j - (td - td_j) * velocity_j; // td -> img_t + td
 
     Eigen::Vector3d x3Dci = pt_i_td / inv_zi;
     Eigen::Vector3d x3Dbi = q_bc * x3Dci + p_bc;

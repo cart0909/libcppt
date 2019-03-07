@@ -62,7 +62,8 @@ System::System(const std::string& config_file) {
                                         param.p_rl[0], param.p_bc[0], param.q_rl[0], param.q_bc[0],
                                         param.gravity_magnitude, param.sliding_window_size, param.keyframe_parallax,
                                         param.max_solver_time_in_seconds, param.max_num_iterations, param.cv_huber_loss_parameter,
-                                        param.triangulate_default_depth, param.max_imu_sum_t, param.min_init_stereo_num, param.estimate_extrinsic);
+                                        param.triangulate_default_depth, param.max_imu_sum_t, param.min_init_stereo_num, param.estimate_extrinsic,
+                                        param.estimate_td, param.init_td);
 
     if(param.enable_reloc)
         reloc = std::make_shared<Relocalization>(param.voc_filename, param.brief_pattern_file, cam_m,
