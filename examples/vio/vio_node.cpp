@@ -16,6 +16,7 @@
 #include <nav_msgs/Path.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/TransformStamped.h>
+#include <tf/transform_broadcaster.h>
 // catch ctrl+c signal
 #include <signal.h>
 
@@ -70,6 +71,8 @@ public:
         cv::Mat img_l, img_r;
         img_l = cv_bridge::toCvCopy(img_msg, "mono8")->image;
         img_r = cv_bridge::toCvCopy(img_r_msg, "mono8")->image;
+//        img_l = cv_bridge::toCvCopy(img_msg, "8UC1")->image;
+//        img_r = cv_bridge::toCvCopy(img_r_msg, "8UC1")->image;
         system->PushImages(img_l, img_r, img_msg->header.stamp.toSec());
     }
 
@@ -136,6 +139,17 @@ public:
         fast_pose_visual.reset();
         fast_pose_visual.add_pose(twc, qwc);
         fast_pose_visual.publish_by(pub_fast_pose, header);
+    }
+
+    void PubRelocPose(double timestamp, const Sophus::SE3d& Twc) {
+        std_msgs::Header header;
+        header.frame_id = "world";
+        header.stamp.fromSec(timestamp);
+        Eigen::Vector3d twc = Twc.translation();
+        Eigen::Quaterniond qwc = Twc.unit_quaternion();
+        reloc_pose_visual.reset();
+        reloc_pose_visual.add_pose(twc, qwc);
+        reloc_pose_visual.publish_by(pub_reloc_pose, header);
 
         geometry_msgs::TransformStamped transform_stamped;
         transform_stamped.header = header;
@@ -148,17 +162,13 @@ public:
         transform_stamped.transform.translation.y = twc(1);
         transform_stamped.transform.translation.z = twc(2);
         pub_transform.publish(transform_stamped);
-    }
 
-    void PubRelocPose(double timestamp, const Sophus::SE3d& Twc) {
-        std_msgs::Header header;
-        header.frame_id = "world";
-        header.stamp.fromSec(timestamp);
-        Eigen::Vector3d twc = Twc.translation();
-        Eigen::Quaterniond qwc = Twc.unit_quaternion();
-        reloc_pose_visual.reset();
-        reloc_pose_visual.add_pose(twc, qwc);
-        reloc_pose_visual.publish_by(pub_reloc_pose, header);
+        // for dense mapping (skimap, openchisel)
+        static tf::TransformBroadcaster tf_broadcaster;
+        tf::StampedTransform tf_stamped_transform(
+                    tf::Transform(tf::Quaternion(qwc.x(), qwc.y(), qwc.z(), qwc.w()), tf::Vector3(twc(0), twc(1), twc(2))),
+                    header.stamp, "world", "camera");
+        tf_broadcaster.sendTransform(tf_stamped_transform);
     }
 
     void AddRelocPath(const Sophus::SE3d& Twc) {
@@ -255,7 +265,7 @@ public:
     CameraPoseVisualization fast_pose_visual;
     ros::Publisher pub_fast_pose;
 
-    // for dense mapping
+    // for dense mapping (voxblox)
     ros::Publisher pub_transform;
 };
 
