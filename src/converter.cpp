@@ -10,15 +10,13 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
     backend_frame->pt_id = feat_frame->pt_id;
     for(int i = 0, n = feat_frame->pt.size(); i < n; ++i) {
         Eigen::Vector3d Pl, Pr;
-        backend_frame->pt.emplace_back(feat_frame->pt[i].x, feat_frame->pt[i].y);
-        Pl = cam_master->BackProject(backend_frame->pt[i]);
+        Pl = cam_master->BackProject(Eigen::Vector2d(feat_frame->pt[i].x, feat_frame->pt[i].y));
         backend_frame->pt_normal_plane.emplace_back(Pl);
-        backend_frame->pt_r.emplace_back(stereo_frame->pt_r[i].x, stereo_frame->pt_r[i].y);
         if(stereo_frame->pt_r[i].x == -1) {
             backend_frame->pt_r_normal_plane.emplace_back(-1, -1, 0);
         }
         else {
-            Pr = cam_slave->BackProject(backend_frame->pt_r[i]);
+            Pr = cam_slave->BackProject(Eigen::Vector2d(stereo_frame->pt_r[i].x, stereo_frame->pt_r[i].y));
             backend_frame->pt_r_normal_plane.emplace_back(Pr);
         }
     }
@@ -27,6 +25,38 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
     backend_frame->v_acc = v_acc;
     backend_frame->v_imu_timestamp = v_imu_timestamp;
     return backend_frame;
+}
+
+BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, CameraPtr camera,
+                                     const cv::Mat& depth_iamge, double depth_units,
+                                     const Sophus::SO3d& q_rl, const Eigen::Vector3d& p_rl,
+                                     const Eigen::VecVector3d& v_gyr, const Eigen::VecVector3d& v_acc,
+                                     const std::vector<double>& v_imu_timestamp)
+{
+     BackEnd::FramePtr backend_frame(new BackEnd::Frame);
+     backend_frame->timestamp = feat_frame->timestamp;
+     backend_frame->pt_id = feat_frame->pt_id;
+
+     for(int i = 0, n = feat_frame->pt.size(); i < n; ++i) {
+         Eigen::Vector3d Pl;
+         Pl = camera->BackProject(Eigen::Vector2d(feat_frame->pt[i].x, feat_frame->pt[i].y));
+         backend_frame->pt_normal_plane.emplace_back(Pl);
+         double depth = depth_iamge.at<uint16_t>(feat_frame->pt[i]) * depth_units;
+         if(depth) {
+             Eigen::Vector3d x3Dl = Pl * depth;
+             Eigen::Vector3d x3Dr = q_rl * x3Dl + p_rl;
+             x3Dr /= x3Dr(2);
+             backend_frame->pt_r_normal_plane.emplace_back(x3Dr);
+         }
+         else {
+             backend_frame->pt_r_normal_plane.emplace_back(-1, -1, 0);
+         }
+     }
+
+     backend_frame->v_gyr = v_gyr;
+     backend_frame->v_acc = v_acc;
+     backend_frame->v_imu_timestamp = v_imu_timestamp;
+     return backend_frame;
 }
 
 Relocalization::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame,

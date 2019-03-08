@@ -1,8 +1,5 @@
 %YAML:1.0
 
-imu_topic: "/camera/imu"
-image_topic: "/camera/infra1/image_rect_raw"
-image_r_topic: "/camera/infra2/image_rect_raw"
 output_path: "/catkin_ws/src/libcppt/config/log.tum"
 
 model_type: PINHOLE
@@ -20,25 +17,13 @@ T_BC0: !!opencv-matrix
     rows: 4
     cols: 4
     dt: d
-    data: [  0.00185653, -0.00675679,  0.999975  ,  0.00935225,
-            -0.999945  , -0.0103824 ,  0.00178632, -0.00765785,
-             0.0103701 , -0.999923  , -0.00677569, -0.0098194,
-             0.0, 0.0, 0.0, 1.0]
+    data: [ 0.0291054, -0.0314455,   0.999082, 0.00241599,
+           -0.999141 , 0.0285682 , 0.0300063 ,-0.0165861,
+           -0.0294855,  -0.999097,  -0.030587, -0.0648715,
+            0.0, 0.0, 0.0, 1.0]
 
-intrinsics0: [384.401611328125, 384.401611328125, 320.5223693847656, 238.37960815429688] #fu, fv, cu, cv
+intrinsics0: [610.5186157226562, 610.3619995117188, 321.4574890136719, 239.82679748535156] #fu, fv, cu, cv
 distortion_coefficients0: [0, 0, 0, 0]
-
-T_BC1: !!opencv-matrix
-    rows: 4
-    cols: 4
-    dt: d
-    data: [ 0.00189807, -0.00501366,  0.999986  ,  0.00877508,
-           -0.999943  , -0.0105533 ,  0.00184507, -0.0576887,
-            0.0105439 , -0.999932  , -0.0050334 , -0.00900638,
-            0.        ,  0.        ,  0.        ,  1.        ]
-
-intrinsics1: [384.401611328125, 384.401611328125, 320.5223693847656, 238.37960815429688] #fu, fv, cu, cv
-distortion_coefficients1: [0, 0, 0, 0]
 
 T_BI: !!opencv-matrix
     cols: 4
@@ -94,3 +79,4 @@ voc_path: "/catkin_ws/src/libcppt/config/voc/brief_k10L6.bin"
 brief_pattern_path: "/catkin_ws/src/libcppt/config/brief/brief_pattern.yml"
 
 enable_pose_faster: 0            # pose will align with imu fps
+depth_units: 0.001               # depth image conversion scale (16UC1 -> m)

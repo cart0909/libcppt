@@ -104,10 +104,10 @@ Visualization Manager:
           Marker Topic: /cppt_vio/vio_pose
           Name: vio_pose
           Namespaces:
-            {}
+            CameraPoseVisualization: true
           Queue Size: 100
           Value: true
-      Enabled: false
+      Enabled: true
       Name: vio
     - Class: rviz/Group
       Displays:
@@ -116,7 +116,7 @@ Visualization Manager:
           Marker Topic: /cppt_vio/reloc_pose
           Name: reloc_pose
           Namespaces:
-            CameraPoseVisualization: true
+            {}
           Queue Size: 100
           Value: true
         - Alpha: 1
@@ -147,7 +147,7 @@ Visualization Manager:
           Marker Topic: /cppt_vio/loop_edge
           Name: loop_edge
           Namespaces:
-            CameraPoseVisualization: true
+            {}
           Queue Size: 100
           Value: true
         - Class: rviz/Image
@@ -210,10 +210,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5947973132133484
+      Pitch: 0.6147972941398621
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz)
-      Yaw: 3.0958287715911865
+      Yaw: 3.025827169418335
     Saved: ~
 Window Geometry:
   Displays:

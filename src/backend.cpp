@@ -7,6 +7,8 @@
 #include <glog/logging.h>
 #include <opencv2/core/eigen.hpp>
 
+BackEnd::BackEnd() {}
+
 BackEnd::BackEnd(double focal_length_,
                  double gyr_n_, double acc_n_,
                  double gyr_w_, double acc_w_,
@@ -700,7 +702,6 @@ void BackEnd::SolveBAImu() {
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
 //    LOG(INFO) << summary.FullReport();
-
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i)
@@ -714,7 +715,7 @@ void BackEnd::SolvePnP(FramePtr frame) {
     std::vector<cv::Point2f> v_pts;
     std::vector<cv::Point3d> v_mps;
 
-    for(int i = 0, n = frame->pt.size(); i < n; ++i) {
+    for(int i = 0, n = frame->pt_id.size(); i < n; ++i) {
         auto it = m_features.find(frame->pt_id[i]);
         if(it != m_features.end()) {
             if(it->second.inv_depth != -1.0f) {

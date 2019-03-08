@@ -3,6 +3,8 @@
 #include <functional>
 #include <glog/logging.h>
 
+System::System() {}
+
 System::System(const std::string& config_file) {
     cv::setNumThreads(0);
     reset_flag = false;

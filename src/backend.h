@@ -25,7 +25,6 @@ public:
         uint64_t id;
         double timestamp;
         std::vector<uint64_t>  pt_id;
-        Eigen::VecVector2d pt, pt_r;
         Eigen::VecVector3d pt_normal_plane, pt_r_normal_plane;
 
         Sophus::SO3d    q_wb;
@@ -77,6 +76,7 @@ public:
     };
     SMART_PTR(Feature)
 
+    BackEnd();
     BackEnd(double focal_length_,
             double gyr_n_, double acc_n_,
             double gyr_w_, double acc_w_,
@@ -87,7 +87,7 @@ public:
             double cv_huber_loss_parameter_, double triangulate_default_depth_,
             double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic,
             int estimate_td, double init_td);
-    ~BackEnd();
+    virtual ~BackEnd();
 
     inline void SubVIOTwc(std::function<void(double, const Sophus::SE3d)> callback) {
         pub_vio_Twc.emplace_back(callback);
@@ -113,7 +113,7 @@ public:
         return time_delay;
     }
 
-private:
+protected:
     MarginType AddFeaturesCheckParallax(FramePtr frame);
     void SlidingWindow();
     void SlidingWindowOld();
@@ -121,7 +121,7 @@ private:
     int Triangulate(int sw_idx);
     void Reset();
     void SolveBA();
-    void SolveBAImu();
+    virtual void SolveBAImu();
     void SolvePnP(FramePtr frame);
     bool GyroBiasEstimation();
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);

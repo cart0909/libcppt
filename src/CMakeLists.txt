@@ -135,6 +135,8 @@ backend.cpp
 converter.cpp
 relocalization.cpp
 pose_faster.cpp
+rgbd_system.cpp
+rgbd_backend.cpp
 ceres/local_parameterization_se3.cpp
 ceres/projection_factor.cpp
 ceres/projection_td_factor.cpp

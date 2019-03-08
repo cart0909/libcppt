@@ -29,9 +29,13 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     fs["model_type"] >> param.cam_model[0];
     fs["intrinsics0"] >> param.intrinsic_master[0];
     fs["distortion_coefficients0"] >> param.distortion_master[0];
-    param.b_slave[0] = true;
     fs["intrinsics1"] >> param.intrinsic_slave[0];
     fs["distortion_coefficients1"] >> param.distortion_slave[0];
+
+    if(param.intrinsic_slave[0].empty())
+        param.b_slave[0] = false;
+    else
+        param.b_slave[0] = true;
 
     cv::Mat cv_T;
     Eigen::Matrix4d eigen_T;
@@ -45,17 +49,18 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     param.p_bc[0] = tmp_p;
     param.q_bc[0].setQuaternion(tmp_q);
 
-    fs["T_BC1"] >> cv_T;
-    cv::cv2eigen(cv_T, eigen_T);
-    tmp_p = eigen_T.block<3, 1>(0, 3); // p_bc1
-    tmp_q = eigen_T.block<3, 3>(0, 0); // q_bc1
-    tmp_q.normalize();
-    Sophus::SE3d Tbl(param.q_bc[0], param.p_bc[0]);
-    Sophus::SE3d Tbr(tmp_q, tmp_p);
-    Sophus::SE3d Trl = Tbr.inverse() * Tbl;
-    param.p_rl[0] = Trl.translation();
-    param.q_rl[0] = Trl.so3();
-
+    if(param.b_slave[0]) {
+        fs["T_BC1"] >> cv_T;
+        cv::cv2eigen(cv_T, eigen_T);
+        tmp_p = eigen_T.block<3, 1>(0, 3); // p_bc1
+        tmp_q = eigen_T.block<3, 3>(0, 0); // q_bc1
+        tmp_q.normalize();
+        Sophus::SE3d Tbl(param.q_bc[0], param.p_bc[0]);
+        Sophus::SE3d Tbr(tmp_q, tmp_p);
+        Sophus::SE3d Trl = Tbr.inverse() * Tbl;
+        param.p_rl[0] = Trl.translation();
+        param.q_rl[0] = Trl.so3();
+    }
     param.acc_noise = fs["acc_n"];
     param.gyr_noise = fs["gyr_n"];
     param.acc_bias_noise = fs["acc_w"];
@@ -84,6 +89,9 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     param.estimate_extrinsic = fs["estimate_extrinsic"];
     param.estimate_td = fs["estimate_td"];
     param.init_td = fs["td"];
+
+    // for Depth image scaling factor
+    param.depth_units = fs["depth_units"];
     Log(param);
     fs.release();
     return param;

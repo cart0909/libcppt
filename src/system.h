@@ -10,8 +10,9 @@
 
 class System {
 public:
+    System();
     System(const std::string& config_file);
-    ~System();
+    virtual ~System();
 
     void Reset();
     void PushImages(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
@@ -56,9 +57,9 @@ public:
         return false;
     }
 
-private:
+protected:
     void FrontEndProcess();
-    void BackEndProcess();
+    virtual void BackEndProcess();
     void RelocProcess();
     void PubTrackingImg(FeatureTracker::FramePtr feat_frame);
 

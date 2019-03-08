@@ -44,7 +44,7 @@ public:
         int estimate_extrinsic;
         int estimate_td;
         double init_td;
-
+        double depth_units;
         std::string voc_filename;
         std::string brief_pattern_file;
     };

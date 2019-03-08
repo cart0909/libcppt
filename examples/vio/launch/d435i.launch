@@ -2,8 +2,11 @@
     <arg name="config_path" default = "$(find cppt_vio)/../../config/calib/d435i.yaml" />
     <arg name="rviz_config_path" default = "-d $(find cppt_vio)/../../config/rviz_vio_config.rviz" />
 
-    <node name="cppt_vio" pkg="cppt_vio" type="cppt_vio" output="screen">
+    <node name="cppt_vio" pkg="cppt_vio" type="rgbd_node" output="screen">
         <param name="config_file" type="string" value="$(arg config_path)" />
+        <remap from="/camera/rgb/image_raw" to="/camera/color/image_raw"/>
+        <remap from="/camera/depth/image_raw" to="/camera/aligned_depth_to_color/image_raw"/>
+        <remap from="/imu/data_raw" to="/camera/imu"/>
     </node>
 
     <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />

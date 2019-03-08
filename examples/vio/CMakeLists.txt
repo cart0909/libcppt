@@ -83,9 +83,19 @@ include_directories(src)
 add_executable(cppt_vio
 vio_node.cpp
 src/CameraPoseVisualization.cpp
+src/visualization.cpp
 )
 
 target_link_libraries(cppt_vio
 ${catkin_LIBRARIES}
 )
 
+add_executable(rgbd_node
+rgbd_node.cpp
+src/CameraPoseVisualization.cpp
+src/visualization.cpp
+)
+
+target_link_libraries(rgbd_node
+${catkin_LIBRARIES}
+)
