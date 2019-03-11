@@ -135,6 +135,7 @@ backend.cpp
 converter.cpp
 relocalization.cpp
 pose_faster.cpp
+line_tracker.cpp
 rgbd_system.cpp
 rgbd_backend.cpp
 ceres/local_parameterization_se3.cpp
