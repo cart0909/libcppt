@@ -53,6 +53,7 @@ System::System(const std::string& config_file) {
 
     feature_tracker = std::make_shared<FeatureTracker>(cam_m, param.clahe_parameter, param.fast_threshold,
                                                        param.min_dist, param.Fundamental_reproj_threshold);
+    line_tracker = std::make_shared<LineTracker>(cam_m);
     if(param.estimate_extrinsic)
         stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.clahe_parameter, param.Fundamental_reproj_threshold);
     else
@@ -152,10 +153,12 @@ void System::FrontEndProcess() {
         FeatureTracker::FramePtr feat_frame;
         if(b_first_frame) {
             feat_frame = feature_tracker->InitFirstFrame(img_l, timestamp);
+            line_tracker->InitFirstFrame(img_l, timestamp);
             b_first_frame = false;
         }
         else {
             feat_frame = feature_tracker->Process(img_l, timestamp);
+            line_tracker->Process(img_l, timestamp);
         }
 
         if(!backend_busy) {

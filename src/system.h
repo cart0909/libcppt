@@ -3,6 +3,7 @@
 #include "util.h"
 #include "config_loader.h"
 #include "feature_tracker.h"
+#include "line_tracker.h"
 #include "stereo_matcher.h"
 #include "backend.h"
 #include "relocalization.h"
@@ -70,6 +71,7 @@ protected:
     CameraPtr cam_s; // camera slave
 
     FeatureTrackerPtr feature_tracker;
+    LineTrackerPtr line_tracker;
     std::thread frontend_thread;
     std::mutex mtx_frontend;
     std::condition_variable cv_frontend;

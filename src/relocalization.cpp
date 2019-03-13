@@ -26,6 +26,7 @@ Relocalization::Relocalization(const std::string& voc_filename, const std::strin
 
     brief_extractor[0].importPairs(x1, y1, x2, y2);
     brief_extractor[1].importPairs(x1, y1, x2, y2);
+    p_w_viow.setZero();
 }
 
 void Relocalization::UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c) {
