@@ -144,12 +144,6 @@ ceres/projection_td_factor.cpp
 vins/marginalization_factor.cpp
 vins/integration_base.cpp
 vins/imu_factor.cpp
-l1_solver/solve_dalm.cpp
 ${DBOW2_SRC_FILES}
 )
 target_link_libraries(${PROJECT_NAME} ${THRID_PARTY_LIBS})
-
-add_executable(test_dalm
-l1_solver/test_dalm.cpp
-)
-target_link_libraries(test_dalm ${PROJECT_NAME})
