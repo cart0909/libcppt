@@ -1,7 +1,6 @@
 #include "line_tracker.h"
 
-LineTracker::LineTracker(CameraPtr camera_)
-    : camera(camera_)
+LineTracker::LineTracker()
 {
     lbd = cv::line_descriptor::BinaryDescriptor::createBinaryDescriptor();
     fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, false);
@@ -11,7 +10,6 @@ LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestam
     FramePtr frame(new Frame);
     frame->frame_id = next_frame_id++;
     frame->img = img;
-    cv::cvtColor(frame->img, frame->debug_img, CV_GRAY2BGR);
     frame->timestamp = timestamp;
 
     std::vector<cv::Vec4f> v_lines;
@@ -19,7 +17,7 @@ LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestam
     fld->detect(frame->img, v_lines);
     Tracer::TraceEnd();
     // constrain the number of lines
-    if(v_lines.size() > 20) {
+    if(v_lines.size() > 50) {
         std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
             double ldx = lhs[0] - lhs[2];
             double ldy = lhs[1] - lhs[3];
@@ -27,8 +25,7 @@ LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestam
             double rdy = rhs[1] - rhs[3];
             return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
         });
-        v_lines.resize(20);
-        Tracer::TraceEnd();
+        v_lines.resize(50);
     }
 
     for(int i = 0, n = v_lines.size(); i < n; ++i) {
@@ -81,31 +78,48 @@ LineTracker::FramePtr LineTracker::InitFirstFrame(const cv::Mat& img, double tim
 
 LineTracker::FramePtr LineTracker::Process(const cv::Mat& img, double timestamp) {
     FramePtr frame = InitFrame(img, timestamp);
-    std::vector<int> matches12;
-    LRConsistencyMatch(last_frame->desc, frame->desc, 0.75, matches12);
+    if(frame->v_lines.empty() || last_frame->v_lines.empty()) {
+        last_frame = frame;
+        return frame;
+    }
 
+    std::vector<int> matches21;
+    LRConsistencyMatch(frame->desc, last_frame->desc, 0.75, matches21);
+
+    for(int i = 0, n = matches21.size(); i < n; ++i) {
+        if(matches21[i] != -1)
+            frame->v_line_id.emplace_back(matches21[i]);
+        else
+            frame->v_line_id.emplace_back(next_line_id++);
+    }
+
+#if 0
     std::vector<cv::DMatch> dmatches;
 
-    for(int i = 0, n = matches12.size(); i < n; ++i) {
-        if(matches12[i] == -1) {
+    for(int i = 0, n = matches21.size(); i < n; ++i) {
+        if(matches21[i] == -1) {
             continue;
         }
         cv::DMatch dmatch;
         dmatch.queryIdx = i;
-        dmatch.trainIdx = matches12[i];
+        dmatch.trainIdx = matches21[i];
         dmatch.distance = 0;
         dmatch.imgIdx = 0;
         dmatches.emplace_back(dmatch);
     }
 
     cv::Mat result;
+    cv::Mat show_img_j, show_img_i;
+    cv::cvtColor(frame->img, show_img_j, CV_GRAY2BGR);
+    cv::cvtColor(last_frame->img, show_img_i, CV_GRAY2BGR);
     std::vector<char> mask(dmatches.size(), 1);
-    cv::line_descriptor::drawLineMatches(last_frame->debug_img, last_frame->v_lines, frame->debug_img, frame->v_lines,
+    cv::line_descriptor::drawLineMatches(show_img_i, frame->v_lines, show_img_j, last_frame->v_lines,
                                          dmatches, result,
                                          cv::Scalar::all(-1), cv::Scalar::all(-1), mask,
-                                         cv::line_descriptor::DrawLinesMatchesFlags::DEFAULT );
+                                         cv::line_descriptor::DrawLinesMatchesFlags::DEFAULT);
     cv::imshow("result", result);
     cv::waitKey(1);
+#endif
 
     last_frame = frame;
     return frame;

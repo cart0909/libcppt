@@ -1,0 +1,152 @@
+#include "line_stereo_matcher.h"
+
+LineStereoMatcher::LineStereoMatcher() {
+    lbd = cv::line_descriptor::BinaryDescriptor::createBinaryDescriptor();
+    fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, false);
+}
+
+LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_frame, const cv::Mat& img_r) {
+    FramePtr r_frame(new Frame);
+    r_frame->img_r = img_r;
+
+    if(l_frame->v_lines.empty())
+        return r_frame;
+
+    std::vector<cv::line_descriptor::KeyLine> v_klines_r = DetectLineFeatures(r_frame->img_r);
+    if(v_klines_r.empty()) {
+        return r_frame;
+    }
+
+    cv::Mat desc_r;
+    lbd->compute(r_frame->img_r, v_klines_r, desc_r);
+
+    std::vector<int> matches_lr;
+    LRMatch(l_frame->desc, desc_r, 0.75, matches_lr);
+
+    for(int i = 0, n = matches_lr.size(); i < n; ++i) {
+        if(matches_lr[i] == -1) {
+            cv::line_descriptor::KeyLine kl;
+            kl.startPointX = -1;
+            kl.startPointY = -1;
+            kl.endPointX = -1;
+            kl.endPointY = -1;
+            r_frame->v_lines_r.emplace_back(kl);
+        }
+        else {
+            r_frame->v_lines_r.emplace_back(v_klines_r[matches_lr[i]]);
+        }
+    }
+
+#if 0
+    std::vector<cv::DMatch> dmatches;
+
+    for(int i = 0, n = matches_lr.size(); i < n; ++i) {
+        if(matches_lr[i] == -1) {
+            continue;
+        }
+        cv::DMatch dmatch;
+        dmatch.queryIdx = i;
+        dmatch.trainIdx = matches_lr[i];
+        dmatch.distance = 0;
+        dmatch.imgIdx = 0;
+        dmatches.emplace_back(dmatch);
+    }
+
+    cv::Mat result;
+    cv::Mat show_img_l, show_img_r;
+    cv::cvtColor(l_frame->img, show_img_l, CV_GRAY2BGR);
+    cv::cvtColor(r_frame->img_r, show_img_r, CV_GRAY2BGR);
+    std::vector<char> mask(dmatches.size(), 1);
+    cv::line_descriptor::drawLineMatches(show_img_l, l_frame->v_lines, show_img_r, v_klines_r,
+                                         dmatches, result,
+                                         cv::Scalar::all(-1), cv::Scalar::all(-1), mask,
+                                         cv::line_descriptor::DrawLinesMatchesFlags::DEFAULT );
+    cv::imshow("result", result);
+    cv::waitKey(1);
+#endif
+
+    return r_frame;
+}
+
+std::vector<cv::line_descriptor::KeyLine> LineStereoMatcher::DetectLineFeatures(const cv::Mat& img) {
+    std::vector<cv::Vec4f> v_lines;
+    std::vector<cv::line_descriptor::KeyLine> v_klines;
+    fld->detect(img, v_lines);
+
+    if(v_lines.size() > 50) {
+        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
+            double ldx = lhs[0] - lhs[2];
+            double ldy = lhs[1] - lhs[3];
+            double rdx = rhs[0] - rhs[2];
+            double rdy = rhs[1] - rhs[3];
+            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
+        });
+        v_lines.resize(50);
+    }
+
+    for(int i = 0, n = v_lines.size(); i < n; ++i) {
+        auto& line = v_lines[i];
+        cv::line_descriptor::KeyLine kl;
+        double octave_scale = 1.0f;
+        int octave_idx = 0;
+        kl.startPointX = line[0] * octave_scale;
+        kl.startPointY = line[1] * octave_scale;
+        kl.endPointX = line[2] * octave_scale;
+        kl.endPointY = line[3] * octave_scale;
+
+        kl.sPointInOctaveX = line[0];
+        kl.sPointInOctaveY = line[1];
+        kl.ePointInOctaveX = line[2];
+        kl.ePointInOctaveY = line[3];
+
+        double dx = line[2] - line[0];
+        double dy = line[3] - line[1];
+        kl.lineLength = std::sqrt(dx * dx + dy * dy);
+        kl.angle = std::atan2(dy, dx);
+        kl.class_id = i;
+        kl.octave = octave_idx;
+        kl.size = dx * dy;
+        kl.pt = cv::Point2f((line[0] + line[2]) * 0.5, (line[1] + line[3]) * 0.5);
+
+        kl.response = kl.lineLength / std::max(img.rows, img.cols);
+        cv::LineIterator li(img, cv::Point2f(line[0], line[1]), cv::Point2f(line[2], line[3]));
+        kl.numOfPixels = li.count;
+
+        v_klines.emplace_back(kl);
+    }
+
+    return v_klines;
+}
+
+int LineStereoMatcher::Match(const cv::Mat& desc1, const cv::Mat& desc2, float nnr, std::vector<int>& matches12) {
+    int num_matches = 0;
+    matches12.resize(desc1.rows, -1);
+
+    std::vector<std::vector<cv::DMatch>> dmatches;
+    cv::Ptr<cv::BFMatcher> matcher = cv::BFMatcher::create(cv::NORM_HAMMING);
+    matcher->knnMatch(desc1, desc2, dmatches, 2);
+
+    for(int i = 0, n = matches12.size(); i < n; ++i) {
+        if(dmatches[i][0].distance < dmatches[i][1].distance * nnr) {
+            matches12[i] = dmatches[i][0].trainIdx;
+            ++num_matches;
+        }
+    }
+
+    return num_matches;
+}
+
+int LineStereoMatcher::LRMatch(const cv::Mat& desc1, const cv::Mat& desc2, float nnr, std::vector<int>& matches12) {
+    std::vector<int> matches21;
+    int num_matches = Match(desc1, desc2, nnr, matches12);
+    Match(desc2, desc1, nnr, matches21);
+
+    for(int i1 = 0; i1 < matches12.size(); ++i1) {
+        int i2 = matches12[i1];
+        if(i2 >= 0 && matches21[i2] != i1) {
+            matches12[i1] = -1;
+            --num_matches;
+        }
+    }
+    return num_matches;
+}

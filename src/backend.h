@@ -22,6 +22,7 @@ public:
 
     struct Frame {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+        virtual ~Frame() {}
         uint64_t id;
         double timestamp;
         std::vector<uint64_t>  pt_id;
@@ -152,8 +153,8 @@ protected:
     MarginType marginalization_flag;
 
     // ceres data
-    void data2double();
-    void double2data();
+    virtual void data2double();
+    virtual void double2data();
     double* para_pose; // Twb
     double* para_speed_bias; // vwb bg ba
     size_t  para_features_capacity = 1000;

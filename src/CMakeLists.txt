@@ -136,6 +136,9 @@ converter.cpp
 relocalization.cpp
 pose_faster.cpp
 line_tracker.cpp
+line_stereo_matcher.cpp
+pl_system.cpp
+pl_backend.cpp
 rgbd_system.cpp
 rgbd_backend.cpp
 ceres/local_parameterization_se3.cpp

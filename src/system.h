@@ -4,6 +4,7 @@
 #include "config_loader.h"
 #include "feature_tracker.h"
 #include "line_tracker.h"
+#include "line_stereo_matcher.h"
 #include "stereo_matcher.h"
 #include "backend.h"
 #include "relocalization.h"
@@ -72,6 +73,7 @@ protected:
 
     FeatureTrackerPtr feature_tracker;
     LineTrackerPtr line_tracker;
+    LineStereoMatcherPtr line_stereo_matcher;
     std::thread frontend_thread;
     std::mutex mtx_frontend;
     std::condition_variable cv_frontend;
