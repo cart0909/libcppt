@@ -9,52 +9,10 @@ System::System(const std::string& config_file) {
     cv::setNumThreads(0);
     reset_flag = false;
     param = ConfigLoader::Load(config_file);
-
-    if(param.cam_model[0] == "PINHOLE") {
-        cam_m = CameraPtr(new Pinhole(param.width[0], param.height[0],
-                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
-                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
-                                      param.distortion_master[0][0], param.distortion_master[0][1],
-                                      param.distortion_master[0][2], param.distortion_master[0][3]));
-
-        cam_s = CameraPtr(new Pinhole(param.width[0], param.height[0],
-                                      param.intrinsic_slave[0][0], param.intrinsic_slave[0][1],
-                                      param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
-                                      param.distortion_slave[0][0], param.distortion_slave[0][1],
-                                      param.distortion_slave[0][2], param.distortion_slave[0][3]));
-    }
-    else if(param.cam_model[0] == "FISHEYE") {
-        cam_m = CameraPtr(new Fisheye(param.width[0], param.height[0],
-                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
-                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
-                                      param.distortion_master[0][0], param.distortion_master[0][1],
-                                      param.distortion_master[0][2], param.distortion_master[0][3]));
-
-        cam_s = CameraPtr(new Fisheye(param.width[0], param.height[0],
-                                      param.intrinsic_slave[0][0], param.intrinsic_slave[0][1],
-                                      param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
-                                      param.distortion_slave[0][0], param.distortion_slave[0][1],
-                                      param.distortion_slave[0][2], param.distortion_slave[0][3]));
-    }
-    else if(param.cam_model[0] == "OMNI") {
-        cam_m = CameraPtr(new Omni(param.width[0], param.height[0],
-                                   param.intrinsic_master[0][0], param.intrinsic_master[0][1],
-                                   param.intrinsic_master[0][2], param.intrinsic_master[0][3],
-                                   param.intrinsic_master[0][4],
-                                   param.distortion_master[0][0], param.distortion_master[0][1],
-                                   param.distortion_master[0][2], param.distortion_master[0][3]));
-        cam_s = CameraPtr(new Omni(param.width[0], param.height[0],
-                                   param.intrinsic_slave[0][0], param.intrinsic_slave[0][1],
-                                   param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
-                                   param.intrinsic_slave[0][4],
-                                   param.distortion_slave[0][0], param.distortion_slave[0][1],
-                                   param.distortion_slave[0][2], param.distortion_slave[0][3]));
-    }
-
+    InitCameraParameters();
     feature_tracker = std::make_shared<FeatureTracker>(cam_m, param.clahe_parameter, param.fast_threshold,
                                                        param.min_dist, param.Fundamental_reproj_threshold);
-    line_tracker = std::make_shared<LineTracker>();
-    line_stereo_matcher = std::make_shared<LineStereoMatcher>();
+
     if(param.estimate_extrinsic)
         stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.clahe_parameter, param.Fundamental_reproj_threshold);
     else
@@ -105,6 +63,49 @@ System::System(const std::string& config_file) {
 
 System::~System() {}
 
+void System::InitCameraParameters() {
+    if(param.cam_model[0] == "PINHOLE") {
+        cam_m = CameraPtr(new Pinhole(param.width[0], param.height[0],
+                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
+                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
+                                      param.distortion_master[0][0], param.distortion_master[0][1],
+                                      param.distortion_master[0][2], param.distortion_master[0][3]));
+
+        cam_s = CameraPtr(new Pinhole(param.width[0], param.height[0],
+                                      param.intrinsic_slave[0][0], param.intrinsic_slave[0][1],
+                                      param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
+                                      param.distortion_slave[0][0], param.distortion_slave[0][1],
+                                      param.distortion_slave[0][2], param.distortion_slave[0][3]));
+    }
+    else if(param.cam_model[0] == "FISHEYE") {
+        cam_m = CameraPtr(new Fisheye(param.width[0], param.height[0],
+                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
+                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
+                                      param.distortion_master[0][0], param.distortion_master[0][1],
+                                      param.distortion_master[0][2], param.distortion_master[0][3]));
+
+        cam_s = CameraPtr(new Fisheye(param.width[0], param.height[0],
+                                      param.intrinsic_slave[0][0], param.intrinsic_slave[0][1],
+                                      param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
+                                      param.distortion_slave[0][0], param.distortion_slave[0][1],
+                                      param.distortion_slave[0][2], param.distortion_slave[0][3]));
+    }
+    else if(param.cam_model[0] == "OMNI") {
+        cam_m = CameraPtr(new Omni(param.width[0], param.height[0],
+                                   param.intrinsic_master[0][0], param.intrinsic_master[0][1],
+                                   param.intrinsic_master[0][2], param.intrinsic_master[0][3],
+                                   param.intrinsic_master[0][4],
+                                   param.distortion_master[0][0], param.distortion_master[0][1],
+                                   param.distortion_master[0][2], param.distortion_master[0][3]));
+        cam_s = CameraPtr(new Omni(param.width[0], param.height[0],
+                                   param.intrinsic_slave[0][0], param.intrinsic_slave[0][1],
+                                   param.intrinsic_slave[0][2], param.intrinsic_slave[0][3],
+                                   param.intrinsic_slave[0][4],
+                                   param.distortion_slave[0][0], param.distortion_slave[0][1],
+                                   param.distortion_slave[0][2], param.distortion_slave[0][3]));
+    }
+}
+
 void System::Reset() {
     reset_flag = true;
     LOG(WARNING) << "system reset flag is turn on!";
@@ -154,12 +155,10 @@ void System::FrontEndProcess() {
         FeatureTracker::FramePtr feat_frame;
         if(b_first_frame) {
             feat_frame = feature_tracker->InitFirstFrame(img_l, timestamp);
-            line_stereo_matcher->Process(line_tracker->InitFirstFrame(img_l, timestamp), img_r);
             b_first_frame = false;
         }
         else {
             feat_frame = feature_tracker->Process(img_l, timestamp);
-            line_stereo_matcher->Process(line_tracker->Process(img_l, timestamp), img_r);
         }
 
         if(!backend_busy) {

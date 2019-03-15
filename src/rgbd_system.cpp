@@ -6,29 +6,7 @@ RGBDSystem::RGBDSystem(const std::string& config_file) {
     cv::setNumThreads(0);
     reset_flag = false;
     param = ConfigLoader::Load(config_file);
-
-    if(param.cam_model[0] == "PINHOLE") {
-        cam_m = CameraPtr(new Pinhole(param.width[0], param.height[0],
-                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
-                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
-                                      param.distortion_master[0][0], param.distortion_master[0][1],
-                                      param.distortion_master[0][2], param.distortion_master[0][3]));
-    }
-    else if(param.cam_model[0] == "FISHEYE") {
-        cam_m = CameraPtr(new Fisheye(param.width[0], param.height[0],
-                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
-                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
-                                      param.distortion_master[0][0], param.distortion_master[0][1],
-                                      param.distortion_master[0][2], param.distortion_master[0][3]));
-    }
-    else if(param.cam_model[0] == "OMNI") {
-        cam_m = CameraPtr(new Omni(param.width[0], param.height[0],
-                                   param.intrinsic_master[0][0], param.intrinsic_master[0][1],
-                                   param.intrinsic_master[0][2], param.intrinsic_master[0][3],
-                                   param.intrinsic_master[0][4],
-                                   param.distortion_master[0][0], param.distortion_master[0][1],
-                                   param.distortion_master[0][2], param.distortion_master[0][3]));
-    }
+    InitCameraParameters();
 
     // create virtual right caemra
     param.q_rl[0].setQuaternion(Eigen::Quaterniond(1, 0, 0, 0));
@@ -60,6 +38,31 @@ RGBDSystem::RGBDSystem(const std::string& config_file) {
 }
 
 RGBDSystem::~RGBDSystem() {}
+
+void RGBDSystem::InitCameraParameters() {
+    if(param.cam_model[0] == "PINHOLE") {
+        cam_m = CameraPtr(new Pinhole(param.width[0], param.height[0],
+                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
+                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
+                                      param.distortion_master[0][0], param.distortion_master[0][1],
+                                      param.distortion_master[0][2], param.distortion_master[0][3]));
+    }
+    else if(param.cam_model[0] == "FISHEYE") {
+        cam_m = CameraPtr(new Fisheye(param.width[0], param.height[0],
+                                      param.intrinsic_master[0][0], param.intrinsic_master[0][1],
+                                      param.intrinsic_master[0][2], param.intrinsic_master[0][3],
+                                      param.distortion_master[0][0], param.distortion_master[0][1],
+                                      param.distortion_master[0][2], param.distortion_master[0][3]));
+    }
+    else if(param.cam_model[0] == "OMNI") {
+        cam_m = CameraPtr(new Omni(param.width[0], param.height[0],
+                                   param.intrinsic_master[0][0], param.intrinsic_master[0][1],
+                                   param.intrinsic_master[0][2], param.intrinsic_master[0][3],
+                                   param.intrinsic_master[0][4],
+                                   param.distortion_master[0][0], param.distortion_master[0][1],
+                                   param.distortion_master[0][2], param.distortion_master[0][3]));
+    }
+}
 
 void RGBDSystem::BackEndProcess() {
     while(1) {

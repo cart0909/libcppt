@@ -22,7 +22,7 @@
 
 #include "ros_utility.h"
 #include "src/CameraPoseVisualization.h"
-#include "system.h"
+#include "pl_system.h"
 using namespace std;
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -49,7 +49,7 @@ public:
         fs["output_path"] >> log_filename;
         fs.release();
 
-        system = std::make_shared<System>(config_file);
+        system = std::make_shared<PLSystem>(config_file);
         system->SubTrackingImg(std::bind(&Node::PubTrackImg, this, std::placeholders::_1,
                                          std::placeholders::_2));
         system->SubVIOTwc(std::bind(&Node::PubCurPose, this, std::placeholders::_1,
