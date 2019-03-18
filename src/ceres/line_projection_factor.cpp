@@ -17,8 +17,7 @@ bool LineProjectionFactor::Evaluate(double const * const* parameters_raw,
     // parameters [0]: frame i
     //            [1]: frame j
     //            [2]: Tbc
-    //            [3]: depth P (start point)
-    //            [4]: depth Q (end point)
+    //            [3]: depth P and Q(start point and end point)
     Eigen::Map<const Sophus::SO3d> q_wbi(parameters_raw[0]);
     Eigen::Map<const Eigen::Vector3d> p_wbi(parameters_raw[0] + 4);
     Eigen::Map<const Sophus::SO3d> q_wbj(parameters_raw[1]);
@@ -26,7 +25,7 @@ bool LineProjectionFactor::Evaluate(double const * const* parameters_raw,
     Eigen::Map<const Sophus::SO3d> q_bc(parameters_raw[2]);
     Eigen::Map<const Eigen::Vector3d> p_bc(parameters_raw[2] + 4);
     double P_inv_zi = parameters_raw[3][0];
-    double Q_inv_zi = parameters_raw[4][0];
+    double Q_inv_zi = parameters_raw[3][1];
     Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
 
     Eigen::Vector3d Pci = spi / P_inv_zi;
@@ -102,15 +101,10 @@ bool LineProjectionFactor::Evaluate(double const * const* parameters_raw,
         }
 
         if(jacobians_raw[3]) {
-            Eigen::Map<Eigen::Vector2d> J_p_inv_zi(jacobians_raw[3]);
-            J_p_inv_zi = reduce_Pj * (-1.0 / (P_inv_zi * P_inv_zi)) *
-                    (q_bc.inverse() * q_wbj.inverse() * q_wbi * q_bc * spi);
-        }
-
-        if(jacobians_raw[4]) {
-            Eigen::Map<Eigen::Vector2d> J_q_inv_zi(jacobians_raw[4]);
-            J_q_inv_zi = reduce_Qj * (-1.0 / (Q_inv_zi * Q_inv_zi)) *
-                    (q_bc.inverse() * q_wbj.inverse() * q_wbi * q_bc * epi);
+            Eigen::Map<Eigen::Matrix<double, 2, 2, Eigen::RowMajor>> J_line(jacobians_raw[3]);
+            Sophus::SO3d q_cj_ci = q_bc.inverse() * q_wbj.inverse() * q_wbi * q_bc;
+            J_line.col(0) = reduce_Pj * (-1.0 / (P_inv_zi * P_inv_zi)) * (q_cj_ci * spi);
+            J_line.col(1) = reduce_Qj * (-1.0 / (Q_inv_zi * Q_inv_zi)) * (q_cj_ci * epi);
         }
     }
     return true;
@@ -132,8 +126,7 @@ bool LineSlaveProjectionFactor::Evaluate(double const * const* parameters_raw,
     //            [1]: frame j
     //            [2]: Tbc
     //            [3]: Tsm
-    //            [4]: depth P (start point)
-    //            [5]: depth Q (end point)
+    //            [4]: depth P and Q(start point and end point)
     Eigen::Map<const Sophus::SO3d> q_wbi(parameters_raw[0]);
     Eigen::Map<const Eigen::Vector3d> p_wbi(parameters_raw[0] + 4);
     Eigen::Map<const Sophus::SO3d> q_wbj(parameters_raw[1]);
@@ -143,7 +136,7 @@ bool LineSlaveProjectionFactor::Evaluate(double const * const* parameters_raw,
     Eigen::Map<const Sophus::SO3d> q_sm(parameters_raw[3]);
     Eigen::Map<const Eigen::Vector3d> p_sm(parameters_raw[3] + 4);
     double P_inv_zi = parameters_raw[4][0];
-    double Q_inv_zi = parameters_raw[5][0];
+    double Q_inv_zi = parameters_raw[4][1];
     Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
 
     Eigen::Vector3d Pmi = sp_mi / P_inv_zi;
@@ -232,13 +225,10 @@ bool LineSlaveProjectionFactor::Evaluate(double const * const* parameters_raw,
         }
 
         if(jacobians_raw[4]) {
-            Eigen::Map<Eigen::Vector2d> J_p_inv_zi(jacobians_raw[3]);
-            J_p_inv_zi = reduce_Pj * (q_sm * q_bc.inverse() * q_wbj.inverse() * q_wbi * q_bc * (-sp_mi / (P_inv_zi * P_inv_zi)));
-        }
-
-        if(jacobians_raw[5]) {
-            Eigen::Map<Eigen::Vector2d> J_q_inv_zi(jacobians_raw[4]);
-            J_q_inv_zi = reduce_Qj * (q_sm * q_bc.inverse() * q_wbj.inverse() * q_wbi * q_bc * (-ep_mi / (Q_inv_zj * Q_inv_zj)));
+            Eigen::Map<Eigen::Matrix<double, 2, 2, Eigen::RowMajor>> J_line(jacobians_raw[4]);
+            Sophus::SO3d q_sj_mi = q_sm * q_bc.inverse() * q_wbj.inverse() * q_wbi * q_bc;
+            J_line.col(0) = reduce_Pj * (q_sj_mi * (-sp_mi / (P_inv_zi * P_inv_zi)));
+            J_line.col(1) = reduce_Qj * (q_sj_mi * (-ep_mi / (Q_inv_zj * Q_inv_zj)));
         }
     }
     return true;
@@ -259,7 +249,7 @@ bool LineSelfProjectionFactor::Evaluate(double const * const* parameters_raw,
     Eigen::Map<const Sophus::SO3d> q_rl(parameters_raw[0]);
     Eigen::Map<const Eigen::Vector3d> p_rl(parameters_raw[0] + 4);
     double P_inv_zl = parameters_raw[1][0];
-    double Q_inv_zl = parameters_raw[2][0];
+    double Q_inv_zl = parameters_raw[1][1];
     Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
 
     Eigen::Vector3d Pcl = spl / P_inv_zl;
@@ -303,13 +293,9 @@ bool LineSelfProjectionFactor::Evaluate(double const * const* parameters_raw,
         }
 
         if(jacobians_raw[1]) {
-            Eigen::Map<Eigen::Vector2d> J_p_inv_zl(jacobians_raw[1]);
-            J_p_inv_zl = reduce_Pr * -(q_rl * (spl / (P_inv_zl * P_inv_zl)));
-        }
-
-        if(jacobians_raw[2]) {
-            Eigen::Map<Eigen::Vector2d> J_q_inv_zl(jacobians_raw[2]);
-            J_q_inv_zl = reduce_Qr * -(q_rl * (epl / (Q_inv_zl * Q_inv_zl)));
+            Eigen::Map<Eigen::Matrix<double, 2, 2, Eigen::RowMajor>> J_line(jacobians_raw[1]);
+            J_line.col(0) = reduce_Pr * -(q_rl * (spl / (P_inv_zl * P_inv_zl)));
+            J_line.col(1) = reduce_Qr * -(q_rl * (epl / (Q_inv_zl * Q_inv_zl)));
         }
     }
     return true;

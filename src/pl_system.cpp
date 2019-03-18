@@ -159,8 +159,11 @@ void PLSystem::BackEndProcess() {
         feature_tracker->ExtractFAST(feat_frame);
         PubTrackingImg(feat_frame, line_frame);
         StereoMatcher::FramePtr stereo_frame = stereo_matcher->Process(feat_frame, img_r);
-        BackEnd::FramePtr back_frame = Converter::Convert(feat_frame, cam_m, stereo_frame, cam_s,
-                                                          v_gyr, v_acc, v_imu_t);
+        LineStereoMatcher::FramePtr line_stereo_frame = line_stereo_matcher->Process(line_frame, img_r);
+        PLBackEnd::FramePtr back_frame = Converter::Convert(feat_frame, stereo_frame, line_frame,
+                                                            line_stereo_frame, cam_m, cam_s,
+                                                            v_gyr, v_acc, v_imu_t);
+
         back_frame->td = td;
         backend->ProcessFrame(back_frame);
 

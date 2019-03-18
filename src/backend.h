@@ -116,18 +116,19 @@ public:
 
 protected:
     MarginType AddFeaturesCheckParallax(FramePtr frame);
+    virtual void AddFeatures(FramePtr frame, int& last_track_num);
     void SlidingWindow();
-    void SlidingWindowOld();
-    void SlidingWindowSecondNew();
-    int Triangulate(int sw_idx);
+    virtual void SlidingWindowOld();
+    virtual void SlidingWindowSecondNew();
+    virtual int Triangulate(int sw_idx);
     void Reset();
-    void SolveBA();
+    virtual void SolveBA();
     virtual void SolveBAImu();
     void SolvePnP(FramePtr frame);
     bool GyroBiasEstimation();
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
     void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
-    void Marginalize();
+    virtual void Marginalize();
     void Publish();
 //    void DrawUI();
 

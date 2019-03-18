@@ -125,12 +125,48 @@ bool BackEnd::GetNewKeyFrameAndMapPoints(FramePtr& keyframe, Eigen::VecVector3d&
 }
 
 BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
-    int last_track_num = 0;
+    int last_track_num;
     int size_frames = d_frames.size();
+    AddFeatures(frame, last_track_num);
+
+    if(size_frames < 2 || last_track_num < 20) {
+        return MARGIN_OLD;
+    }
+
+    double parallax_sum = 0.0f;
+    int parallax_num = 0;
+
+    // check the second last frame is keyframe or not
+    // parallax betwwen seconde last frame and third last frame
+    // [0, 1, 2, ..., size - 3, size - 2, size - 1]
+
+    for(auto& it : m_features) {
+        auto& feat = it.second;
+        if(feat.start_id <= size_frames - 3 &&
+           feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
+            size_t idx_i = size_frames - 3 - feat.start_id;
+            size_t idx_j = size_frames - 2 - feat.start_id;
+
+            parallax_sum += (feat.pt_n_per_frame[idx_i] - feat.pt_n_per_frame[idx_j]).norm();
+            parallax_num++;
+        }
+    }
+
+    if(parallax_num == 0) {
+        return MARGIN_OLD;
+    }
+    else {
+        return (parallax_sum / parallax_num >= min_parallax) ? MARGIN_OLD : MARGIN_SECOND_NEW;
+    }
+}
+
+void BackEnd::AddFeatures(FramePtr frame, int& last_track_num) {
+    last_track_num = 0;
+    int frame_idx = d_frames.size() - 1;
     for(int i = 0; i < frame->pt_id.size(); ++i) {
         auto it = m_features.find(frame->pt_id[i]);
         if(it == m_features.end()) {
-            auto result = m_features.emplace(std::make_pair(frame->pt_id[i], Feature(frame->pt_id[i], size_frames - 1)));
+            auto result = m_features.emplace(std::make_pair(frame->pt_id[i], Feature(frame->pt_id[i], frame_idx)));
             if(!result.second)
                 throw std::runtime_error("m_features insert fail?");
             Feature& feat = result.first->second;
@@ -175,37 +211,6 @@ BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
                 feat.velocity_r_per_frame.emplace_back(0, 0, 0);
             }
         }
-    }
-
-
-    if(size_frames < 2 || last_track_num < 20) {
-        return MARGIN_OLD;
-    }
-
-    double parallax_sum = 0.0f;
-    int parallax_num = 0;
-
-    // check the second last frame is keyframe or not
-    // parallax betwwen seconde last frame and third last frame
-    // [0, 1, 2, ..., size - 3, size - 2, size - 1]
-
-    for(auto& it : m_features) {
-        auto& feat = it.second;
-        if(feat.start_id <= size_frames - 3 &&
-           feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
-            size_t idx_i = size_frames - 3 - feat.start_id;
-            size_t idx_j = size_frames - 2 - feat.start_id;
-
-            parallax_sum += (feat.pt_n_per_frame[idx_i] - feat.pt_n_per_frame[idx_j]).norm();
-            parallax_num++;
-        }
-    }
-
-    if(parallax_num == 0) {
-        return MARGIN_OLD;
-    }
-    else {
-        return (parallax_sum / parallax_num >= min_parallax) ? MARGIN_OLD : MARGIN_SECOND_NEW;
     }
 }
 

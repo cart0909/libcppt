@@ -59,6 +59,52 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
      return backend_frame;
 }
 
+PLBackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr f_frame, StereoMatcher::FramePtr s_frame,
+                                       LineTracker::FramePtr l_frame, LineStereoMatcher::FramePtr ls_frame,
+                                       CameraPtr cam_m, CameraPtr cam_s, const Eigen::VecVector3d& v_gyr,
+                                       const Eigen::VecVector3d& v_acc, const std::vector<double>& v_imu_t)
+{
+    PLBackEnd::FramePtr frame(new PLBackEnd::Frame);
+    frame->timestamp = f_frame->timestamp;
+    frame->pt_id = f_frame->pt_id;
+    for(int i = 0, n = f_frame->pt_id.size(); i < n; ++i) {
+        Eigen::Vector3d Pl, Pr;
+        Pl = cam_m->BackProject(Eigen::Vector2d(f_frame->pt[i].x, f_frame->pt[i].y));
+        frame->pt_normal_plane.emplace_back(Pl);
+        if(s_frame->pt_r[i].x == -1) {
+            frame->pt_r_normal_plane.emplace_back(-1, -1, 0);
+        }
+        else {
+            Pr = cam_s->BackProject(Eigen::Vector2d(s_frame->pt_r[i].x, s_frame->pt_r[i].y));
+            frame->pt_r_normal_plane.emplace_back(Pr);
+        }
+    }
+
+    frame->line_id = l_frame->v_line_id;
+    for(int i = 0, n = l_frame->v_line_id.size(); i < n; ++i) {
+        Eigen::Vector3d Pl, Pr, Ql, Qr;
+        Pl = cam_m->BackProject(Eigen::Vector2d(l_frame->v_lines[i].startPointX, l_frame->v_lines[i].startPointY));
+        Ql = cam_m->BackProject(Eigen::Vector2d(l_frame->v_lines[i].endPointX, l_frame->v_lines[i].endPointY));
+        frame->line_spt_n.emplace_back(Pl);
+        frame->line_ept_n.emplace_back(Ql);
+        if(ls_frame->v_lines_r[i].startPointX == -1) {
+            frame->line_spt_r_n.emplace_back(-1, -1, 0);
+            frame->line_ept_r_n.emplace_back(-1, -1, 0);
+        }
+        else {
+            Pr = cam_s->BackProject(Eigen::Vector2d(ls_frame->v_lines_r[i].startPointX, ls_frame->v_lines_r[i].startPointY));
+            Qr = cam_s->BackProject(Eigen::Vector2d(ls_frame->v_lines_r[i].endPointX, ls_frame->v_lines_r[i].endPointY));
+            frame->line_spt_r_n.emplace_back(Pr);
+            frame->line_ept_r_n.emplace_back(Qr);
+        }
+    }
+
+    frame->v_gyr = v_gyr;
+    frame->v_acc = v_acc;
+    frame->v_imu_timestamp = v_imu_t;
+    return frame;
+}
+
 Relocalization::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame,
                                             BackEnd::FramePtr back_frame,
                                             const Eigen::VecVector3d& v_x3Dc) {

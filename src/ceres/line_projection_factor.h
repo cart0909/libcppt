@@ -2,7 +2,7 @@
 #include <Eigen/Dense>
 #include <ceres/sized_cost_function.h>
 
-class LineProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 1, 1>
+class LineProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 2>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -19,7 +19,7 @@ public:
     Eigen::Matrix2d sqrt_info;
 };
 
-class LineSlaveProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 7, 1, 1>
+class LineSlaveProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 7, 2>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -36,7 +36,7 @@ public:
     Eigen::Matrix2d sqrt_info;
 };
 
-class LineSelfProjectionFactor : public ceres::SizedCostFunction<2, 7, 1, 1>
+class LineSelfProjectionFactor : public ceres::SizedCostFunction<2, 7, 2>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
