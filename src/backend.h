@@ -121,7 +121,7 @@ protected:
     virtual void SlidingWindowOld();
     virtual void SlidingWindowSecondNew();
     virtual int Triangulate(int sw_idx);
-    void Reset();
+    virtual void Reset();
     virtual void SolveBA();
     virtual void SolveBAImu();
     void SolvePnP(FramePtr frame);

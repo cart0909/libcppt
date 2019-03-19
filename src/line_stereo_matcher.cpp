@@ -23,11 +23,6 @@ LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_f
     std::vector<int> matches_lr;
     LRMatch(l_frame->desc, desc_r, 0.75, matches_lr);
 
-
-
-
-
-
     for(int i = 0, n = matches_lr.size(); i < n; ++i) {
         if(matches_lr[i] == -1) {
             cv::line_descriptor::KeyLine kl;
@@ -64,13 +59,19 @@ LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_f
             Eigen::Vector2d Ij = (spr - epr) / (spr - epr).squaredNorm();
             double ij_cross = (Eigen::Vector3d(Ii.x(), Ii.y(), 0).cross(Eigen::Vector3d(Ij.x(), Ij.y(), 0))).norm();
             double ij_dot = Ij.dot(Ii);
-            double theta = std::atan2(ij_cross, ij_dot) * 180 / PI;
+            double theta = std::atan2(ij_cross, ij_dot) * 180 / M_PI;
 
             //find the match inlier keyline and insert value to frame.
             if(overlap > 0.65 && theta < 5){
                 r_frame->v_lines_r.emplace_back(v_klines_r[matches_lr[i]]);
             }
             else{
+                cv::line_descriptor::KeyLine kl;
+                kl.startPointX = -1;
+                kl.startPointY = -1;
+                kl.endPointX = -1;
+                kl.endPointY = -1;
+                r_frame->v_lines_r.emplace_back(kl);
                 matches_lr[i] = -1;
             }
         }

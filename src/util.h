@@ -64,8 +64,6 @@ using NAME##ConstPtr = std::shared_ptr<const NAME>; \
 using NAME##WPtr = std::weak_ptr<NAME>; \
 using NAME##ConstWPtr = std::weak_ptr<const NAME>;
 
-#define PI 3.141592
-
 // simple timer
 class TicToc {
 public:

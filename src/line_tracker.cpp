@@ -14,26 +14,26 @@ LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestam
     frame->img = img;
     frame->timestamp = timestamp;
 
-    //FSD
+    //FLD
     std::vector<cv::Vec4f> v_lines;
     Tracer::TraceBegin("fld");
-#if 0
+#if 1
     fld->detect(frame->img, v_lines);
 #else
     lsd->detect(frame->img, v_lines);
 #endif
     Tracer::TraceEnd();
     // constrain the number of lines
-//    if(v_lines.size() > 50) {
-//        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
-//            double ldx = lhs[0] - lhs[2];
-//            double ldy = lhs[1] - lhs[3];
-//            double rdx = rhs[0] - rhs[2];
-//            double rdy = rhs[1] - rhs[3];
-//            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
-//        });
-//        v_lines.resize(50);
-//    }
+    if(v_lines.size() > 50) {
+        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
+            double ldx = lhs[0] - lhs[2];
+            double ldy = lhs[1] - lhs[3];
+            double rdx = rhs[0] - rhs[2];
+            double rdy = rhs[1] - rhs[3];
+            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
+        });
+        v_lines.resize(50);
+    }
 
     for(int i = 0, n = v_lines.size(); i < n; ++i) {
         auto& line = v_lines[i];
@@ -138,7 +138,7 @@ LineTracker::FramePtr LineTracker::Process(const cv::Mat& img, double timestamp)
         Eigen::Vector2d Ij = (spr - epr) / (spr - epr).squaredNorm();
         double ij_cross = (Eigen::Vector3d(Ii.x(), Ii.y(), 0).cross(Eigen::Vector3d(Ij.x(), Ij.y(), 0))).norm();
         double ij_dot = Ij.dot(Ii);
-        double theta = std::atan2(ij_cross, ij_dot) * 180 / PI;
+        double theta = std::atan2(ij_cross, ij_dot) * 180 / M_PI;
         if(overlap > 0.6 && theta < 5){
             frame->v_line_id.emplace_back(last_frame->v_line_id[matches21[i1]]);
         }

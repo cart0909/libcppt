@@ -63,6 +63,7 @@ private:
     void SolveBA() override;
     void SolveBAImu() override;
     void Marginalize() override;
+    void Reset() override;
     // line feature managers
     std::map<uint64_t, LineFeature> m_lines;
 
