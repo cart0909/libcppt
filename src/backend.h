@@ -127,7 +127,7 @@ protected:
     void SolvePnP(FramePtr frame);
     bool GyroBiasEstimation();
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
-    void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
+    virtual void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
     virtual void Marginalize();
     void Publish();
 //    void DrawUI();

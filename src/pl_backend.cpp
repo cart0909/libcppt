@@ -278,54 +278,54 @@ void PLBackEnd::SolveBA() {
 
     size_t mp_idx = 0;
     cv::Mat draw(480, 640, CV_8UC3, cv::Scalar::all(0));
-    for(auto& it : m_features) {
-        auto& feat = it.second;
-        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
-            continue;
-        }
+//    for(auto& it : m_features) {
+//        auto& feat = it.second;
+//        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
+//            continue;
+//        }
 
-        size_t id_i = feat.start_id;
-        Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
-        for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j) {
-            size_t id_j = id_i + j;
-            Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
+//        size_t id_i = feat.start_id;
+//        Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
+//        for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j) {
+//            size_t id_j = id_i + j;
+//            Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
 
-            if(j != 0) {
-                auto factor = new ProjectionExFactor(pt_i, pt_j, focal_length);
-                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
-            }
-
-//            if(id_j == window_size) {
-//                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
-//                p(0) += 320;
-//                p(1) += 240;
-//                cv::circle(draw, cv::Point(p(0), p(1)), 1, cv::Scalar(0, 255, 0), -1);
+//            if(j != 0) {
+//                auto factor = new ProjectionExFactor(pt_i, pt_j, focal_length);
+//                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
 //            }
 
-//            if(j != 0 && (id_i + n - 1) == window_size) {
-//                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
-//                p(0) += 320;
-//                p(1) += 240;
-//                Eigen::Vector2d q = feat.pt_n_per_frame[j-1].head<2>() * focal_length;
-//                q(0) += 320;
-//                q(1) += 240;
-//                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(0, 255, 255), 1);
-//            }
+////            if(id_j == window_size) {
+////                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
+////                p(0) += 320;
+////                p(1) += 240;
+////                cv::circle(draw, cv::Point(p(0), p(1)), 1, cv::Scalar(0, 255, 0), -1);
+////            }
 
-            if(feat.pt_r_n_per_frame[j](2) != 0) {
-                Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
-                if(j == 0) {
-                    auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
-                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_features + mp_idx);
-                }
-                else {
-                    auto factor = new SlaveProjectionExFactor(pt_i, pt_jr, focal_length);
-                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_features + mp_idx);
-                }
-            }
-        }
-        ++mp_idx;
-    }
+////            if(j != 0 && (id_i + n - 1) == window_size) {
+////                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
+////                p(0) += 320;
+////                p(1) += 240;
+////                Eigen::Vector2d q = feat.pt_n_per_frame[j-1].head<2>() * focal_length;
+////                q(0) += 320;
+////                q(1) += 240;
+////                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(0, 255, 255), 1);
+////            }
+
+//            if(feat.pt_r_n_per_frame[j](2) != 0) {
+//                Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
+//                if(j == 0) {
+//                    auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
+//                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_features + mp_idx);
+//                }
+//                else {
+//                    auto factor = new SlaveProjectionExFactor(pt_i, pt_jr, focal_length);
+//                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_features + mp_idx);
+//                }
+//            }
+//        }
+//        ++mp_idx;
+//    }
 
     size_t line_idx = 0;
     for(auto& it : m_lines) {
@@ -377,12 +377,12 @@ void PLBackEnd::SolveBA() {
             if(line.spt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
                 if(j == 0) {
-                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
-                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_lines + line_idx * 2);
+//                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
+//                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_lines + line_idx * 2);
                 }
                 else {
-                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
-                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
+//                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
+//                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
                 }
             }
         }
@@ -798,4 +798,16 @@ void PLBackEnd::Marginalize() {
 void PLBackEnd::Reset() {
     BackEnd::Reset();
     m_lines.clear();
+}
+
+void PLBackEnd::PredictNextFramePose(BackEnd::FramePtr ref_frame, BackEnd::FramePtr cur_frame) {
+    cur_frame->q_wb = ref_frame->q_wb;
+    cur_frame->p_wb = ref_frame->p_wb;
+    cur_frame->v_wb = ref_frame->v_wb;
+    cur_frame->ba = ref_frame->ba;
+    cur_frame->bg = ref_frame->bg;
+    cur_frame->imupreinte = std::make_shared<IntegrationBase>(
+                ref_frame->v_acc.back(), ref_frame->v_gyr.back(),
+                ref_frame->ba, ref_frame->bg,
+                acc_n, gyr_n, acc_w, gyr_w);
 }
