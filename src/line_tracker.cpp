@@ -88,7 +88,7 @@ LineTracker::FramePtr LineTracker::Process(const cv::Mat& img, double timestamp)
 
     for(int i = 0, n = matches21.size(); i < n; ++i) {
         if(matches21[i] != -1)
-            frame->v_line_id.emplace_back(matches21[i]);
+            frame->v_line_id.emplace_back(last_frame->v_line_id[matches21[i]]);
         else
             frame->v_line_id.emplace_back(next_line_id++);
     }

@@ -277,6 +277,7 @@ void PLBackEnd::SolveBA() {
     }
 
     size_t mp_idx = 0;
+    cv::Mat draw(480, 640, CV_8UC3, cv::Scalar::all(0));
     for(auto& it : m_features) {
         auto& feat = it.second;
         if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
@@ -292,6 +293,23 @@ void PLBackEnd::SolveBA() {
             if(j != 0) {
                 auto factor = new ProjectionExFactor(pt_i, pt_j, focal_length);
                 problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
+            }
+
+            if(id_j == window_size) {
+                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
+                p(0) += 320;
+                p(1) += 240;
+                cv::circle(draw, cv::Point(p(0), p(1)), 1, cv::Scalar(0, 255, 0), -1);
+            }
+
+            if(j != 0 && (id_i + n - 1) == window_size) {
+                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
+                p(0) += 320;
+                p(1) += 240;
+                Eigen::Vector2d q = feat.pt_n_per_frame[j-1].head<2>() * focal_length;
+                q(0) += 320;
+                q(1) += 240;
+                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(0, 255, 255), 1);
             }
 
             if(feat.pt_r_n_per_frame[j](2) != 0) {
@@ -327,6 +345,35 @@ void PLBackEnd::SolveBA() {
 //                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
             }
 
+            if(id_j == window_size) {
+                Eigen::Vector2d p = spt_j.head<2>() * focal_length;
+                Eigen::Vector2d q = ept_j.head<2>() * focal_length;
+                p(0) += 320;
+                p(1) += 240;
+                q(0) += 320;
+                q(1) += 240;
+                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(255, 255, 255), 1);
+                cv::circle(draw, cv::Point(p(0), p(1)), 2, cv::Scalar(0, 0, 255), -1);
+                cv::circle(draw, cv::Point(q(0), q(1)), 2, cv::Scalar(255, 0, 0), -1);
+            }
+
+            if(j != 0 && (id_i + n - 1) == window_size) {
+                Eigen::Vector2d p0 = spt_j.head<2>() * focal_length;
+                Eigen::Vector2d q0 = ept_j.head<2>() * focal_length;
+                p0(0) += 320;
+                p0(1) += 240;
+                q0(0) += 320;
+                q0(1) += 240;
+                Eigen::Vector2d p1 = line.spt_n_per_frame[j-1].head<2>() * focal_length;
+                Eigen::Vector2d q1 = line.ept_n_per_frame[j-1].head<2>() * focal_length;
+                p1(0) += 320;
+                p1(1) += 240;
+                q1(0) += 320;
+                q1(1) += 240;
+                cv::line(draw, cv::Point(p0(0), p0(1)), cv::Point(p1(0), p1(1)), cv::Scalar(0, 0, 255), 1);
+                cv::line(draw, cv::Point(q0(0), q0(1)), cv::Point(q1(0), q1(1)), cv::Scalar(255, 0, 0), 1);
+            }
+
             if(line.spt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
                 if(j == 0) {
@@ -341,6 +388,9 @@ void PLBackEnd::SolveBA() {
         }
         ++line_idx;
     }
+
+    cv::imshow("draw", draw);
+    cv::waitKey(1);
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
@@ -389,6 +439,7 @@ void PLBackEnd::SolveBAImu() {
     }
 
     size_t mp_idx = 0;
+    cv::Mat draw(480, 640, CV_8UC3, cv::Scalar::all(0));
     for(auto& it : m_features) {
         auto& feat = it.second;
         if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
@@ -415,6 +466,23 @@ void PLBackEnd::SolveBAImu() {
                     problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
                 }
             }
+
+//            if(id_j == window_size) {
+//                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
+//                p(0) += 320;
+//                p(1) += 240;
+//                cv::circle(draw, cv::Point(p(0), p(1)), 1, cv::Scalar(0, 255, 0), -1);
+//            }
+
+//            if(j != 0 && (id_i + n - 1) == window_size) {
+//                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
+//                p(0) += 320;
+//                p(1) += 240;
+//                Eigen::Vector2d q = feat.pt_n_per_frame[j-1].head<2>() * focal_length;
+//                q(0) += 320;
+//                q(1) += 240;
+//                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(0, 255, 255), 1);
+//            }
 
             if(feat.pt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
@@ -446,38 +514,69 @@ void PLBackEnd::SolveBAImu() {
         ++mp_idx;
     }
 
-//    size_t line_idx = 0;
-//    for(auto& it : m_lines) {
-//        auto& line = it.second;
-//        if(line.CountNumMeas(window_size) < 2 || line.inv_depth[0] == -1.0f || line.inv_depth[1] == -1.0f) {
-//            continue;
-//        }
+    size_t line_idx = 0;
+    for(auto& it : m_lines) {
+        auto& line = it.second;
+        if(line.CountNumMeas(window_size) < 2 || line.inv_depth[0] == -1.0f || line.inv_depth[1] == -1.0f) {
+            continue;
+        }
 
-//        size_t id_i = line.start_id;
-//        Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
-//        for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
-//            size_t id_j = id_i + j;
-//            Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
-
-//            if(j != 0) {
+        size_t id_i = line.start_id;
+        Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
+        for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
+            size_t id_j = id_i + j;
+            Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
+            if(j != 0) {
 //                auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
 //                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
-//            }
+            }
 
-//            if(line.spt_r_n_per_frame[j](2) != 0) {
-//                Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
-//                if(j == 0) {
+            if(id_j == window_size) {
+                Eigen::Vector2d p = spt_j.head<2>() * focal_length;
+                Eigen::Vector2d q = ept_j.head<2>() * focal_length;
+                p(0) += 320;
+                p(1) += 240;
+                q(0) += 320;
+                q(1) += 240;
+                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(255, 255, 255), 1);
+                cv::circle(draw, cv::Point(p(0), p(1)), 2, cv::Scalar(0, 0, 255), -1);
+                cv::circle(draw, cv::Point(q(0), q(1)), 2, cv::Scalar(255, 0, 0), -1);
+            }
+
+            if(j != 0 && (id_i + n - 1) == window_size) {
+                Eigen::Vector2d p0 = spt_j.head<2>() * focal_length;
+                Eigen::Vector2d q0 = ept_j.head<2>() * focal_length;
+                p0(0) += 320;
+                p0(1) += 240;
+                q0(0) += 320;
+                q0(1) += 240;
+                Eigen::Vector2d p1 = line.spt_n_per_frame[j-1].head<2>() * focal_length;
+                Eigen::Vector2d q1 = line.ept_n_per_frame[j-1].head<2>() * focal_length;
+                p1(0) += 320;
+                p1(1) += 240;
+                q1(0) += 320;
+                q1(1) += 240;
+                cv::line(draw, cv::Point(p0(0), p0(1)), cv::Point(p1(0), p1(1)), cv::Scalar(0, 0, 255), 1);
+                cv::line(draw, cv::Point(q0(0), q0(1)), cv::Point(q1(0), q1(1)), cv::Scalar(255, 0, 0), 1);
+            }
+
+            if(line.spt_r_n_per_frame[j](2) != 0) {
+                Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
+                if(j == 0) {
 //                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
 //                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_lines + line_idx * 2);
-//                }
-//                else {
+                }
+                else {
 //                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
 //                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
-//                }
-//            }
-//        }
-//        ++line_idx;
-//    }
+                }
+            }
+        }
+        ++line_idx;
+    }
+
+    cv::imshow("draw", draw);
+    cv::waitKey(1);
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
