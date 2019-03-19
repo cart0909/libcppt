@@ -1,9 +1,11 @@
 #include "line_tracker.h"
 
-LineTracker::LineTracker()
+LineTracker::LineTracker(CameraPtr camera_) : camera(camera_)
 {
     lbd = cv::line_descriptor::BinaryDescriptor::createBinaryDescriptor();
     fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, false);
+    lsd = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
+    //lsd = cv::createLineSegmentDetector(cv::LSD_REFINE_NONE);
 }
 
 LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestamp) {
@@ -12,21 +14,26 @@ LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestam
     frame->img = img;
     frame->timestamp = timestamp;
 
+    //FSD
     std::vector<cv::Vec4f> v_lines;
     Tracer::TraceBegin("fld");
+#if 0
     fld->detect(frame->img, v_lines);
+#else
+    lsd->detect(frame->img, v_lines);
+#endif
     Tracer::TraceEnd();
     // constrain the number of lines
-    if(v_lines.size() > 50) {
-        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
-            double ldx = lhs[0] - lhs[2];
-            double ldy = lhs[1] - lhs[3];
-            double rdx = rhs[0] - rhs[2];
-            double rdy = rhs[1] - rhs[3];
-            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
-        });
-        v_lines.resize(50);
-    }
+//    if(v_lines.size() > 50) {
+//        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
+//            double ldx = lhs[0] - lhs[2];
+//            double ldy = lhs[1] - lhs[3];
+//            double rdx = rhs[0] - rhs[2];
+//            double rdy = rhs[1] - rhs[3];
+//            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
+//        });
+//        v_lines.resize(50);
+//    }
 
     for(int i = 0, n = v_lines.size(); i < n; ++i) {
         auto& line = v_lines[i];
@@ -59,6 +66,7 @@ LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestam
         frame->v_lines.emplace_back(kl);
     }
 
+
     // compute lbd descriptor
     Tracer::TraceBegin("lbd");
     if(!frame->v_lines.empty())
@@ -86,12 +94,60 @@ LineTracker::FramePtr LineTracker::Process(const cv::Mat& img, double timestamp)
     std::vector<int> matches21;
     LRConsistencyMatch(frame->desc, last_frame->desc, 0.75, matches21);
 
-    for(int i = 0, n = matches21.size(); i < n; ++i) {
-        if(matches21[i] != -1)
-            frame->v_line_id.emplace_back(last_frame->v_line_id[matches21[i]]);
-        else
+    //    for(int i = 0, n = matches21.size(); i < n; ++i) {
+    //        if(matches21[i] != -1)
+    //            frame->v_line_id.emplace_back(last_frame->v_line_id[matches21[i]]);
+    //        else
+    //            frame->v_line_id.emplace_back(next_line_id++);
+    //    }
+
+    //record tracking line id
+    for (int i1 = 0; i1 < matches21.size(); ++i1) {
+        if(matches21[i1] == -1){
             frame->v_line_id.emplace_back(next_line_id++);
+            continue;
+        }
+        //overlap conditional
+        cv::line_descriptor::KeyLine kl_tmp = last_frame->v_lines[matches21[i1]];
+        cv::line_descriptor::KeyLine kr_tmp = frame->v_lines[i1];
+
+        //TODO:: save undistort point for coverter used.
+        Eigen::Vector3d undis_kl_ep;
+        Eigen::Vector3d undis_kl_sp;
+        Eigen::Vector3d undis_kr_ep;
+        Eigen::Vector3d undis_kr_sp;
+
+        undis_kl_sp = camera->BackProject(Eigen::Vector2d(kl_tmp.startPointX, kl_tmp.startPointY));
+        undis_kl_ep = camera->BackProject(Eigen::Vector2d(kl_tmp.endPointX, kl_tmp.endPointY));
+        undis_kr_sp = camera->BackProject(Eigen::Vector2d(kr_tmp.startPointX, kr_tmp.startPointY));
+        undis_kr_ep = camera->BackProject(Eigen::Vector2d(kr_tmp.endPointX, kr_tmp.endPointY));
+        Eigen::Vector2d spl;
+        Eigen::Vector2d epl;
+        Eigen::Vector2d spr;
+        Eigen::Vector2d epr;
+        camera->Project(undis_kl_sp, spl);
+        camera->Project(undis_kl_ep, epl);
+        camera->Project(undis_kr_sp, spr);
+        camera->Project(undis_kr_ep, epr);
+
+
+        double overlap = util::f2fLineSegmentOverlap(spl, epl, spr, epr);
+
+        //diff of angle
+        Eigen::Vector2d Ii = (spl - epl) / (spl - epl).squaredNorm();
+        Eigen::Vector2d Ij = (spr - epr) / (spr - epr).squaredNorm();
+        double ij_cross = (Eigen::Vector3d(Ii.x(), Ii.y(), 0).cross(Eigen::Vector3d(Ij.x(), Ij.y(), 0))).norm();
+        double ij_dot = Ij.dot(Ii);
+        double theta = std::atan2(ij_cross, ij_dot) * 180 / PI;
+        if(overlap > 0.6 && theta < 5){
+            frame->v_line_id.emplace_back(last_frame->v_line_id[matches21[i1]]);
+        }
+        else{
+            frame->v_line_id.emplace_back(next_line_id++);
+            matches21[i1] = -1;
+        }
     }
+
 
 #if 0
     std::vector<cv::DMatch> dmatches;

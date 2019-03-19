@@ -12,7 +12,7 @@ PLSystem::PLSystem(const std::string& config_file) {
 
     feature_tracker = std::make_shared<FeatureTracker>(cam_m, param.clahe_parameter, param.fast_threshold,
                                                        param.min_dist, param.Fundamental_reproj_threshold);
-    line_tracker = std::make_shared<LineTracker>();
+    line_tracker = std::make_shared<LineTracker>(cam_m);
 
     if(param.estimate_extrinsic)
         stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.clahe_parameter, param.Fundamental_reproj_threshold);
@@ -20,7 +20,7 @@ PLSystem::PLSystem(const std::string& config_file) {
         stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.p_rl[0], param.q_rl[0],
                                                          param.clahe_parameter, param.Fundamental_reproj_threshold);
 
-    line_stereo_matcher = std::make_shared<LineStereoMatcher>();
+    line_stereo_matcher = std::make_shared<LineStereoMatcher>(cam_m, cam_s);
 
     backend = std::make_shared<PLBackEnd>(cam_m->f(), param.gyr_noise, param.acc_noise,
                                           param.gyr_bias_noise, param.acc_bias_noise,

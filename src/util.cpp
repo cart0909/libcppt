@@ -61,4 +61,113 @@ ImagePyr Pyramid(const cv::Mat& img, int num_levels) {
     }
     return image_pyr;
 }
+
+double f2fLineSegmentOverlap(Eigen::Vector2d spl_obs, Eigen::Vector2d epl_obs, Eigen::Vector2d spl_proj, Eigen::Vector2d epl_proj){
+    double overlap = 1.f;
+    if( std::abs(spl_obs(0) - epl_obs(0)) < 1.0 )         // vertical lines
+    {
+        // line equations
+        Eigen::Vector2d l = epl_obs - spl_obs;
+
+        // intersection points
+        Eigen::Vector2d spl_proj_line, epl_proj_line;
+        spl_proj_line << spl_obs(0), spl_proj(1);
+        epl_proj_line << epl_obs(0), epl_proj(1);
+
+        // estimate overlap in function of lambdas
+        double lambda_s = (spl_proj_line(1)-spl_obs(1)) / l(1);
+        double lambda_e = (epl_proj_line(1)-spl_obs(1)) / l(1);
+
+        double lambda_min = std::min(lambda_s,lambda_e);
+        double lambda_max = std::max(lambda_s,lambda_e);
+
+        if( lambda_min < 0.f && lambda_max > 1.f )
+            overlap = 1.f;
+        else if( lambda_max < 0.f || lambda_min > 1.f )
+            overlap = 0.f;
+        else if( lambda_min < 0.f )
+            overlap = lambda_max;
+        else if( lambda_max > 1.f )
+            overlap = 1.f - lambda_min;
+        else
+            overlap = lambda_max - lambda_min;
+
+    }
+    else if( std::abs(spl_obs(1)-epl_obs(1)) < 1.0 )    // horizontal lines (previously removed)
+    {
+        // line equations
+        Eigen::Vector2d l = epl_obs - spl_obs;
+
+        // intersection points
+        Eigen::Vector2d spl_proj_line, epl_proj_line;
+        spl_proj_line << spl_proj(0), spl_obs(1);
+        epl_proj_line << epl_proj(0), epl_obs(1);
+
+        // estimate overlap in function of lambdas
+        double lambda_s = (spl_proj_line(0)-spl_obs(0)) / l(0);
+        double lambda_e = (epl_proj_line(0)-spl_obs(0)) / l(0);
+
+        double lambda_min = std::min(lambda_s,lambda_e);
+        double lambda_max = std::max(lambda_s,lambda_e);
+
+        if( lambda_min < 0.f && lambda_max > 1.f )
+            overlap = 1.f;
+        else if( lambda_max < 0.f || lambda_min > 1.f )
+            overlap = 0.f;
+        else if( lambda_min < 0.f )
+            overlap = lambda_max;
+        else if( lambda_max > 1.f )
+            overlap = 1.f - lambda_min;
+        else
+            overlap = lambda_max - lambda_min;
+
+    }
+    else                                            // non-degenerate cases
+    {
+        // line equations
+        Eigen::Vector2d l = epl_obs - spl_obs;
+        double a = spl_obs(1)-epl_obs(1);
+        double b = epl_obs(0)-spl_obs(0);
+        double c = spl_obs(0)*epl_obs(1) - epl_obs(0)*spl_obs(1);
+
+        // intersection points
+        Eigen::Vector2d spl_proj_line, epl_proj_line;
+        double lxy = 1.f / (a*a+b*b);
+#if 0
+        spl_proj_line << ( b*( b*spl_proj(0)-a*spl_proj(1))-a*c ) * lxy,
+                ( a*(-b*spl_proj(0)+a*spl_proj(1))-b*c ) * lxy;
+
+        epl_proj_line << ( b*( b*epl_proj(0)-a*epl_proj(1))-a*c ) * lxy,
+                ( a*(-b*epl_proj(0)+a*epl_proj(1))-b*c ) * lxy;
+#else
+        spl_proj_line << spl_proj(0) + (-a * (a*spl_proj(0) + spl_proj(1)*b +c ) * lxy),
+                spl_proj(1) + (-b * (a*spl_proj(0) + spl_proj(1)*b +c ) * lxy);
+
+        epl_proj_line << epl_proj(0) + (-a * (a*epl_proj(0) + epl_proj(1)*b +c ) * lxy),
+                epl_proj(1) + (-b * (a*epl_proj(0) + epl_proj(1)*b +c ) * lxy);
+#endif
+        // estimate overlap in function of lambdas
+        double lambda_s = (spl_proj_line(0)-spl_obs(0)) / l(0);
+        double lambda_e = (epl_proj_line(0)-spl_obs(0)) / l(0);
+
+        double lambda_min = std::min(lambda_s,lambda_e);
+        double lambda_max = std::max(lambda_s,lambda_e);
+
+        if( lambda_min < 0.f && lambda_max > 1.f )
+            overlap = 1.f;
+        else if( lambda_max < 0.f || lambda_min > 1.f )
+            overlap = 0.f;
+        else if( lambda_min < 0.f )
+            overlap = lambda_max;
+        else if( lambda_max > 1.f )
+            overlap = 1.f - lambda_min;
+        else
+            overlap = lambda_max - lambda_min;
+
+    }
+
+    return overlap;
+
 }
+} //namespace util
+

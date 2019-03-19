@@ -1,6 +1,6 @@
 #include "line_stereo_matcher.h"
 
-LineStereoMatcher::LineStereoMatcher() {
+LineStereoMatcher::LineStereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_): cam_l(cam_l_), cam_r(cam_r_) {
     lbd = cv::line_descriptor::BinaryDescriptor::createBinaryDescriptor();
     fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, false);
 }
@@ -23,6 +23,11 @@ LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_f
     std::vector<int> matches_lr;
     LRMatch(l_frame->desc, desc_r, 0.75, matches_lr);
 
+
+
+
+
+
     for(int i = 0, n = matches_lr.size(); i < n; ++i) {
         if(matches_lr[i] == -1) {
             cv::line_descriptor::KeyLine kl;
@@ -33,7 +38,41 @@ LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_f
             r_frame->v_lines_r.emplace_back(kl);
         }
         else {
-            r_frame->v_lines_r.emplace_back(v_klines_r[matches_lr[i]]);
+            cv::line_descriptor::KeyLine kl_tmp = l_frame->v_lines[i];
+            cv::line_descriptor::KeyLine kr_tmp = v_klines_r[matches_lr[i]];
+            //TODO:: save undistort point for coverter used.
+            Eigen::Vector3d undis_kl_ep;
+            Eigen::Vector3d undis_kl_sp;
+            Eigen::Vector3d undis_kr_ep;
+            Eigen::Vector3d undis_kr_sp;
+            undis_kl_sp = cam_l->BackProject(Eigen::Vector2d(kl_tmp.startPointX, kl_tmp.startPointY));
+            undis_kl_ep = cam_l->BackProject(Eigen::Vector2d(kl_tmp.endPointX, kl_tmp.endPointY));
+            undis_kr_sp = cam_r->BackProject(Eigen::Vector2d(kr_tmp.startPointX, kr_tmp.startPointY));
+            undis_kr_ep = cam_r->BackProject(Eigen::Vector2d(kr_tmp.endPointX, kr_tmp.endPointY));
+            Eigen::Vector2d spl;
+            Eigen::Vector2d epl;
+            Eigen::Vector2d spr;
+            Eigen::Vector2d epr;
+            cam_l->Project(undis_kl_sp, spl);
+            cam_l->Project(undis_kl_ep, epl);
+            cam_r->Project(undis_kr_sp, spr);
+            cam_r->Project(undis_kr_ep, epr);
+            double overlap = util::f2fLineSegmentOverlap(spl.head<2>(), epl.head<2>(), spr.head<2>(), epr.head<2>());
+
+            //diff of angle
+            Eigen::Vector2d Ii = (spl - epl) / (spl - epl).squaredNorm();
+            Eigen::Vector2d Ij = (spr - epr) / (spr - epr).squaredNorm();
+            double ij_cross = (Eigen::Vector3d(Ii.x(), Ii.y(), 0).cross(Eigen::Vector3d(Ij.x(), Ij.y(), 0))).norm();
+            double ij_dot = Ij.dot(Ii);
+            double theta = std::atan2(ij_cross, ij_dot) * 180 / PI;
+
+            //find the match inlier keyline and insert value to frame.
+            if(overlap > 0.65 && theta < 5){
+                r_frame->v_lines_r.emplace_back(v_klines_r[matches_lr[i]]);
+            }
+            else{
+                matches_lr[i] = -1;
+            }
         }
     }
 

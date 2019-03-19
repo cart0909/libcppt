@@ -7,7 +7,7 @@
 
 class LineTracker {
 public:
-    LineTracker();
+    LineTracker(CameraPtr camera_);
 
     struct Frame {
         uint64_t frame_id;
@@ -29,8 +29,9 @@ private:
     uint64_t next_frame_id = 0;
     uint64_t next_line_id = 0;
     FramePtr last_frame;
-
+    CameraPtr camera;
     cv::Ptr<cv::ximgproc::FastLineDetector> fld;
+    cv::Ptr<cv::LineSegmentDetector> lsd;
     cv::Ptr<cv::line_descriptor::BinaryDescriptor> lbd;
 };
 SMART_PTR(LineTracker)

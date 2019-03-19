@@ -4,7 +4,7 @@
 
 class LineStereoMatcher {
 public:
-    LineStereoMatcher();
+    LineStereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_);
 
     struct Frame {
         // size is same as LineTracker::Frame::v_lines
@@ -20,5 +20,6 @@ private:
     int LRMatch(const cv::Mat& desc1, const cv::Mat& desc2, float nnr, std::vector<int>& matches12);
     cv::Ptr<cv::line_descriptor::BinaryDescriptor> lbd;
     cv::Ptr<cv::ximgproc::FastLineDetector> fld;
+    CameraPtr cam_l, cam_r;
 };
 SMART_PTR(LineStereoMatcher)

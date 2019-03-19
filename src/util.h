@@ -64,6 +64,8 @@ using NAME##ConstPtr = std::shared_ptr<const NAME>; \
 using NAME##WPtr = std::weak_ptr<NAME>; \
 using NAME##ConstWPtr = std::weak_ptr<const NAME>;
 
+#define PI 3.141592
+
 // simple timer
 class TicToc {
 public:
@@ -241,5 +243,7 @@ inline bool InBorder(const cv::Point2f& pt, int width, int height) {
 }
 
 ImagePyr Pyramid(const cv::Mat& img, int num_levels);
+
+double f2fLineSegmentOverlap(Eigen::Vector2d spl_obs, Eigen::Vector2d epl_obs, Eigen::Vector2d spl_proj, Eigen::Vector2d epl_proj);
 
 }
