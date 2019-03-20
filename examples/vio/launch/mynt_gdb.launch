@@ -1,0 +1,10 @@
+<launch>
+    <arg name="config_path" default = "$(find cppt_vio)/../../config/calib/mynteye_config.yaml" />
+    <arg name="rviz_config_path" default = "-d $(find cppt_vio)/../../config/rviz_vio_config.rviz" />
+
+    <node name="cppt_vio" pkg="cppt_vio" type="cppt_vio" output="screen" launch-prefix="gdb -ex run --args">
+        <param name="config_file" type="string" value="$(arg config_path)" />
+    </node>
+
+    <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />
+</launch>

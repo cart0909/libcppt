@@ -14,11 +14,21 @@ LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_f
 
     std::vector<cv::line_descriptor::KeyLine> v_klines_r = DetectLineFeatures(r_frame->img_r);
     if(v_klines_r.empty()) {
+        for(int i = 0, n = l_frame->v_line_id.size(); i < n; ++i) {
+            cv::line_descriptor::KeyLine kl;
+            kl.startPointX = -1;
+            kl.startPointY = -1;
+            kl.endPointX = -1;
+            kl.endPointY = -1;
+            r_frame->v_lines_r.emplace_back(kl);
+        }
         return r_frame;
     }
 
     cv::Mat desc_r;
+    Tracer::TraceBegin("lbd_r");
     lbd->compute(r_frame->img_r, v_klines_r, desc_r);
+    Tracer::TraceEnd();
 
     std::vector<int> matches_lr;
     LRMatch(l_frame->desc, desc_r, 0.75, matches_lr);
@@ -111,18 +121,20 @@ LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_f
 std::vector<cv::line_descriptor::KeyLine> LineStereoMatcher::DetectLineFeatures(const cv::Mat& img) {
     std::vector<cv::Vec4f> v_lines;
     std::vector<cv::line_descriptor::KeyLine> v_klines;
+    Tracer::TraceBegin("fld_r");
     fld->detect(img, v_lines);
+    Tracer::TraceEnd();
 
-//    if(v_lines.size() > 50) {
-//        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
-//            double ldx = lhs[0] - lhs[2];
-//            double ldy = lhs[1] - lhs[3];
-//            double rdx = rhs[0] - rhs[2];
-//            double rdy = rhs[1] - rhs[3];
-//            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
-//        });
-//        v_lines.resize(50);
-//    }
+    if(v_lines.size() > 50) {
+        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
+            double ldx = lhs[0] - lhs[2];
+            double ldy = lhs[1] - lhs[3];
+            double rdx = rhs[0] - rhs[2];
+            double rdy = rhs[1] - rhs[3];
+            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
+        });
+        v_lines.resize(50);
+    }
 
     for(int i = 0, n = v_lines.size(); i < n; ++i) {
         auto& line = v_lines[i];

@@ -24,16 +24,16 @@ LineTracker::FramePtr LineTracker::InitFrame(const cv::Mat& img, double timestam
 #endif
     Tracer::TraceEnd();
     // constrain the number of lines
-//    if(v_lines.size() > 50) {
-//        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
-//            double ldx = lhs[0] - lhs[2];
-//            double ldy = lhs[1] - lhs[3];
-//            double rdx = rhs[0] - rhs[2];
-//            double rdy = rhs[1] - rhs[3];
-//            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
-//        });
-//        v_lines.resize(50);
-//    }
+    if(v_lines.size() > 50) {
+        std::sort(v_lines.begin(), v_lines.end(), [](const cv::Vec4f& lhs, const cv::Vec4f& rhs) {
+            double ldx = lhs[0] - lhs[2];
+            double ldy = lhs[1] - lhs[3];
+            double rdx = rhs[0] - rhs[2];
+            double rdy = rhs[1] - rhs[3];
+            return (ldx * ldx + ldy * ldy) > (rdx * rdx + rdy * rdy);
+        });
+        v_lines.resize(50);
+    }
 
     for(int i = 0, n = v_lines.size(); i < n; ++i) {
         auto& line = v_lines[i];
@@ -86,8 +86,15 @@ LineTracker::FramePtr LineTracker::InitFirstFrame(const cv::Mat& img, double tim
 
 LineTracker::FramePtr LineTracker::Process(const cv::Mat& img, double timestamp) {
     FramePtr frame = InitFrame(img, timestamp);
-    if(frame->v_lines.empty() || last_frame->v_lines.empty()) {
+    if(frame->v_lines.empty()) {
         last_frame = frame;
+        return frame;
+    }
+
+    if(last_frame->v_lines.empty()) {
+        for(int i = 0, n = frame->v_lines.size(); i < n; ++i) {
+            frame->v_line_id.emplace_back(next_line_id++);
+        }
         return frame;
     }
 

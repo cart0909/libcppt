@@ -64,7 +64,6 @@ private:
     void SolveBAImu() override;
     void Marginalize() override;
     void Reset() override;
-    void PredictNextFramePose(BackEnd::FramePtr ref_frame, BackEnd::FramePtr cur_frame) override;
     // line feature managers
     std::map<uint64_t, LineFeature> m_lines;
 

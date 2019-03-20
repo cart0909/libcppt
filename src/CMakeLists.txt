@@ -61,6 +61,9 @@ endif()
 # enable openmp flag
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -DEIGEN_DONT_PARALLELIZE")
 
+# set relase build ofast
+set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
+
 # Debug / Release / RelWithDebInfo
 set(CMAKE_BUILD_TYPE Release)
 

@@ -1,5 +1,4 @@
 #include "line_projection_factor.h"
-#include <sophus/se3.hpp>
 #include "util.h"
 
 LineProjectionFactor::LineProjectionFactor(const Eigen::Vector3d& spi_, const Eigen::Vector3d& epi_,
@@ -7,7 +6,7 @@ LineProjectionFactor::LineProjectionFactor(const Eigen::Vector3d& spi_, const Ei
                                            double focal_length)
     : spi(spi_), epi(epi_), spj(spj_), epj(epj_)
 {
-    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 1.5;
+    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 3;
 }
 
 bool LineProjectionFactor::Evaluate(double const * const* parameters_raw,
@@ -40,10 +39,10 @@ bool LineProjectionFactor::Evaluate(double const * const* parameters_raw,
     Eigen::Vector3d Qw = q_wbi * Qbi + p_wbi;
     Eigen::Vector3d Qbj = q_wbj.inverse() * (Qw - p_wbj);
     Eigen::Vector3d Qcj = q_bc.inverse() * (Qbj - p_bc);
-    double Q_inv_zj = 1.0f/Qcj(2);
+    double Q_inv_zj = 1.0f / Qcj(2);
 
     Eigen::Vector3d l = spj.cross(epj);
-    l.normalize();
+    l /= l.head<2>().norm();
 
     residuals << l.dot(Pcj * P_inv_zj),
                  l.dot(Qcj * Q_inv_zj);
@@ -115,7 +114,7 @@ LineSlaveProjectionFactor::LineSlaveProjectionFactor(const Eigen::Vector3d& sp_m
                                                      double focal_length)
     : sp_mi(sp_mi_), ep_mi(ep_mi_), sp_sj(sp_sj_), ep_sj(ep_sj_)
 {
-    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 1.5;
+    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 3;
 }
 
 bool LineSlaveProjectionFactor::Evaluate(double const * const* parameters_raw,
@@ -156,7 +155,7 @@ bool LineSlaveProjectionFactor::Evaluate(double const * const* parameters_raw,
     double Q_inv_zj = 1.0f / Qsj(2);
 
     Eigen::Vector3d l = sp_sj.cross(ep_sj);
-    l.normalize();
+    l /= l.head<2>().norm();
 
     residuals << l.dot(Psj * P_inv_zj),
                  l.dot(Qsj * Q_inv_zj);
@@ -239,7 +238,7 @@ LineSelfProjectionFactor::LineSelfProjectionFactor(const Eigen::Vector3d& sp_l_,
                                                    double focal_length)
     : spl(sp_l_), epl(ep_l_), spr(sp_r_), epr(ep_r_)
 {
-    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 1.5;
+    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 3;
 }
 
 bool LineSelfProjectionFactor::Evaluate(double const * const* parameters_raw,
@@ -261,7 +260,7 @@ bool LineSelfProjectionFactor::Evaluate(double const * const* parameters_raw,
     double Q_inv_zr = 1.0f / Qcr(2);
 
     Eigen::Vector3d l = spr.cross(epr);
-    l.normalize();
+    l /= l.head<2>().norm();
 
     residuals << l.dot(Pcr * P_inv_zr),
                  l.dot(Qcr * Q_inv_zr);

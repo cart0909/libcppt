@@ -4,6 +4,7 @@
 #include "ceres/projection_td_factor.h"
 #include "ceres/line_projection_factor.h"
 #include "vins/imu_factor.h"
+#define USE_POINT 1
 
 PLBackEnd::PLBackEnd() {}
 
@@ -199,14 +200,14 @@ int PLBackEnd::Triangulate(int sw_idx) {
         Q /= Q(3);
 
         if(P(2) < 0.1) {
-            line.inv_depth[0] = 1.0f / triangulate_default_depth;
+            line.inv_depth[0] = -1.0f;
         }
         else {
             line.inv_depth[0] = 1.0f / P(2);
         }
 
         if(Q(2) < 0.1) {
-            line.inv_depth[1] = 1.0f / triangulate_default_depth;
+            line.inv_depth[1] = -1.0f;
         }
         else {
             line.inv_depth[1] = 1.0f / Q(2);
@@ -262,6 +263,7 @@ void PLBackEnd::SolveBA() {
     data2double();
     ceres::Problem problem;
     ceres::LossFunction *loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
+    ceres::LossFunction *line_loss_function = new ceres::HuberLoss(0.3);
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
     problem.AddParameterBlock(para_ex_bc, 7, local_para_se3);
@@ -276,57 +278,41 @@ void PLBackEnd::SolveBA() {
             problem.SetParameterBlockConstant(para_pose);
     }
 
+#if USE_POINT
     size_t mp_idx = 0;
-    cv::Mat draw(480, 640, CV_8UC3, cv::Scalar::all(0));
-//    for(auto& it : m_features) {
-//        auto& feat = it.second;
-//        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
-//            continue;
-//        }
+    for(auto& it : m_features) {
+        auto& feat = it.second;
+        if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
+            continue;
+        }
 
-//        size_t id_i = feat.start_id;
-//        Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
-//        for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j) {
-//            size_t id_j = id_i + j;
-//            Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
+        size_t id_i = feat.start_id;
 
-//            if(j != 0) {
-//                auto factor = new ProjectionExFactor(pt_i, pt_j, focal_length);
-//                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
-//            }
+        Eigen::Vector3d pt_i = feat.pt_n_per_frame[0];
+        for(int j = 0, n = feat.pt_n_per_frame.size(); j < n; ++j) {
+            size_t id_j = id_i + j;
+            Eigen::Vector3d pt_j = feat.pt_n_per_frame[j];
 
-////            if(id_j == window_size) {
-////                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
-////                p(0) += 320;
-////                p(1) += 240;
-////                cv::circle(draw, cv::Point(p(0), p(1)), 1, cv::Scalar(0, 255, 0), -1);
-////            }
+            if(j != 0) {
+                auto factor = new ProjectionExFactor(pt_i, pt_j, focal_length);
+                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
+            }
 
-////            if(j != 0 && (id_i + n - 1) == window_size) {
-////                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
-////                p(0) += 320;
-////                p(1) += 240;
-////                Eigen::Vector2d q = feat.pt_n_per_frame[j-1].head<2>() * focal_length;
-////                q(0) += 320;
-////                q(1) += 240;
-////                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(0, 255, 255), 1);
-////            }
-
-//            if(feat.pt_r_n_per_frame[j](2) != 0) {
-//                Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
-//                if(j == 0) {
-//                    auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
-//                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_features + mp_idx);
-//                }
-//                else {
-//                    auto factor = new SlaveProjectionExFactor(pt_i, pt_jr, focal_length);
-//                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_features + mp_idx);
-//                }
-//            }
-//        }
-//        ++mp_idx;
-//    }
-
+            if(feat.pt_r_n_per_frame[j](2) != 0) {
+                Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
+                if(j == 0) {
+                    auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_features + mp_idx);
+                }
+                else {
+                    auto factor = new SlaveProjectionExFactor(pt_i, pt_jr, focal_length);
+                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_features + mp_idx);
+                }
+            }
+        }
+        ++mp_idx;
+    }
+#endif
     size_t line_idx = 0;
     for(auto& it : m_lines) {
         auto& line = it.second;
@@ -336,82 +322,50 @@ void PLBackEnd::SolveBA() {
 
         size_t id_i = line.start_id;
         Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
+
         for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
             size_t id_j = id_i + j;
             Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
 
             if(j != 0) {
                 auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
-                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
-            }
-
-            if(id_j == window_size) {
-                Eigen::Vector2d p = spt_j.head<2>() * focal_length;
-                Eigen::Vector2d q = ept_j.head<2>() * focal_length;
-                p(0) += 320;
-                p(1) += 240;
-                q(0) += 320;
-                q(1) += 240;
-                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(255, 255, 255), 1);
-                cv::circle(draw, cv::Point(p(0), p(1)), 2, cv::Scalar(0, 0, 255), -1);
-                cv::circle(draw, cv::Point(q(0), q(1)), 2, cv::Scalar(255, 0, 0), -1);
-            }
-
-            if(j != 0 && (id_i + n - 1) == window_size) {
-                Eigen::Vector2d p0 = spt_j.head<2>() * focal_length;
-                Eigen::Vector2d q0 = ept_j.head<2>() * focal_length;
-                p0(0) += 320;
-                p0(1) += 240;
-                q0(0) += 320;
-                q0(1) += 240;
-                Eigen::Vector2d p1 = line.spt_n_per_frame[j-1].head<2>() * focal_length;
-                Eigen::Vector2d q1 = line.ept_n_per_frame[j-1].head<2>() * focal_length;
-                p1(0) += 320;
-                p1(1) += 240;
-                q1(0) += 320;
-                q1(1) += 240;
-                cv::line(draw, cv::Point(p0(0), p0(1)), cv::Point(p1(0), p1(1)), cv::Scalar(0, 0, 255), 1);
-                cv::line(draw, cv::Point(q0(0), q0(1)), cv::Point(q1(0), q1(1)), cv::Scalar(255, 0, 0), 1);
+                problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
             }
 
             if(line.spt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
                 if(j == 0) {
-//                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
-//                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_lines + line_idx * 2);
+                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
+                    problem.AddResidualBlock(factor, line_loss_function, para_ex_sm, para_lines + line_idx * 2);
                 }
                 else {
-//                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
-//                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
+                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
+                    problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
                 }
             }
         }
         ++line_idx;
     }
 
-    cv::imshow("draw", draw);
-    cv::waitKey(1);
-
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.trust_region_strategy_type = ceres::DOGLEG;
+    options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     options.max_num_iterations = max_num_iterations;
     options.num_threads = 1;
     options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
-    LOG(INFO) << summary.FullReport();
+//    LOG(INFO) << summary.FullReport();
     double2data();
 }
 
 void PLBackEnd::SolveBAImu() {
-    PLBackEnd::SolveBA();
-    return;
     Tracer::TraceBegin("BA");
     data2double();
     ceres::Problem problem;
     ceres::LossFunction *loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
+    ceres::LossFunction *line_loss_function = new ceres::HuberLoss(0.3);
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
     problem.AddParameterBlock(para_ex_bc, 7, local_para_se3);
@@ -440,8 +394,8 @@ void PLBackEnd::SolveBAImu() {
         problem.AddResidualBlock(factor, NULL, para_margin_block);
     }
 
+#if USE_POINT
     size_t mp_idx = 0;
-    cv::Mat draw(480, 640, CV_8UC3, cv::Scalar::all(0));
     for(auto& it : m_features) {
         auto& feat = it.second;
         if(feat.CountNumMeas(window_size) < 2 || feat.inv_depth == -1.0f) {
@@ -468,23 +422,6 @@ void PLBackEnd::SolveBAImu() {
                     problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_features + mp_idx);
                 }
             }
-
-//            if(id_j == window_size) {
-//                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
-//                p(0) += 320;
-//                p(1) += 240;
-//                cv::circle(draw, cv::Point(p(0), p(1)), 1, cv::Scalar(0, 255, 0), -1);
-//            }
-
-//            if(j != 0 && (id_i + n - 1) == window_size) {
-//                Eigen::Vector2d p = pt_j.head<2>() * focal_length;
-//                p(0) += 320;
-//                p(1) += 240;
-//                Eigen::Vector2d q = feat.pt_n_per_frame[j-1].head<2>() * focal_length;
-//                q(0) += 320;
-//                q(1) += 240;
-//                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(0, 255, 255), 1);
-//            }
 
             if(feat.pt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d pt_jr = feat.pt_r_n_per_frame[j];
@@ -515,6 +452,7 @@ void PLBackEnd::SolveBAImu() {
         }
         ++mp_idx;
     }
+#endif
 
     size_t line_idx = 0;
     for(auto& it : m_lines) {
@@ -530,55 +468,23 @@ void PLBackEnd::SolveBAImu() {
             Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
             if(j != 0) {
                 auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
-                problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
-            }
-
-            if(id_j == window_size) {
-                Eigen::Vector2d p = spt_j.head<2>() * focal_length;
-                Eigen::Vector2d q = ept_j.head<2>() * focal_length;
-                p(0) += 320;
-                p(1) += 240;
-                q(0) += 320;
-                q(1) += 240;
-                cv::line(draw, cv::Point(p(0), p(1)), cv::Point(q(0), q(1)), cv::Scalar(255, 255, 255), 1);
-                cv::circle(draw, cv::Point(p(0), p(1)), 2, cv::Scalar(0, 0, 255), -1);
-                cv::circle(draw, cv::Point(q(0), q(1)), 2, cv::Scalar(255, 0, 0), -1);
-            }
-
-            if(j != 0 && (id_i + n - 1) == window_size) {
-                Eigen::Vector2d p0 = spt_j.head<2>() * focal_length;
-                Eigen::Vector2d q0 = ept_j.head<2>() * focal_length;
-                p0(0) += 320;
-                p0(1) += 240;
-                q0(0) += 320;
-                q0(1) += 240;
-                Eigen::Vector2d p1 = line.spt_n_per_frame[j-1].head<2>() * focal_length;
-                Eigen::Vector2d q1 = line.ept_n_per_frame[j-1].head<2>() * focal_length;
-                p1(0) += 320;
-                p1(1) += 240;
-                q1(0) += 320;
-                q1(1) += 240;
-                cv::line(draw, cv::Point(p0(0), p0(1)), cv::Point(p1(0), p1(1)), cv::Scalar(0, 0, 255), 1);
-                cv::line(draw, cv::Point(q0(0), q0(1)), cv::Point(q1(0), q1(1)), cv::Scalar(255, 0, 0), 1);
+                problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
             }
 
             if(line.spt_r_n_per_frame[j](2) != 0) {
                 Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
                 if(j == 0) {
-//                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
-//                    problem.AddResidualBlock(factor, loss_function, para_ex_sm, para_lines + line_idx * 2);
+                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
+                    problem.AddResidualBlock(factor, line_loss_function, para_ex_sm, para_lines + line_idx * 2);
                 }
                 else {
-//                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
-//                    problem.AddResidualBlock(factor, loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
+                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
+                    problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
                 }
             }
         }
         ++line_idx;
     }
-
-    cv::imshow("draw", draw);
-    cv::waitKey(1);
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
@@ -588,7 +494,7 @@ void PLBackEnd::SolveBAImu() {
     options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    LOG(INFO) << summary.FullReport();
+//    LOG(INFO) << summary.FullReport();
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i)
@@ -602,6 +508,7 @@ void PLBackEnd::Marginalize() {
         ScopedTrace st("margin_old");
         margin_mps.clear();
         auto loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
+        auto line_loss_function = new ceres::HuberLoss(0.3);
         auto margin_info = new MarginalizationInfo();
         data2double();
 
@@ -629,7 +536,7 @@ void PLBackEnd::Marginalize() {
                                                              std::vector<int>{0, 1});
             margin_info->addResidualBlockInfo(residual_block_info);
         }
-
+#if USE_POINT
         // features
         int feature_index = -1;
         for(auto& it : m_features) {
@@ -720,6 +627,52 @@ void PLBackEnd::Marginalize() {
                 }
             }
         }
+#endif
+        // line
+        size_t line_idx = -1;
+        for(auto& it : m_lines) {
+            auto& line = it.second;
+            if(line.CountNumMeas(window_size) < 2 || line.inv_depth[0] == -1.0f || line.inv_depth[1] == -1.0f) {
+                continue;
+            }
+
+            line_idx++;
+            size_t id_i = line.start_id;
+
+            if(id_i != 0)
+                continue;
+
+            Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
+            for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
+                size_t id_j = id_i + j;
+                Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
+                if(j != 0) {
+                    auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
+                    auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
+                                                                     std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2},
+                                                                     std::vector<int>{0, 3});
+                    margin_info->addResidualBlockInfo(residual_block_info);
+                }
+
+                if(line.spt_r_n_per_frame[j](2) != 0) {
+                    Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
+                    if(j == 0) {
+                        auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
+                        auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
+                                                                         std::vector<double*>{para_ex_sm, para_lines + line_idx * 2},
+                                                                         std::vector<int>{1});
+                        margin_info->addResidualBlockInfo(residual_block_info);
+                    }
+                    else {
+                        auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
+                        auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
+                                                                         std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2},
+                                                                         std::vector<int>{0, 4});
+                        margin_info->addResidualBlockInfo(residual_block_info);
+                    }
+                }
+            }
+        }
 
         margin_info->preMarginalize();
         margin_info->marginalize();
@@ -800,14 +753,4 @@ void PLBackEnd::Reset() {
     m_lines.clear();
 }
 
-void PLBackEnd::PredictNextFramePose(BackEnd::FramePtr ref_frame, BackEnd::FramePtr cur_frame) {
-    cur_frame->q_wb = ref_frame->q_wb;
-    cur_frame->p_wb = ref_frame->p_wb;
-    cur_frame->v_wb = ref_frame->v_wb;
-    cur_frame->ba = ref_frame->ba;
-    cur_frame->bg = ref_frame->bg;
-    cur_frame->imupreinte = std::make_shared<IntegrationBase>(
-                ref_frame->v_acc.back(), ref_frame->v_gyr.back(),
-                ref_frame->ba, ref_frame->bg,
-                acc_n, gyr_n, acc_w, gyr_w);
-}
+#undef USE_POINT
