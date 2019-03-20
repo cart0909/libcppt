@@ -1,5 +1,4 @@
 #include "pl_system.h"
-#include "pl_backend.h"
 #include "converter.h"
 
 PLSystem::PLSystem() {}
@@ -38,25 +37,6 @@ PLSystem::PLSystem(const std::string& config_file) {
                                      std::placeholders::_1,
                                      std::placeholders::_2));
         reloc_thread = std::thread(&PLSystem::RelocProcess, this);
-    }
-
-    if(param.enable_pose_faster) {
-        pose_faster = std::make_shared<PoseFaster>(param.q_bc[0], param.p_bc[0], param.gravity_magnitude);
-        auto sub_frame = [this](BackEnd::FramePtr frame) {
-            if(reloc) {
-                Sophus::SE3d Twb = reloc->ShiftPoseWorld(Sophus::SE3d(frame->q_wb, frame->p_wb));
-                Eigen::Vector3d v_wb = reloc->ShiftVectorWorld(frame->v_wb);
-                pose_faster->UpdatePoseInfo(Twb.translation(), Twb.rotationMatrix(), v_wb,
-                                            frame->v_gyr.back(), frame->v_acc.back(), frame->v_imu_timestamp.back(),
-                                            frame->ba, frame->bg);
-            }
-            else {
-                pose_faster->UpdatePoseInfo(frame->p_wb, frame->q_wb, frame->v_wb,
-                                            frame->v_gyr.back(), frame->v_acc.back(), frame->v_imu_timestamp.back(),
-                                            frame->ba, frame->bg);
-            }
-        };
-        backend->SubFrame(sub_frame);
     }
 
     frontend_thread = std::thread(&PLSystem::FrontEndProcess, this);

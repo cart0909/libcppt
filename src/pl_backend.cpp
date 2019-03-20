@@ -256,7 +256,7 @@ void PLBackEnd::double2data() {
     }
 
     for(auto& it : v_outlier_line_id)
-        m_lines.equal_range(it);
+        m_lines.erase(it);
 }
 
 void PLBackEnd::SolveBA() {
@@ -751,6 +751,34 @@ void PLBackEnd::Marginalize() {
 void PLBackEnd::Reset() {
     BackEnd::Reset();
     m_lines.clear();
+}
+
+void PLBackEnd::Publish() {
+    BackEnd::Publish();
+
+    if(!pub_lines.empty()) {
+        Eigen::VecVector3d v_Pw, v_Qw;
+
+        for(auto& it : m_lines) {
+            auto& line = it.second;
+            if(line.CountNumMeas(window_size) < 2 || line.inv_depth[0] == -1.0f || line.inv_depth[1] == -1.0f) {
+                continue;
+            }
+
+            Eigen::Vector3d Pci = line.spt_n_per_frame[0] / line.inv_depth[0],
+                            Qci = line.ept_n_per_frame[0] / line.inv_depth[1];
+            int id_i = line.start_id;
+            Sophus::SE3d Twci = Sophus::SE3d(d_frames[id_i]->q_wb, d_frames[id_i]->p_wb) * Sophus::SE3d(q_bc, p_bc);
+            Eigen::Vector3d Pw = Twci * Pci,
+                            Qw = Twci * Qci;
+            v_Pw.emplace_back(Pw);
+            v_Qw.emplace_back(Qw);
+        }
+
+        for(auto& pub : pub_lines) {
+            pub(v_Pw, v_Qw);
+        }
+    }
 }
 
 #undef USE_POINT

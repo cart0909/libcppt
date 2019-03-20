@@ -40,18 +40,6 @@ void Relocalization::UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_
     }
 }
 
-Sophus::SE3d Relocalization::ShiftPoseWorld(const Sophus::SE3d& Tviow) {
-    mtx_w_viow.lock();
-    Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);
-    mtx_w_viow.unlock();
-    return Tw_viow * Tviow;
-}
-
-Eigen::Vector3d Relocalization::ShiftVectorWorld(const Eigen::Vector3d& Vviow) {
-    std::unique_lock<std::mutex> lock(mtx_w_viow);
-    return q_w_viow * Vviow;
-}
-
 void Relocalization::ProcessFrame(FramePtr frame) {
     mtx_w_viow.lock();
     Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);

@@ -24,7 +24,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: track_img
+    SyncSource: ""
   - Class: rviz/Displays
     Help Height: 78
     Name: Displays
@@ -104,10 +104,10 @@ Visualization Manager:
           Marker Topic: /cppt_vio/vio_pose
           Name: vio_pose
           Namespaces:
-            CameraPoseVisualization: true
+            {}
           Queue Size: 100
           Value: true
-      Enabled: true
+      Enabled: false
       Name: vio
     - Class: rviz/Group
       Displays:
@@ -164,14 +164,44 @@ Visualization Manager:
           Value: true
       Enabled: true
       Name: reloc
-    - Class: rviz/MarkerArray
-      Enabled: false
-      Marker Topic: /cppt_vio/fast_pose
-      Name: fast_pose
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: mappoints
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.009999999776482582
+      Style: Points
+      Topic: /cppt_vio/mappoints
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /cppt_vio/lines
+      Name: lines
       Namespaces:
         {}
       Queue Size: 100
-      Value: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -195,25 +225,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 6.6529541015625
+      Distance: 11.033951759338379
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.14220094680786133
-        Y: -0.2672000229358673
+        X: 0.31239748001098633
+        Y: -0.2987241744995117
         Z: 3.5954246413894e-5
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6147972941398621
+      Pitch: 0.6697975397109985
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz)
-      Yaw: 3.025827169418335
+      Yaw: 3.3958353996276855
     Saved: ~
 Window Geometry:
   Displays:

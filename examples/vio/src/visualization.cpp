@@ -1,8 +1,11 @@
 #include "visualization.h"
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/PointCloud.h>
 #include <nav_msgs/Path.h>
 #include "CameraPoseVisualization.h"
+#include "pl_system.h"
+#include "rgbd_system.h"
 
 namespace vis {
 static ros::Publisher pub_track_img;
@@ -20,6 +23,10 @@ static ros::Publisher pub_reloc_pose;
 static ros::Publisher pub_loop_edge;
 static ros::Publisher pub_reloc_img;
 
+// show features
+static ros::Publisher pub_mappoints;
+static ros::Publisher pub_lines;
+
 static std::mutex mtx_loop_edge_index;
 static std::vector<std::pair<uint64_t, uint64_t>> v_loop_edge_index;
 
@@ -33,6 +40,8 @@ void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     pub_reloc_pose = nh.advertise<visualization_msgs::MarkerArray>("reloc_pose", 1000);
     pub_loop_edge = nh.advertise<visualization_msgs::MarkerArray>("loop_edge", 1000);
     pub_reloc_img = nh.advertise<sensor_msgs::Image>("reloc_img", 1000);
+    pub_mappoints = nh.advertise<sensor_msgs::PointCloud>("mappoints", 1000);
+    pub_lines = nh.advertise<visualization_msgs::Marker>("lines", 1000);
 
     vio_pose_visual.setScale(0.3);
 
@@ -45,6 +54,12 @@ void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     system->SubUpdateRelocPath(std::bind(&UpdateRelocPath, std::placeholders::_1));
     system->SubLoopEdge(std::bind(&PushLoopEdgeIndex, std::placeholders::_1));
     system->SubRelocImg(std::bind(&PubRelocImg, std::placeholders::_1));
+    system->SubMapPoints(std::bind(&PubMapPoint, std::placeholders::_1));
+
+    PLSystemPtr pl_system = std::dynamic_pointer_cast<PLSystem>(system);
+    if(pl_system) {
+        pl_system->SubLines(std::bind(&PubLines, std::placeholders::_1, std::placeholders::_2));
+    }
 }
 
 void PubTrackImg(double timestamp, const cv::Mat& track_img) {
@@ -181,4 +196,47 @@ void PushLoopEdgeIndex(const std::pair<uint64_t, uint64_t>& edge) {
     v_loop_edge_index.emplace_back(edge);
 }
 
+void PubMapPoint(const Eigen::VecVector3d& mps) {
+    sensor_msgs::PointCloud mps_msg;
+    mps_msg.header.frame_id = "world";
+
+    for(auto& x3Dw : mps) {
+        geometry_msgs::Point32 point_marker;
+        point_marker.x = x3Dw(0);
+        point_marker.y = x3Dw(1);
+        point_marker.z = x3Dw(2);
+        mps_msg.points.emplace_back(point_marker);
+    }
+    pub_mappoints.publish(mps_msg);
+}
+
+void PubLines(const Eigen::VecVector3d& v_Pw, const Eigen::VecVector3d& v_Qw) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "world";
+    marker.ns = "lines";
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.01;
+    marker.scale.y = 0.01;
+    marker.scale.z = 0.01;
+    marker.color.b = 1.0f;
+    marker.color.g = 0.4f;
+    marker.color.r = 1.0f;
+    marker.color.a = 1.0f;
+
+    for(int i = 0, n = v_Pw.size(); i < n; ++i) {
+        geometry_msgs::Point Pw, Qw;
+        Pw.x = v_Pw[i](0);
+        Pw.y = v_Pw[i](1);
+        Pw.z = v_Pw[i](2);
+        Qw.x = v_Qw[i](0);
+        Qw.y = v_Qw[i](1);
+        Qw.z = v_Qw[i](2);
+        marker.points.emplace_back(Pw);
+        marker.points.emplace_back(Qw);
+    }
+
+    pub_lines.publish(marker);
+}
 }

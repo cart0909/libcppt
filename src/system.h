@@ -22,6 +22,10 @@ public:
         pub_tracking_img.emplace_back(callback);
     }
 
+    inline void SubMapPoints(std::function<void(const Eigen::VecVector3d&)> callback) {
+        backend->SubMapPoints(callback);
+    }
+
     inline void SubVIOTwc(std::function<void(double, const Sophus::SE3d&)> callback) {
         backend->SubVIOTwc(callback);
     }

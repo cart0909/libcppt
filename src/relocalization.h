@@ -63,8 +63,6 @@ public:
 
     void ProcessFrame(FramePtr frame);
     void UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c);
-    Sophus::SE3d ShiftPoseWorld(const Sophus::SE3d& Tviow);
-    Eigen::Vector3d ShiftVectorWorld(const Eigen::Vector3d& Vviow);
 private:
     int64_t DetectLoop(FramePtr frame);
     bool FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame);

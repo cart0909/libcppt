@@ -1052,6 +1052,24 @@ void BackEnd::Publish() {
     for(auto& pub : pub_frame) {
         pub(d_frames.back());
     }
+
+    if(!pub_mappoints.empty()) {
+        Eigen::VecVector3d mps;
+        for(auto& it : m_features) {
+            auto& feat = it.second;
+            if(feat.inv_depth == -1.0f)
+                continue;
+            Sophus::SE3d Twb(d_frames[feat.start_id]->q_wb, d_frames[feat.start_id]->p_wb);
+            Sophus::SE3d Tbc(q_bc, p_bc);
+            Eigen::Vector3d x3Dc = feat.pt_n_per_frame[0] / feat.inv_depth;
+            Eigen::Vector3d x3Dw = Twb * Tbc * x3Dc;
+            mps.emplace_back(x3Dw);
+        }
+
+        for(auto& pub : pub_mappoints) {
+            pub(mps);
+        }
+    }
 }
 
 //void BackEnd::DrawUI() {

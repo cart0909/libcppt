@@ -4,6 +4,9 @@
 
     <node name="cppt_vio" pkg="cppt_vio" type="cppt_vio" output="screen">
         <param name="config_file" type="string" value="$(arg config_path)" />
+        <remap from="/camera/left/image_raw" to="/mynteye/left/image_raw" />
+        <remap from="/camera/right/image_raw" to="/mynteye/right/image_raw" />
+        <remap from="/imu/data_raw" to="/mynteye/imu/data_raw" />
     </node>
 
     <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />

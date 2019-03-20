@@ -55,6 +55,10 @@ public:
     };
     SMART_PTR(LineFeature)
 
+    inline void SubLines(std::function<void(const Eigen::VecVector3d&, const Eigen::VecVector3d&)> callback) {
+        pub_lines.emplace_back(callback);
+    }
+
 private:
     void AddFeatures(BackEnd::FramePtr frame, int& last_track_num) override;
     void SlidingWindowOld() override;
@@ -64,6 +68,8 @@ private:
     void SolveBAImu() override;
     void Marginalize() override;
     void Reset() override;
+    void Publish() override;
+
     // line feature managers
     std::map<uint64_t, LineFeature> m_lines;
 
@@ -72,4 +78,6 @@ private:
     void double2data() override;
     size_t  para_lines_capacity = 1000;
     double* para_lines;
+
+    std::vector<std::function<void(const Eigen::VecVector3d&, const Eigen::VecVector3d&)>> pub_lines;
 };

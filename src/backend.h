@@ -102,6 +102,10 @@ public:
         pub_frame.emplace_back(callback);
     }
 
+    inline void SubMapPoints(std::function<void(const Eigen::VecVector3d&)> callback) {
+        pub_mappoints.emplace_back(callback);
+    }
+
     inline void ResetRequest() {
         request_reset_flag = true;
     }
@@ -129,8 +133,7 @@ protected:
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
     virtual void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
     virtual void Marginalize();
-    void Publish();
-//    void DrawUI();
+    virtual void Publish();
 
     double focal_length;
     Eigen::Vector3d p_rl, p_bc;
@@ -175,14 +178,10 @@ protected:
     MarginalizationInfo* last_margin_info;
 
     Eigen::VecVector3d margin_mps;
-//    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_mps;
-//    std::function<void(uint64_t, double, const Sophus::SE3d&)> draw_pose;
-//    std::function<void(uint64_t, double, const std::vector<Sophus::SE3d>&)> draw_sw;
-//    std::function<void(uint64_t, double, const Eigen::VecVector3d&)> draw_margin_mps;
-//    std::function<void(FramePtr, const Eigen::VecVector3d&)> push_keyframe_callback;
 
     std::vector<std::function<void(double, const Sophus::SE3d)>> pub_vio_Twc;
     std::vector<std::function<void(FramePtr, const Eigen::VecVector3d&)>> pub_keyframe;
+    std::vector<std::function<void(const Eigen::VecVector3d&)>> pub_mappoints;
     std::vector<std::function<void(FramePtr)>> pub_frame;
 
     // optimize parameters
