@@ -24,6 +24,7 @@ void LineStereoMatcher::Process(LineTracker::FramePtr l_frame, FramePtr r_frame)
              kl.endPointY = -1;
              r_frame->v_lines_r.emplace_back(kl);
          }
+         r_frame->desc_r.release();
          return;
      }
 
@@ -83,6 +84,8 @@ void LineStereoMatcher::Process(LineTracker::FramePtr l_frame, FramePtr r_frame)
              }
          }
      }
+
+     r_frame->desc_r.release();
 
 #if 0
      std::vector<cv::DMatch> dmatches;

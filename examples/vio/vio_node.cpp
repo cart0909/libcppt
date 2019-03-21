@@ -29,7 +29,7 @@ using namespace message_filters;
 using namespace sensor_msgs;
 
 // global variable
-PLSystemPtr pl_system;
+SystemPtr pl_system;
 
 void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
 //    if(image_timestamp != -1.0f && std::abs(img_msg->header.stamp.toSec() - image_timestamp) > 10) { // 10 ms

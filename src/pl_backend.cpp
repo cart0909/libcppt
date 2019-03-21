@@ -250,9 +250,57 @@ void PLBackEnd::double2data() {
         if(line.inv_depth[0] <= 0 || line.inv_depth[1] <= 0) {
             v_outlier_line_id.emplace_back(it.first);
         }
-        //else {
-            // TODO: remove the heigh cost lines
-        //}
+        else {
+             // TODO: remove the heigh cost lines
+            int id_i = line.start_id;
+            Eigen::Vector3d Pci = line.spt_n_per_frame[0] / line.inv_depth[0],
+                            Qci = line.ept_n_per_frame[0] / line.inv_depth[1];
+            Sophus::SE3d Twbi(d_frames[id_i]->q_wb, d_frames[id_i]->p_wb),
+                         Tbc(q_bc, p_bc), Tcb = Tbc.inverse();
+            Eigen::Vector3d Pw = Twbi * Tbc * Pci,
+                            Qw = Twbi * Tbc * Qci;
+            double ave_residuals = 0.0f;
+            int count = 0;
+            for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
+                int id_j = id_i + j;
+                Sophus::SE3d Twbj(d_frames[id_j]->q_wb, d_frames[id_j]->p_wb), Tbjw = Twbj.inverse();
+                if(j != 0) {
+                    Eigen::Vector3d spj = line.spt_n_per_frame[j], epj = line.ept_n_per_frame[j];
+                    Eigen::Vector3d l = spj.cross(epj);
+                    l /= l.head<2>().norm();
+                    Eigen::Vector3d Pcj = Tcb * Tbjw * Pw;
+                    Eigen::Vector3d Qcj = Tcb * Tbjw * Qw;
+
+                    Eigen::Vector2d residuals;
+                    residuals << focal_length * l.dot(Pcj / Pcj(2)),
+                                 focal_length * l.dot(Qcj / Qcj(2));
+                    ave_residuals += residuals.norm();
+                    count++;
+//                    LOG(INFO) << "line " << line.feat_id << " " << id_i << " " << id_j << " " << residuals.norm();
+                }
+
+                if(line.spt_r_n_per_frame[j](2) != 0) {
+                    Sophus::SE3d Trl(q_rl, p_rl);
+                    Eigen::Vector3d spr = line.spt_r_n_per_frame[j], epr = line.ept_r_n_per_frame[j];
+                    Eigen::Vector3d l = spr.cross(epr);
+                    l /= l.head<2>().norm();
+                    Eigen::Vector3d Prj = Trl * Tcb * Tbjw * Pw;
+                    Eigen::Vector3d Qrj = Trl * Tcb * Tbjw * Qw;
+
+                    Eigen::Vector2d residuals;
+                    residuals << focal_length * l.dot(Prj / Prj(2)),
+                                 focal_length * l.dot(Qrj / Qrj(2));
+                    ave_residuals += residuals.norm();
+                    count++;
+                }
+            }
+
+            ave_residuals /= count;
+            if(ave_residuals >= 1) {
+//                LOG(INFO) << "line " << line.feat_id << " " << ave_residuals;
+                v_outlier_line_id.emplace_back(it.first);
+            }
+        }
     }
 
     for(auto& it : v_outlier_line_id)
