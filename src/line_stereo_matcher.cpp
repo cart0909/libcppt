@@ -2,7 +2,7 @@
 
 LineStereoMatcher::LineStereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_): cam_l(cam_l_), cam_r(cam_r_) {
     lbd = cv::line_descriptor::BinaryDescriptor::createBinaryDescriptor();
-    fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, false);
+    fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, true);
 }
 
 LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_frame, const cv::Mat& img_r) {

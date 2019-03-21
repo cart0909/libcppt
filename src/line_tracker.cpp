@@ -3,7 +3,7 @@
 LineTracker::LineTracker(CameraPtr camera_) : camera(camera_)
 {
     lbd = cv::line_descriptor::BinaryDescriptor::createBinaryDescriptor();
-    fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, false);
+    fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, true);
     lsd = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
     //lsd = cv::createLineSegmentDetector(cv::LSD_REFINE_NONE);
 }

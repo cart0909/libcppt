@@ -1,5 +1,8 @@
 #include "pl_system.h"
 #include "converter.h"
+#include <opencv2/core/eigen.hpp>
+#include <opencv2/ccalib/omnidir.hpp>
+#include <future>
 
 PLSystem::PLSystem() {}
 
@@ -70,6 +73,13 @@ void PLSystem::FrontEndProcess() {
             m_id_optical_flow.clear();
             backend->ResetRequest();
         }
+
+        Tracer::TraceBegin("remap");
+        cv::remap(img_l, img_l, M1l, M2l, CV_INTER_LINEAR);
+        Tracer::TraceEnd();
+        Tracer::TraceBegin("remap");
+        cv::remap(img_r, img_r, M1r, M2r, CV_INTER_LINEAR);
+        Tracer::TraceEnd();
 
         FeatureTracker::FramePtr feat_frame;
         LineTracker::FramePtr line_frame;
@@ -212,4 +222,75 @@ void PLSystem::PubTrackingImg(FeatureTracker::FramePtr feat_frame, LineTracker::
             pub(feat_frame->timestamp, tracking_img);
         }
     }
+}
+
+void PLSystem::InitCameraParameters() {
+    cv::Mat K1, K2, D1, D2, R1, R2, P1, P2;
+    cv::Mat R, t;
+    K1 = (cv::Mat_<double>(3, 3) << param.intrinsic_master[0][0], 0, param.intrinsic_master[0][2],
+                                    0, param.intrinsic_master[0][1], param.intrinsic_master[0][3],
+                                    0,                            0,                            1);
+
+    K2 = (cv::Mat_<double>(3, 3) << param.intrinsic_slave[0][0], 0, param.intrinsic_slave[0][2],
+                                    0, param.intrinsic_slave[0][1], param.intrinsic_slave[0][3],
+                                    0,                           0,                           1);
+
+    D1 = (cv::Mat_<double>(4, 1) << param.distortion_master[0][0], param.distortion_master[0][1],
+                                    param.distortion_master[0][2], param.distortion_master[0][3]);
+
+    D2 = (cv::Mat_<double>(4, 1) << param.distortion_slave[0][0], param.distortion_slave[0][1],
+                                    param.distortion_slave[0][2], param.distortion_slave[0][3]);
+
+    cv::eigen2cv(param.q_rl[0].matrix(), R);
+    cv::eigen2cv(param.p_rl[0], t);
+
+    cv::Size image_size(param.width[0], param.height[0]);
+    if(param.cam_model[0] == "PINHOLE") {
+        cv::stereoRectify(K1, D1, K2, D2, image_size, R, t, R1, R2, P1, P2, cv::noArray());
+        cv::initUndistortRectifyMap(K1, D1, R1, P1, image_size, CV_32F, M1l, M2l);
+        cv::initUndistortRectifyMap(K2, D2, R2, P2, image_size, CV_32F, M1r, M2r);
+
+
+        cam_m = CameraPtr(new IdealPinhole(image_size.width, image_size.height,
+                                           P1.at<double>(0, 0), P1.at<double>(1, 1),
+                                           P1.at<double>(0, 2), P1.at<double>(1, 2)));
+        cam_s = cam_m;
+    }
+    else if(param.cam_model[0] == "FISHEYE") {
+        cv::fisheye::stereoRectify(K1, D1, K2, D2, image_size, R, t, R1, R2, P1, P2, cv::noArray(), cv::CALIB_ZERO_DISPARITY);
+        double baseline = -P2.at<double>(0, 3)/P2.at<double>(0, 0);
+        P1.at<double>(0, 0) = K1.at<double>(0, 0);
+        P1.at<double>(1, 1) = K1.at<double>(1, 1);
+        P2.at<double>(0, 0) = K1.at<double>(0, 0);
+        P2.at<double>(1, 1) = K1.at<double>(1, 1);
+        P2.at<double>(0, 3) = -baseline * P2.at<double>(0, 0);
+
+        cv::fisheye::initUndistortRectifyMap(K1, D1, R1, P1, image_size, CV_32F, M1l, M2l);
+        cv::fisheye::initUndistortRectifyMap(K2, D2, R2, P2, image_size, CV_32F, M1r, M2r);
+
+        cam_m = CameraPtr(new IdealPinhole(image_size.width, image_size.height,
+                                           P1.at<double>(0, 0), P1.at<double>(1, 1),
+                                           P1.at<double>(0, 2), P1.at<double>(1, 2)));
+        cam_s = cam_m;
+    }
+    else if(param.cam_model[0] == "OMNI") {
+        // TODO
+    }
+
+    Sophus::SE3d T_lp_l, T_rp_r;
+    {
+        Eigen::Matrix3d R_lp_l, R_rp_r;
+        cv::cv2eigen(R1, R_lp_l);
+        cv::cv2eigen(R2, R_rp_r);
+        T_lp_l.setRotationMatrix(R_lp_l);
+        T_rp_r.setRotationMatrix(R_rp_r);
+    }
+
+    Sophus::SE3d T_bl(param.q_bc[0], param.p_bc[0]), T_rl(param.q_rl[0], param.p_rl[0]);
+    Sophus::SE3d T_rp_lp = T_rp_r * T_rl * T_lp_l.inverse();
+    Sophus::SE3d T_b_lp = T_bl * T_lp_l.inverse();
+    param.q_bc[0] = T_b_lp.so3();
+    param.p_bc[0] = T_b_lp.translation();
+    param.q_rl[0] = T_rp_lp.so3();
+    param.p_rl[0] = T_rp_lp.translation();
 }
