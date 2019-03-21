@@ -1,8 +1,9 @@
 #include "pl_system.h"
-#include "converter.h"
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/ccalib/omnidir.hpp>
 #include <future>
+#include "converter.h"
+#include "thread_pool_mgr.h"
 
 PLSystem::PLSystem() {}
 
@@ -74,15 +75,23 @@ void PLSystem::FrontEndProcess() {
             backend->ResetRequest();
         }
 
+        FeatureTracker::FramePtr feat_frame;
+        StereoMatcher::FramePtr stereo_frame;
+        LineTracker::FramePtr line_frame;
+        LineStereoMatcher::FramePtr line_stereo_frame;
+
+        auto work = ThreadPoolMgr::Pool().enqueue([&] {
+            Tracer::TraceBegin("remap");
+            cv::remap(img_r, img_r, M1r, M2r, CV_INTER_LINEAR);
+            Tracer::TraceEnd();
+            stereo_frame = stereo_matcher->InitFrame(img_r);
+            line_stereo_frame = line_stereo_matcher->InitFrame(img_r);
+        });
+
         Tracer::TraceBegin("remap");
         cv::remap(img_l, img_l, M1l, M2l, CV_INTER_LINEAR);
         Tracer::TraceEnd();
-        Tracer::TraceBegin("remap");
-        cv::remap(img_r, img_r, M1r, M2r, CV_INTER_LINEAR);
-        Tracer::TraceEnd();
 
-        FeatureTracker::FramePtr feat_frame;
-        LineTracker::FramePtr line_frame;
         if(b_first_frame) {
             feat_frame = feature_tracker->InitFirstFrame(img_l, timestamp);
             line_frame = line_tracker->InitFirstFrame(img_l, timestamp);
@@ -92,10 +101,11 @@ void PLSystem::FrontEndProcess() {
             feat_frame = feature_tracker->Process(img_l, timestamp);
             line_frame = line_tracker->Process(img_l, timestamp);
         }
+        work.wait();
 
         if(!backend_busy) {
             mtx_backend.lock();
-            backend_buffer_img.emplace_back(feat_frame, line_frame, img_r);
+            backend_buffer_img.emplace_back(feat_frame, line_frame, stereo_frame, line_stereo_frame);
             mtx_backend.unlock();
             cv_backend.notify_one();
         }
@@ -108,6 +118,9 @@ void PLSystem::BackEndProcess() {
         std::vector<double> v_imu_t;
         FeatureTracker::FramePtr feat_frame;
         LineTracker::FramePtr line_frame;
+        StereoMatcher::FramePtr stereo_frame;
+        LineStereoMatcher::FramePtr line_stereo_frame;
+
         cv::Mat img_r;
         double img_t = -1.0f;
         double td = backend->GetTd();
@@ -127,7 +140,8 @@ void PLSystem::BackEndProcess() {
 
                 feat_frame = std::get<0>(backend_buffer_img.front());
                 line_frame = std::get<1>(backend_buffer_img.front());
-                img_r = std::get<2>(backend_buffer_img.front());
+                stereo_frame = std::get<2>(backend_buffer_img.front());
+                line_stereo_frame = std::get<3>(backend_buffer_img.front());
                 img_t = feat_frame->timestamp;
                 backend_buffer_img.pop_front();
 
@@ -148,8 +162,8 @@ void PLSystem::BackEndProcess() {
 
         feature_tracker->ExtractFAST(feat_frame);
         PubTrackingImg(feat_frame, line_frame);
-        StereoMatcher::FramePtr stereo_frame = stereo_matcher->Process(feat_frame, img_r);
-        LineStereoMatcher::FramePtr line_stereo_frame = line_stereo_matcher->Process(line_frame, img_r);
+        stereo_matcher->Process(feat_frame, stereo_frame);
+        line_stereo_matcher->Process(line_frame, line_stereo_frame);
         PLBackEnd::FramePtr back_frame = Converter::Convert(feat_frame, stereo_frame, line_frame,
                                                             line_stereo_frame, cam_m, cam_s,
                                                             v_gyr, v_acc, v_imu_t);

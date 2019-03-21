@@ -25,8 +25,9 @@ public:
     SMART_PTR(Frame)
 
     FramePtr Process(FeatureTracker::FrameConstPtr feat_frame, const cv::Mat& img_r);
-private:
+    void Process(FeatureTracker::FrameConstPtr feat_frame, FramePtr frame);
     FramePtr InitFrame(const cv::Mat& img_r);
+private:
     void FundaMatCheck(FeatureTracker::FrameConstPtr feat_frame, FramePtr frame, std::vector<uchar>& status);
     void LeftRightCheck(FeatureTracker::FrameConstPtr feat_frame, FramePtr frame, std::vector<uchar>& status);
 

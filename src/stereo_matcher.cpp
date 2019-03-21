@@ -76,6 +76,51 @@ StereoMatcher::FramePtr StereoMatcher::Process(FeatureTracker::FrameConstPtr fea
     return frame;
 }
 
+void StereoMatcher::Process(FeatureTracker::FrameConstPtr feat_frame, FramePtr frame) {
+    if(feat_frame->pt.empty())
+        return;
+    ScopedTrace st("stereo_match");
+    // optical flow
+    std::vector<uchar> status;
+    std::vector<float> err;
+    cv::calcOpticalFlowPyrLK(feat_frame->img_pyr_grad, frame->img_pyr_grad_r, feat_frame->pt, frame->pt_r,
+                             status, err, cv::Size(21, 21), 3);
+
+    for(int i = 0, n = feat_frame->pt.size(); i < n; ++i) {
+        if(status[i] && !util::InBorder(frame->pt_r[i], cam_l->width, cam_l->height)) {
+            status[i] = 0;
+        }
+    }
+
+    if(know_camera_extrinsic) {
+        FundaMatCheck(feat_frame, frame, status);
+    }
+    else {
+        LeftRightCheck(feat_frame, frame, status);
+    }
+
+    // debug
+#if 0
+    cv::Mat left_img = feat_frame->compressed_img;
+    cv::Mat right_img = frame->compressed_img_r;
+    cv::Mat result;
+    cv::hconcat(left_img, right_img, result);
+
+    for(int i = 0, n = feat_frame->pt.size(); i < n; ++i) {
+        cv::Point2f pt_l = feat_frame->pt[i] / 2;
+        cv::circle(result, pt_l, 2, cv::Scalar(0, 255, 0), -1);
+        if(frame->pt_r[i].x != -1.0) {
+            cv::Point2f pt_r = frame->pt_r[i] / 2;
+            pt_r.x += left_img.cols;
+            cv::circle(result, pt_r, 2, cv::Scalar(0, 0, 255), -1);
+        }
+    }
+
+    cv::imshow("stereo_matching", result);
+    cv::waitKey(1);
+#endif
+}
+
 StereoMatcher::FramePtr StereoMatcher::InitFrame(const cv::Mat& img_r) {
     ScopedTrace st("init_rFrame");
     FramePtr frame(new Frame);

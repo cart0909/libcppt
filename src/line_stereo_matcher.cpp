@@ -5,116 +5,128 @@ LineStereoMatcher::LineStereoMatcher(CameraPtr cam_l_, CameraPtr cam_r_): cam_l(
     fld = cv::ximgproc::createFastLineDetector(32, 1.414, 50, 30, 3, true);
 }
 
-LineStereoMatcher::FramePtr LineStereoMatcher::Process(LineTracker::FramePtr l_frame, const cv::Mat& img_r) {
-    FramePtr r_frame(new Frame);
-    r_frame->img_r = img_r;
-
-    if(l_frame->v_lines.empty())
-        return r_frame;
-
-    std::vector<cv::line_descriptor::KeyLine> v_klines_r = DetectLineFeatures(r_frame->img_r);
-    if(v_klines_r.empty()) {
-        for(int i = 0, n = l_frame->v_line_id.size(); i < n; ++i) {
-            cv::line_descriptor::KeyLine kl;
-            kl.startPointX = -1;
-            kl.startPointY = -1;
-            kl.endPointX = -1;
-            kl.endPointY = -1;
-            r_frame->v_lines_r.emplace_back(kl);
-        }
-        return r_frame;
+void LineStereoMatcher::Process(LineTracker::FramePtr l_frame, FramePtr r_frame) {
+    if(l_frame->v_lines.empty()) {
+        r_frame->v_lines_r.clear();
+        r_frame->desc_r.release();
+        return;
     }
 
-    cv::Mat desc_r;
-    Tracer::TraceBegin("lbd_r");
-    lbd->compute(r_frame->img_r, v_klines_r, desc_r);
-    Tracer::TraceEnd();
+     std::vector<cv::line_descriptor::KeyLine> v_klines_r = r_frame->v_lines_r;
+     r_frame->v_lines_r.clear();
 
-    std::vector<int> matches_lr;
-    LRMatch(l_frame->desc, desc_r, 0.75, matches_lr);
+     if(v_klines_r.empty()) {
+         for(int i = 0, n = l_frame->v_line_id.size(); i < n; ++i) {
+             cv::line_descriptor::KeyLine kl;
+             kl.startPointX = -1;
+             kl.startPointY = -1;
+             kl.endPointX = -1;
+             kl.endPointY = -1;
+             r_frame->v_lines_r.emplace_back(kl);
+         }
+         return;
+     }
 
-    for(int i = 0, n = matches_lr.size(); i < n; ++i) {
-        if(matches_lr[i] == -1) {
-            cv::line_descriptor::KeyLine kl;
-            kl.startPointX = -1;
-            kl.startPointY = -1;
-            kl.endPointX = -1;
-            kl.endPointY = -1;
-            r_frame->v_lines_r.emplace_back(kl);
-        }
-        else {
-            cv::line_descriptor::KeyLine kl_tmp = l_frame->v_lines[i];
-            cv::line_descriptor::KeyLine kr_tmp = v_klines_r[matches_lr[i]];
-            //TODO:: save undistort point for coverter used.
-            Eigen::Vector3d undis_kl_ep;
-            Eigen::Vector3d undis_kl_sp;
-            Eigen::Vector3d undis_kr_ep;
-            Eigen::Vector3d undis_kr_sp;
-            undis_kl_sp = cam_l->BackProject(Eigen::Vector2d(kl_tmp.startPointX, kl_tmp.startPointY));
-            undis_kl_ep = cam_l->BackProject(Eigen::Vector2d(kl_tmp.endPointX, kl_tmp.endPointY));
-            undis_kr_sp = cam_r->BackProject(Eigen::Vector2d(kr_tmp.startPointX, kr_tmp.startPointY));
-            undis_kr_ep = cam_r->BackProject(Eigen::Vector2d(kr_tmp.endPointX, kr_tmp.endPointY));
-            Eigen::Vector2d spl;
-            Eigen::Vector2d epl;
-            Eigen::Vector2d spr;
-            Eigen::Vector2d epr;
-            cam_l->Project(undis_kl_sp, spl);
-            cam_l->Project(undis_kl_ep, epl);
-            cam_r->Project(undis_kr_sp, spr);
-            cam_r->Project(undis_kr_ep, epr);
-            double overlap = util::f2fLineSegmentOverlap(spl.head<2>(), epl.head<2>(), spr.head<2>(), epr.head<2>());
+     std::vector<int> matches_lr;
+     LRMatch(l_frame->desc, r_frame->desc_r, 0.75, matches_lr);
 
-            //diff of angle
-            Eigen::Vector2d Ii = (spl - epl) / (spl - epl).squaredNorm();
-            Eigen::Vector2d Ij = (spr - epr) / (spr - epr).squaredNorm();
-            double ij_cross = (Eigen::Vector3d(Ii.x(), Ii.y(), 0).cross(Eigen::Vector3d(Ij.x(), Ij.y(), 0))).norm();
-            double ij_dot = Ij.dot(Ii);
-            double theta = std::atan2(ij_cross, ij_dot) * 180 / M_PI;
+     for(int i = 0, n = matches_lr.size(); i < n; ++i) {
+         if(matches_lr[i] == -1) {
+             cv::line_descriptor::KeyLine kl;
+             kl.startPointX = -1;
+             kl.startPointY = -1;
+             kl.endPointX = -1;
+             kl.endPointY = -1;
+             r_frame->v_lines_r.emplace_back(kl);
+         }
+         else {
+             cv::line_descriptor::KeyLine kl_tmp = l_frame->v_lines[i];
+             cv::line_descriptor::KeyLine kr_tmp = v_klines_r[matches_lr[i]];
+             //TODO:: save undistort point for coverter used.
+             Eigen::Vector3d undis_kl_ep;
+             Eigen::Vector3d undis_kl_sp;
+             Eigen::Vector3d undis_kr_ep;
+             Eigen::Vector3d undis_kr_sp;
+             undis_kl_sp = cam_l->BackProject(Eigen::Vector2d(kl_tmp.startPointX, kl_tmp.startPointY));
+             undis_kl_ep = cam_l->BackProject(Eigen::Vector2d(kl_tmp.endPointX, kl_tmp.endPointY));
+             undis_kr_sp = cam_r->BackProject(Eigen::Vector2d(kr_tmp.startPointX, kr_tmp.startPointY));
+             undis_kr_ep = cam_r->BackProject(Eigen::Vector2d(kr_tmp.endPointX, kr_tmp.endPointY));
+             Eigen::Vector2d spl;
+             Eigen::Vector2d epl;
+             Eigen::Vector2d spr;
+             Eigen::Vector2d epr;
+             cam_l->Project(undis_kl_sp, spl);
+             cam_l->Project(undis_kl_ep, epl);
+             cam_r->Project(undis_kr_sp, spr);
+             cam_r->Project(undis_kr_ep, epr);
+             double overlap = util::f2fLineSegmentOverlap(spl.head<2>(), epl.head<2>(), spr.head<2>(), epr.head<2>());
 
-            //find the match inlier keyline and insert value to frame.
-            if(overlap > 0.65 && theta < 5){
-                r_frame->v_lines_r.emplace_back(v_klines_r[matches_lr[i]]);
-            }
-            else{
-                cv::line_descriptor::KeyLine kl;
-                kl.startPointX = -1;
-                kl.startPointY = -1;
-                kl.endPointX = -1;
-                kl.endPointY = -1;
-                r_frame->v_lines_r.emplace_back(kl);
-                matches_lr[i] = -1;
-            }
-        }
-    }
+             //diff of angle
+             Eigen::Vector2d Ii = (spl - epl) / (spl - epl).squaredNorm();
+             Eigen::Vector2d Ij = (spr - epr) / (spr - epr).squaredNorm();
+             double ij_cross = (Eigen::Vector3d(Ii.x(), Ii.y(), 0).cross(Eigen::Vector3d(Ij.x(), Ij.y(), 0))).norm();
+             double ij_dot = Ij.dot(Ii);
+             double theta = std::atan2(ij_cross, ij_dot) * 180 / M_PI;
+
+             //find the match inlier keyline and insert value to frame.
+             if(overlap > 0.65 && theta < 5){
+                 r_frame->v_lines_r.emplace_back(v_klines_r[matches_lr[i]]);
+             }
+             else{
+                 cv::line_descriptor::KeyLine kl;
+                 kl.startPointX = -1;
+                 kl.startPointY = -1;
+                 kl.endPointX = -1;
+                 kl.endPointY = -1;
+                 r_frame->v_lines_r.emplace_back(kl);
+                 matches_lr[i] = -1;
+             }
+         }
+     }
 
 #if 0
-    std::vector<cv::DMatch> dmatches;
+     std::vector<cv::DMatch> dmatches;
 
-    for(int i = 0, n = matches_lr.size(); i < n; ++i) {
-        if(matches_lr[i] == -1) {
-            continue;
-        }
-        cv::DMatch dmatch;
-        dmatch.queryIdx = i;
-        dmatch.trainIdx = matches_lr[i];
-        dmatch.distance = 0;
-        dmatch.imgIdx = 0;
-        dmatches.emplace_back(dmatch);
-    }
+     for(int i = 0, n = matches_lr.size(); i < n; ++i) {
+         if(matches_lr[i] == -1) {
+             continue;
+         }
+         cv::DMatch dmatch;
+         dmatch.queryIdx = i;
+         dmatch.trainIdx = matches_lr[i];
+         dmatch.distance = 0;
+         dmatch.imgIdx = 0;
+         dmatches.emplace_back(dmatch);
+     }
 
-    cv::Mat result;
-    cv::Mat show_img_l, show_img_r;
-    cv::cvtColor(l_frame->img, show_img_l, CV_GRAY2BGR);
-    cv::cvtColor(r_frame->img_r, show_img_r, CV_GRAY2BGR);
-    std::vector<char> mask(dmatches.size(), 1);
-    cv::line_descriptor::drawLineMatches(show_img_l, l_frame->v_lines, show_img_r, v_klines_r,
-                                         dmatches, result,
-                                         cv::Scalar::all(-1), cv::Scalar::all(-1), mask,
-                                         cv::line_descriptor::DrawLinesMatchesFlags::DEFAULT );
-    cv::imshow("result", result);
-    cv::waitKey(1);
+     cv::Mat result;
+     cv::Mat show_img_l, show_img_r;
+     cv::cvtColor(l_frame->img, show_img_l, CV_GRAY2BGR);
+     cv::cvtColor(r_frame->img_r, show_img_r, CV_GRAY2BGR);
+     std::vector<char> mask(dmatches.size(), 1);
+     cv::line_descriptor::drawLineMatches(show_img_l, l_frame->v_lines, show_img_r, v_klines_r,
+                                          dmatches, result,
+                                          cv::Scalar::all(-1), cv::Scalar::all(-1), mask,
+                                          cv::line_descriptor::DrawLinesMatchesFlags::DEFAULT );
+     cv::imshow("result", result);
+     cv::waitKey(1);
 #endif
 
+    return;
+}
+
+LineStereoMatcher::FramePtr LineStereoMatcher::InitFrame(const cv::Mat& img_r) {
+    FramePtr r_frame(new Frame);
+    r_frame->img_r = img_r;
+    r_frame->v_lines_r = DetectLineFeatures(r_frame->img_r);
+
+    if(r_frame->v_lines_r.empty()) {
+        return r_frame;
+    }
+
+    Tracer::TraceBegin("lbd_r");
+    lbd->compute(r_frame->img_r, r_frame->v_lines_r, r_frame->desc_r);
+    Tracer::TraceEnd();
     return r_frame;
 }
 

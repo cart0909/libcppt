@@ -10,10 +10,12 @@ public:
         // size is same as LineTracker::Frame::v_lines
         cv::Mat img_r;
         std::vector<cv::line_descriptor::KeyLine> v_lines_r;
+        cv::Mat desc_r;
     };
     SMART_PTR(Frame)
 
-    FramePtr Process(LineTracker::FramePtr l_frame, const cv::Mat& img_r);
+    void Process(LineTracker::FramePtr l_frame, FramePtr r_frame);
+    FramePtr InitFrame(const cv::Mat& img_r);
 private:
     std::vector<cv::line_descriptor::KeyLine> DetectLineFeatures(const cv::Mat& img);
     int Match(const cv::Mat& desc1, const cv::Mat& desc2, float nnr, std::vector<int>& matches12);

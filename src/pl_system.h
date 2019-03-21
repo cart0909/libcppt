@@ -24,7 +24,8 @@ private:
     LineTrackerPtr line_tracker;
     LineStereoMatcherPtr line_stereo_matcher;
 
-    std::deque<std::tuple<FeatureTracker::FramePtr, LineTracker::FramePtr, cv::Mat>> backend_buffer_img;
+    std::deque<std::tuple<FeatureTracker::FramePtr, LineTracker::FramePtr,
+    StereoMatcher::FramePtr, LineStereoMatcher::FramePtr>> backend_buffer_img;
     // remap table
     cv::Mat M1l, M2l, M1r, M2r;
 };
