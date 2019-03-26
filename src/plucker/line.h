@@ -1,6 +1,7 @@
 #pragma once
 #include <Eigen/Dense>
 #include <sophus/se3.hpp>
+#include <iostream>
 // ------------------------ref---------------------
 // Plucker Coordinates for Lines in the Space
 // Structure-From-Motion Using Lines: Representation, Triangulation and Bundle Adjustment
@@ -39,6 +40,8 @@ public:
 
     Eigen::Vector3d ClosestPoint() const;
     Eigen::Vector3d ClosestPoint(const Eigen::Vector3d& q) const;
+
+    friend std::ostream& operator<<(std::ostream& s, Line& L);
 private:
     Eigen::Vector3d l_;
     Eigen::Vector3d m_;

@@ -1,4 +1,5 @@
 #include "line.h"
+#include <glog/logging.h>
 
 namespace Plucker {
 Line::Line() : l_(1, 0, 0), m_(0, 0, 0) {}
@@ -87,6 +88,13 @@ Eigen::Vector3d Line::ClosestPoint(const Eigen::Vector3d& q) const {
     Eigen::Vector3d mq = m_ - q.cross(l_);
     return q + l_.cross(mq);
 }
+
+std::ostream& operator<<(std::ostream& s, Line& L) {
+    s << "l(" << L.l()(0) << "," << L.l()(1) << "," << L.l()(2) <<
+       ") m(" << L.m()(0) << "," << L.m()(1) << "," << L.m()(2) << ").";
+    return s;
+}
+
 // # Corollary 2 #
 // Two lines L1 and L2 are co-planar if and only if the reciprocal product of their
 // Plucker coordinates is zero.
@@ -108,7 +116,7 @@ double Distance(const Line& L1, const Line& L2) {
         d = l1.cross(m1 - m2 / s).norm();
     }
     else {
-        d = ReciprocalProduct(L1, L2) / norm_l1xl2;
+        d = std::abs(ReciprocalProduct(L1, L2)) / norm_l1xl2;
     }
     return d;
 }
@@ -120,7 +128,7 @@ bool CommonPerpendicular(const Line& L1, const Line& L2, Line& Lcp, LinesStatus*
     double L1_star_L2 = ReciprocalProduct(L1, L2);
     Eigen::Vector3d l1xl2 = l1.cross(l2);
     double norm_l1xl2 = l1xl2.norm();
-    if(L1_star_L2 <= std::numeric_limits<double>::min()) {
+    if(std::abs(L1_star_L2) <= std::numeric_limits<double>::min()) {
         if(norm_l1xl2 <= std::numeric_limits<double>::min()) {
             if(status)
                 *status = PARALLEL_LINES;
@@ -153,7 +161,7 @@ bool Feet(const Line& L1, const Line& L2, Eigen::Vector3d& p1_star, Eigen::Vecto
     Eigen::Vector3d l1xl2 = l1.cross(l2);
     double norm_l1xl2 = l1xl2.norm();
 
-    if(L1_star_L2 <= std::numeric_limits<double>::min()) {
+    if(std::abs(L1_star_L2) <= std::numeric_limits<double>::min()) {
         if(norm_l1xl2 <= std::numeric_limits<double>::min()) {
             if(status)
                 *status = PARALLEL_LINES;
