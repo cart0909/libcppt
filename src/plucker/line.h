@@ -41,7 +41,8 @@ public:
     Eigen::Vector3d ClosestPoint() const;
     Eigen::Vector3d ClosestPoint(const Eigen::Vector3d& q) const;
 
-    friend std::ostream& operator<<(std::ostream& s, Line& L);
+    friend std::ostream& operator<<(std::ostream& s, const Line& L);
+    friend Line operator*(const Sophus::SE3d& T21, const Line& L1);
 private:
     Eigen::Vector3d l_;
     Eigen::Vector3d m_;

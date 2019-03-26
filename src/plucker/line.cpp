@@ -89,10 +89,18 @@ Eigen::Vector3d Line::ClosestPoint(const Eigen::Vector3d& q) const {
     return q + l_.cross(mq);
 }
 
-std::ostream& operator<<(std::ostream& s, Line& L) {
+std::ostream& operator<<(std::ostream& s, const Line& L) {
     s << "l(" << L.l()(0) << "," << L.l()(1) << "," << L.l()(2) <<
        ") m(" << L.m()(0) << "," << L.m()(1) << "," << L.m()(2) << ").";
     return s;
+}
+
+Line operator*(const Sophus::SE3d& T21, const Line& L1) {
+    Eigen::Vector3d l2, m2;
+    m2 = T21.so3() * L1.m() + Sophus::SO3d::hat(T21.translation()) * (T21.so3() * L1.l());
+    l2 = T21.so3() * L1.l();
+    Line L2(l2, m2, PLUCKER_L_M);
+    return L2;
 }
 
 // # Corollary 2 #
