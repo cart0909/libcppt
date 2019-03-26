@@ -61,6 +61,28 @@ const Eigen::Vector3d& Line::m() const {
     return m_;
 }
 
+Eigen::Vector4d Line::Orthonormal() const {
+    Eigen::Matrix<double, 3, 2> C;
+    C << m_, l_;
+    C.normalize();
+    std::cout << "C:\n" << C << std::endl;
+    // C = U*Sigma (QR decomposition)
+    Eigen::HouseholderQR<Eigen::Matrix<double, 3, 2>> qr(C);
+    Eigen::Matrix<double, 3, 2> R = qr.matrixQR().triangularView<Eigen::Upper>();
+    std::cout << "R:\n" << R << std::endl;
+    Eigen::Matrix<double, 3, 3> U = qr.householderQ();
+    std::cout << "Q:\n" << U << std::endl;
+
+    double theta = std::atan2(R(1, 1), R(0, 0));
+    // TODO
+    // theta_x theta_y theta_z from decomposition U
+    return Eigen::Vector4d();
+}
+
+void Line::FromOrthonormal(const Eigen::Vector4d& para) {
+
+}
+
 void Line::SetPlucker(const Eigen::Vector3d& l, const Eigen::Vector3d& m) {
     double l_norm = l.norm();
     if(l_norm <= std::numeric_limits<double>::min())

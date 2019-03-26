@@ -34,6 +34,9 @@ public:
     const Eigen::Vector3d& l() const;
     const Eigen::Vector3d& m() const;
 
+    Eigen::Vector4d Orthonormal() const;
+    void FromOrthonormal(const Eigen::Vector4d& para);
+
     void SetPlucker(const Eigen::Vector3d& l, const Eigen::Vector3d& m);
     double Distance() const;
     double Distance(const Eigen::Vector3d& q) const;
