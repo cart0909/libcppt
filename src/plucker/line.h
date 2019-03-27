@@ -65,10 +65,26 @@ public:
     using Scalar = typename Eigen::internal::traits<Derived>::Scalar;
     using DirectionType = typename Eigen::internal::traits<Derived>::DirectionType;
     using NormalType = typename Eigen::internal::traits<Derived>::NormalType;
-
     static int constexpr DoF = 4;
     static int constexpr num_parameters = 6;
 
+    // copy assignment
+    Line3Base& operator=(const Line3Base& rhs) = default;
+
+    template<class OtherDerived>
+    Line3Base& operator=(const Line3Base<OtherDerived>& rhs) {
+        l() = rhs.l();
+        m() = rhs.m();
+        return *this;
+    }
+
+    // cast
+    template <class NewScaleType>
+    Line3<NewScaleType> cast() const {
+        return Line3<NewScaleType>(l().template cast<NewScaleType>(), m().template cast<NewScaleType>(), PLUCKER_L_M);
+    }
+
+    // getter
     DirectionType& l() {
         return static_cast<Derived*>(this)->l();
     }
@@ -85,6 +101,7 @@ public:
         return static_cast<const Derived*>(this)->m();
     }
 
+    // method
     Plucker::Vector4<Scalar> Orthonormal() const {
         Eigen::Matrix<Scalar, 3, 2> C;
         C << m(), l();
@@ -148,7 +165,44 @@ public:
         Plucker::Vector3<Scalar> mq = m() - q.cross(l());
         return q + l().cross(mq);
     }
+
+    Line3<Scalar> operator*(const Plucker::Vector4<Scalar>& delta) {
+        Plucker::Vector4<Scalar> Theta = Orthonormal();
+        Eigen::Matrix<Scalar, 3, 3> U, dU, U_plus_dU;
+        U =  Eigen::AngleAxis<Scalar>(Theta(0), Plucker::Vector3<Scalar>::UnitX()) *
+             Eigen::AngleAxis<Scalar>(Theta(1), Plucker::Vector3<Scalar>::UnitY()) *
+             Eigen::AngleAxis<Scalar>(Theta(2), Plucker::Vector3<Scalar>::UnitZ());
+        dU = Eigen::AngleAxis<Scalar>(delta(0), Plucker::Vector3<Scalar>::UnitX()) *
+             Eigen::AngleAxis<Scalar>(delta(1), Plucker::Vector3<Scalar>::UnitY()) *
+             Eigen::AngleAxis<Scalar>(delta(2), Plucker::Vector3<Scalar>::UnitZ());
+        U_plus_dU = U * dU;
+
+        Scalar theta = Theta(3) + delta(3),
+               theta_x = std::atan2(-U_plus_dU(1, 2), U_plus_dU(2, 2)),
+               theta_y = std::atan2(U_plus_dU(0, 2), U_plus_dU(2, 2) / cos(theta_x)),
+               theta_z = std::atan2(-U_plus_dU(0, 1), U_plus_dU(0, 0));
+        Line3<Scalar> L_plus_delta;
+        L_plus_delta.FromOrthonormal(Eigen::Vector4d(theta_x, theta_y, theta_z, theta));
+        return L_plus_delta;
+    }
 };
+
+template <class Derived>
+std::ostream& operator<<(std::ostream& s, const Line3Base<Derived>& line) {
+    s << "l(" << line.l()(0) << "," << line.l()(1) << "," << line.l()(2) <<
+       ") m(" << line.m()(0) << "," << line.m()(1) << "," << line.m()(2) << ").";
+    return s;
+}
+
+template <class Derived>
+Line3<typename Line3Base<Derived>::Scalar> operator*(const Sophus::SE3<typename Line3Base<Derived>::Scalar>& T21, const Line3Base<Derived>& L1) {
+    using Scalar = typename Line3Base<Derived>::Scalar;
+    Plucker::Vector3<Scalar> l2, m2;
+    m2 = T21.so3() * L1.m() + Sophus::SO3<Scalar>::hat(T21.translation()) * (T21.so3() * L1.l());
+    l2 = T21.so3() * L1.l();
+    Line3<Scalar> L2(l2, m2, PLUCKER_L_M);
+    return L2;
+}
 
 template <class Scalar>
 class Line3 : public Line3Base<Line3<Scalar>> {
@@ -244,9 +298,14 @@ template <class Scalar>
 class Map<Plucker::Line3<Scalar>> : public Plucker::Line3Base<Map<Plucker::Line3<Scalar>>>
 {
 public:
+    using Base = Plucker::Line3Base<Map<Plucker::Line3<Scalar>>>;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Map(Scalar* data_raw)
         : l_(data_raw), m_(data_raw + 3) {}
+
+    // LCOV_EXCL_START
+    EIGEN_INHERIT_ASSIGNMENT_EQUAL_OPERATOR(Map)
+    // LCOV_EXCL_STOP
 
     Map<Plucker::Vector3<Scalar>>& l() {
         return l_;
