@@ -65,22 +65,36 @@ Eigen::Vector4d Line::Orthonormal() const {
     Eigen::Matrix<double, 3, 2> C;
     C << m_, l_;
     C.normalize();
-    std::cout << "C:\n" << C << std::endl;
     // C = U*Sigma (QR decomposition)
     Eigen::HouseholderQR<Eigen::Matrix<double, 3, 2>> qr(C);
-    Eigen::Matrix<double, 3, 2> R = qr.matrixQR().triangularView<Eigen::Upper>();
-    std::cout << "R:\n" << R << std::endl;
-    Eigen::Matrix<double, 3, 3> U = qr.householderQ();
-    std::cout << "Q:\n" << U << std::endl;
+    Eigen::Matrix<double, 3, 2> Sigma = qr.matrixQR().triangularView<Eigen::Upper>(); // R
+    Eigen::Matrix<double, 3, 3> U = qr.householderQ();                                // Q
 
-    double theta = std::atan2(R(1, 1), R(0, 0));
-    // TODO
+    double theta = std::atan2(Sigma(1, 1), Sigma(0, 0));
     // theta_x theta_y theta_z from decomposition U
-    return Eigen::Vector4d();
+    double theta_x = std::atan2(-U(1, 2), U(2, 2));
+    double theta_y = std::atan2(U(0, 2), U(2, 2) / cos(theta_x));
+    double theta_z = std::atan2(-U(0, 1), U(0, 0));
+    Eigen::Vector4d Theta(theta_x, theta_y, theta_z, theta);
+    return Theta;
 }
 
-void Line::FromOrthonormal(const Eigen::Vector4d& para) {
+void Line::FromOrthonormal(const Eigen::Vector4d& Theta) {
+    double sx = sin(Theta(0)), sy = sin(Theta(1)), sz = sin(Theta(2)),
+           cx = cos(Theta(0)), cy = cos(Theta(1)), cz = cos(Theta(2)),
+           w1 = cos(Theta(3)), w2 = sin(Theta(3));
+    Eigen::Vector3d u1, u2, l , m;
+    u1(0) =  cy * cz;
+    u1(1) =  sx * sy * cz + cx * sz;
+    u1(2) = -cx * sy * cz + sx * sz;
 
+    u2(0) = -cy * sz;
+    u2(1) = -sx * sy * sz + cx * cz;
+    u2(2) =  cx * sy * sz + sx * cz;
+
+    m = w1 * u1;
+    l = w2 * u2;
+    SetPlucker(l, m);
 }
 
 void Line::SetPlucker(const Eigen::Vector3d& l, const Eigen::Vector3d& m) {
@@ -123,6 +137,26 @@ Line operator*(const Sophus::SE3d& T21, const Line& L1) {
     l2 = T21.so3() * L1.l();
     Line L2(l2, m2, PLUCKER_L_M);
     return L2;
+}
+
+Line operator*(const Line& L, const Eigen::Vector4d& delta) {
+    Eigen::Vector4d Theta = L.Orthonormal();
+    Eigen::Matrix3d U, dU, U_plus_dU;
+    U =  Eigen::AngleAxisd(Theta(0), Eigen::Vector3d::UnitX()) *
+         Eigen::AngleAxisd(Theta(1), Eigen::Vector3d::UnitY()) *
+         Eigen::AngleAxisd(Theta(2), Eigen::Vector3d::UnitZ());
+    dU = Eigen::AngleAxisd(delta(0), Eigen::Vector3d::UnitX()) *
+         Eigen::AngleAxisd(delta(1), Eigen::Vector3d::UnitY()) *
+         Eigen::AngleAxisd(delta(2), Eigen::Vector3d::UnitZ());
+    U_plus_dU = U * dU;
+
+    double theta = Theta(3) + delta(3),
+           theta_x = std::atan2(-U_plus_dU(1, 2), U_plus_dU(2, 2)),
+           theta_y = std::atan2(U_plus_dU(0, 2), U_plus_dU(2, 2) / cos(theta_x)),
+           theta_z = std::atan2(-U_plus_dU(0, 1), U_plus_dU(0, 0));
+    Line L_plus_delta;
+    L_plus_delta.FromOrthonormal(Eigen::Vector4d(theta_x, theta_y, theta_z, theta));
+    return L_plus_delta;
 }
 
 // # Corollary 2 #

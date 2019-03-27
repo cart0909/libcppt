@@ -35,7 +35,7 @@ public:
     const Eigen::Vector3d& m() const;
 
     Eigen::Vector4d Orthonormal() const;
-    void FromOrthonormal(const Eigen::Vector4d& para);
+    void FromOrthonormal(const Eigen::Vector4d& Theta);
 
     void SetPlucker(const Eigen::Vector3d& l, const Eigen::Vector3d& m);
     double Distance() const;
@@ -46,6 +46,7 @@ public:
 
     friend std::ostream& operator<<(std::ostream& s, const Line& L);
     friend Line operator*(const Sophus::SE3d& T21, const Line& L1);
+    friend Line operator*(const Line& L, const Eigen::Vector4d& delta);
 private:
     Eigen::Vector3d l_;
     Eigen::Vector3d m_;
