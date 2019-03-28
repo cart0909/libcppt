@@ -4,17 +4,57 @@
 using namespace Plucker;
 
 int main() {
-    Eigen::Vector3d A(1, 0, 0), B(1, 1, 1), C(0, 1, 3), D(-1, 2, 1);
-    Line3d l1(A, B, POINT_DIR), l2(C, D, POINT_DIR);
-    Eigen::Map<Line3d> l3(l1.data());
-    Sophus::SE3d T21;
-    T21 = Sophus::SE3d::rotX(M_PI/6) * Sophus::SE3d::rotY(M_PI/2) * Sophus::SE3d::rotX(M_PI/5);
-    T21.translation() << 6, 8, -7;
-    std::cout << l1 << std::endl;
-    std::cout << T21 * l1 << std::endl;
+    Eigen::Vector3d p1(3, -4, -2), d1(1, -2, 1), p2(-9, 2, 0), d2(4, -1, 2);
+    Line3d l1(p1, d1, POINT_DIR), l2(p2, d2, POINT_DIR);
+    std::cout << Distance(l1, l2) << std::endl;
 
-    Eigen::Vector4d delta = Eigen::Vector4d::Random();
-    std::cout << l1 * delta << std::endl;
-    std::cout << l3 * delta << std::endl;
+    p1 << 1, 2, -4;
+    d1 << 3, -1, 1;
+    p2 << -4, 6, -7;
+    l1 = Line3d(p1, d1, POINT_DIR);
+    std::cout << l1.Distance(p2) << std::endl;
+    std::cout << l1.ClosestPoint(p2).transpose() << std::endl;
+
+    p1 << 2, 0, 5;
+    d1 << -1, 2, -2;
+    p2 << -1, 1, 2;
+    d2 << 2, 1, 1;
+    l1 = Line3d(p1, d1, POINT_DIR);
+    l2 = Line3d(p2, d2, POINT_DIR);
+    Eigen::Vector3d p1_star, p2_star;
+    LinesStatus status;
+    Feet(l1, l2, p1_star, p2_star, &status);
+    std::cout << p1_star.transpose() << std::endl;
+    std::cout << p2_star.transpose() << std::endl;
+    std::cout << status << std::endl;
+
+    p1 << 3, 1, -1;
+    d1 << 1, 2, 1;
+    p2 << 2, 0, 1;
+    d2 << 1, 1, 1;
+    l1 = Line3d(p1, d1, POINT_DIR);
+    l2 = Line3d(p2, d2, POINT_DIR);
+    Feet(l1, l2, p1_star, p2_star, &status);
+    std::cout << p1_star.transpose() << std::endl;
+    std::cout << p2_star.transpose() << std::endl;
+    std::cout << status << std::endl;
+
+
+    p1 << 3, 0, -2;
+    d1 << 1, -1, -2;
+    p2 << 9, -2 , -1;
+    d2 << 2, -2 ,-4;
+    l1 = Line3d(p1, d1, POINT_DIR);
+    l2 = Line3d(p2, d2, POINT_DIR);
+    std::cout << pow(Distance(l1, l2), 2) << std::endl;
+
+    p1 << 5, -7, 1;
+    d1 << 3, -6, -2;
+    p2 << 1, 0, -5;
+    d2 << 3, 2, 2;
+    l1 = Line3d(p1, d1, POINT_DIR);
+    l2 = Line3d(p2, d2, POINT_DIR);
+    std::cout << pow(Distance(l1, l2), 2) << std::endl;
+
     return 0;
 }

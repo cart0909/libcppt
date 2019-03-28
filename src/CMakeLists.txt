@@ -146,6 +146,7 @@ rgbd_system.cpp
 rgbd_backend.cpp
 thread_pool_mgr.cpp
 ceres/local_parameterization_se3.cpp
+ceres/local_parameterization_line.cpp
 ceres/projection_factor.cpp
 ceres/projection_td_factor.cpp
 ceres/line_projection_factor.cpp

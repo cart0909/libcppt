@@ -236,7 +236,7 @@ public:
             throw std::runtime_error("Vector3d constructor only support PLUCKER_L_M, POINT_DIR and TWO_POINT");
 
         Scalar l_norm = l.norm();
-        if(l_norm <= std::numeric_limits<Scalar>::min())
+        if(l_norm <= Sophus::Constants<Scalar>::epsilon())
             throw std::runtime_error("l close to zero vector!!!");
         l_ = l / l_norm;
         m_ = m / l_norm;
@@ -256,7 +256,7 @@ public:
             throw std::runtime_error("Vector4d constructor only support TWO_POINT and TWO_PLANE");
 
         Scalar l_norm = l.norm();
-        if(l_norm <= std::numeric_limits<Scalar>::min())
+        if(l_norm <= Sophus::Constants<Scalar>::epsilon())
             throw std::runtime_error("l close to zero vector!!!");
         l_ = l / l_norm;
         m_ = m / l_norm;
@@ -372,7 +372,7 @@ typename Line3Base<Derived>::Scalar Distance(const Line3Base<Derived>& L1, const
     Vector3<Scalar> l1xl2 = l1.cross(l2);
     Scalar norm_l1xl2 =l1xl2.norm();
     Scalar d = 0;
-    if(norm_l1xl2 <= std::numeric_limits<Scalar>::min()) {
+    if(norm_l1xl2 <= Sophus::Constants<Scalar>::epsilon()) {
         Scalar s = l1.dot(l2);
         d = l1.cross(m1 - m2 / s).norm();
     }
@@ -396,8 +396,8 @@ bool CommonPerpendicular(const Line3Base<Derived1>& L1, const Line3Base<Derived2
     Scalar L1_star_L2 = ReciprocalProduct(L1, L2);
     Vector3<Scalar> l1xl2 = l1.cross(l2);
     Scalar norm_l1xl2 = l1xl2.norm();
-    if(std::abs(L1_star_L2) <= std::numeric_limits<Scalar>::min()) {
-        if(norm_l1xl2 <= std::numeric_limits<Scalar>::min()) {
+    if(std::abs(L1_star_L2) <= Sophus::Constants<Scalar>::epsilon()) {
+        if(norm_l1xl2 <= Sophus::Constants<Scalar>::epsilon()) {
             if(status)
                 *status = PARALLEL_LINES;
             return false;
@@ -433,13 +433,13 @@ bool Feet(const Line3Base<Derived>& L1, const Line3Base<OtherDerived>& L2,
     using NormalType = typename Line3Base<Derived>::NormalType;
 
     const DirectionType &l1 = L1.l(), &l2 = L2.l();
-    const NormalType&m1 = L1.m(), &m2 = L2.m();
+    const NormalType &m1 = L1.m(), &m2 = L2.m();
     Scalar L1_star_L2 = ReciprocalProduct(L1, L2);
     Vector3<Scalar> l1xl2 = l1.cross(l2);
     Scalar norm_l1xl2 = l1xl2.norm();
 
-    if(std::abs(L1_star_L2) <= std::numeric_limits<Scalar>::min()) {
-        if(norm_l1xl2 <= std::numeric_limits<Scalar>::min()) {
+    if(std::abs(L1_star_L2) <= Sophus::Constants<Scalar>::epsilon()) {
+        if(norm_l1xl2 <= Sophus::Constants<Scalar>::epsilon()) {
             if(status)
                 *status = PARALLEL_LINES;
             return false;
