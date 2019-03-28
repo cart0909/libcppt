@@ -1,6 +1,7 @@
 #pragma once
 #include "util.h"
 #include "backend.h"
+#include "plucker/line.h"
 
 class PLBackEnd : public BackEnd {
 public:
@@ -31,7 +32,7 @@ public:
     struct LineFeature {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         LineFeature(uint64_t feat_id_, int start_id_)
-            : feat_id(feat_id_), start_id(start_id_), inv_depth{-1, -1} {}
+            : feat_id(feat_id_), start_id(start_id_), inv_depth{-1, -1}, need_triangulate(true) {}
 
         inline int CountNumMeas(int sw_idx) const {
             int num_meas = 0;
@@ -52,6 +53,9 @@ public:
                              // [1]: ept inv_depth
         Eigen::DeqVector3d spt_n_per_frame, ept_n_per_frame;
         Eigen::DeqVector3d spt_r_n_per_frame, ept_r_n_per_frame;
+
+        bool need_triangulate;
+        Plucker::Line3d Lw;
     };
     SMART_PTR(LineFeature)
 

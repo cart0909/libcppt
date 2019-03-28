@@ -5,6 +5,7 @@
 // ------------------------ref---------------------
 // Plucker Coordinates for Lines in the Space
 // Structure-From-Motion Using Lines: Representation, Triangulation and Bundle Adjustment
+// Plücker Correction Problem: Analysis and Improvements in Efficiency
 
 namespace Plucker {
 template <class Scalar>
@@ -461,5 +462,21 @@ bool Feet(const Line3Base<Derived>& L1, const Line3Base<OtherDerived>& L2,
         p2_star = ( m2.cross(l1.cross(l1xl2)) - (m1.dot(l1xl2))*l2) / norm_l1xl2_2;
         return true;
     }
+}
+
+namespace Correction {
+
+template <class Derived, class OtherDerived>
+void LMPC(const Eigen::MatrixBase<Derived>& a, const Eigen::MatrixBase<Derived>& b, Eigen::MatrixBase<OtherDerived>& x, Eigen::MatrixBase<OtherDerived>& y) {
+    using Scalar = typename Derived::Scalar;
+    Scalar p = a.dot(b);
+    Scalar q = a.dot(a) + b.dot(b);
+    Scalar mu = 2 * p / (q + std::sqrt(q * q - 4 * p * p));
+    Scalar u_ = 1 / (1 - mu * mu);
+
+    x << (a(0) - mu * b(0)) * u_, (a(1) - mu * b(1)) * u_, (a(2) - mu * b(2)) * u_;
+    y << (b(0) - mu * a(0)) * u_, (b(1) - mu * a(1)) * u_, (b(2) - mu * a(2)) * u_;
+}
+
 }
 }

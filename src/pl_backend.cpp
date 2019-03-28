@@ -151,15 +151,15 @@ int PLBackEnd::Triangulate(int sw_idx) {
     for(auto& it : m_lines) {
         auto& line = it.second;
 
-        if(line.inv_depth[0] != -1.0f && line.inv_depth[1] != -1.0f)
+        if(!line.need_triangulate)
             continue;
 
         int num_meas = line.CountNumMeas(sw_idx);
 
-        if(num_meas < 2)
+        if(num_meas < 3)
             continue;
 
-        Eigen::MatrixXd Ap(2 * num_meas, 4), Aq(2 * num_meas, 4);
+        Eigen::MatrixXd A(2 * num_meas, 6);
         Sophus::SE3d Tbc(q_bc, p_bc);
         Sophus::SE3d Twb0(d_frames[line.start_id]->q_wb, d_frames[line.start_id]->p_wb);
         Sophus::SE3d Twc0 = Twb0 * Tbc;
@@ -174,44 +174,27 @@ int PLBackEnd::Triangulate(int sw_idx) {
             Sophus::SE3d Twbi(d_frames[idx_i]->q_wb, d_frames[idx_i]->p_wb);
             Sophus::SE3d Twci = Twbi * Tbc;
             Sophus::SE3d Ti0 = Twci.inverse() * Twc0;
-            Eigen::Matrix<double, 3, 4> P;
-            P << Ti0.rotationMatrix(), Ti0.translation();
-            Ap.row(A_idx)   = P.row(0) - line.spt_n_per_frame[i](0) * P.row(2);
-            Aq.row(A_idx++) = P.row(0) - line.ept_n_per_frame[i](0) * P.row(2);
-            Ap.row(A_idx)   = P.row(1) - line.spt_n_per_frame[i](1) * P.row(2);
-            Aq.row(A_idx++) = P.row(1) - line.ept_n_per_frame[i](1) * P.row(2);
+            Eigen::Matrix<double, 3, 6> Pi0;
+            Pi0 << Ti0.rotationMatrix(), Sophus::SO3d::hat(Ti0.translation()) * Ti0.rotationMatrix();
+            A.row(A_idx++) = line.spt_n_per_frame[i].transpose() * Pi0;
+            A.row(A_idx++) = line.ept_n_per_frame[i].transpose() * Pi0;
 
             if(line.spt_r_n_per_frame[i](2) != 0) {
                 Sophus::SE3d Trl(q_rl, p_rl);
                 Sophus::SE3d Tri_0 = Trl * Ti0;
-                P << Tri_0.rotationMatrix(), Tri_0.translation();
-                Ap.row(A_idx)   = P.row(0) - line.spt_r_n_per_frame[i](0) * P.row(2);
-                Aq.row(A_idx++) = P.row(0) - line.ept_r_n_per_frame[i](0) * P.row(2);
-                Ap.row(A_idx)   = P.row(1) - line.spt_r_n_per_frame[i](1) * P.row(2);
-                Aq.row(A_idx++) = P.row(1) - line.ept_r_n_per_frame[i](1) * P.row(2);
+                Pi0 << Tri_0.rotationMatrix(), Sophus::SO3d::hat(Tri_0.translation()) * Tri_0.rotationMatrix();
+                A.row(A_idx++) = line.spt_r_n_per_frame[i].transpose() * Pi0;
+                A.row(A_idx++) = line.ept_r_n_per_frame[i].transpose() * Pi0;
             }
         }
 
-        // Solve AX=0
-        Eigen::Vector4d P = Eigen::JacobiSVD<Eigen::MatrixXd>(Ap, Eigen::ComputeThinV).matrixV().rightCols<1>(),
-                        Q = Eigen::JacobiSVD<Eigen::MatrixXd>(Aq, Eigen::ComputeThinV).matrixV().rightCols<1>();
+        Eigen::Vector6d x = Eigen::JacobiSVD<Eigen::MatrixXd>(A, Eigen::ComputeThinV).matrixV().rightCols<1>();
+        Eigen::Vector3d m, l;
+        Plucker::Correction::LMPC(x.head<3>(), x.tail<3>(), m, l);
+        Plucker::Line3d L0(l, m, Plucker::PLUCKER_L_M);
 
-        P /= P(3);
-        Q /= Q(3);
-
-        if(P(2) < 0.1) {
-            line.inv_depth[0] = -1.0f;
-        }
-        else {
-            line.inv_depth[0] = 1.0f / P(2);
-        }
-
-        if(Q(2) < 0.1) {
-            line.inv_depth[1] = -1.0f;
-        }
-        else {
-            line.inv_depth[1] = 1.0f / Q(2);
-        }
+        line.Lw = Twc0 * L0;
+        line.need_triangulate = false;
     }
 
     return BackEnd::Triangulate(sw_idx);
@@ -806,19 +789,30 @@ void PLBackEnd::Publish() {
 
     if(!pub_lines.empty()) {
         Eigen::VecVector3d v_Pw, v_Qw;
-
+        Sophus::SE3d Tbc(q_bc, p_bc);
         for(auto& it : m_lines) {
             auto& line = it.second;
-            if(line.CountNumMeas(window_size) < 2 || line.inv_depth[0] == -1.0f || line.inv_depth[1] == -1.0f) {
+            if(line.CountNumMeas(window_size) < 2 || line.need_triangulate) {
                 continue;
             }
 
-            Eigen::Vector3d Pci = line.spt_n_per_frame[0] / line.inv_depth[0],
-                            Qci = line.ept_n_per_frame[0] / line.inv_depth[1];
             int id_i = line.start_id;
-            Sophus::SE3d Twci = Sophus::SE3d(d_frames[id_i]->q_wb, d_frames[id_i]->p_wb) * Sophus::SE3d(q_bc, p_bc);
-            Eigen::Vector3d Pw = Twci * Pci,
-                            Qw = Twci * Qci;
+            Sophus::SE3d Twb(d_frames[id_i]->q_wb, d_frames[id_i]->p_wb), Twc = Twb * Tbc;
+            Plucker::Line3d P_line0(Eigen::Vector3d(0, 0, 0), line.spt_n_per_frame[0], Plucker::TWO_POINT),
+                            Q_line0(Eigen::Vector3d(0, 0, 0), line.ept_n_per_frame[0], Plucker::TWO_POINT);
+
+            Plucker::Line3d Lc = Twc.inverse() * line.Lw;
+            Eigen::Vector3d p1_star, p2_star, q1_star, q2_star;
+            Plucker::Feet(P_line0, Lc, p1_star, p2_star);
+            Plucker::Feet(Q_line0, Lc, q1_star, q2_star);
+
+            if(p1_star(2) < 0 || q1_star(2) < 0)
+                continue;
+
+            Eigen::Vector3d Pw, Qw;
+            Pw = Twc * p1_star;
+            Qw = Twc * q1_star;
+
             v_Pw.emplace_back(Pw);
             v_Qw.emplace_back(Qw);
         }
