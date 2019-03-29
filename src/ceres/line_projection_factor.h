@@ -3,6 +3,66 @@
 #include <sophus/se3.hpp>
 #include <ceres/sized_cost_function.h>
 #include <ceres/autodiff_cost_function.h>
+#include "util.h"
+#include "plucker/line.h"
+
+namespace Plucker {
+
+class LineProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 4>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    bool Evaluate(double const* const* parameters_raw, double* residuals_raw, double** jacobians_raw) const {
+        Eigen::Matrix2d sqrt_info;
+        Eigen::Vector3d spt, ept;
+        // parameters [0]: Twb
+        //            [2]: Tbc
+        //            [3]: Lw
+        Eigen::Map<const Sophus::SE3d> Twb(parameters_raw[0]), Tbc(parameters_raw[1]);
+        Eigen::Map<const Plucker::Line3d> Lw(parameters_raw[2]);
+        Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
+
+        Sophus::SE3d Tcw = (Twb * Tbc).inverse();
+        Plucker::Line3d Lc = Tcw * Lw;
+        Eigen::Vector3d l = Lc.m() / Lc.m().head<2>().norm(); // 2d line in normal plane equal to Lc normal vector
+        residuals << l.dot(spt),
+                     l.dot(ept);
+
+        residuals = sqrt_info * residuals;
+
+        if(jacobians_raw) {
+            Eigen::Matrix2_3d dr_dmc;
+            Eigen::Vector3d mc = Lc.m();
+            double m01 = mc.head<2>().norm();
+            double inv_m01 = 1.0f / m01, inv_m01_2 = inv_m01 * inv_m01;
+            dr_dmc << spt(0)*inv_m01-mc(0)*residuals(0)*inv_m01_2, spt(1)*inv_m01-mc(1)*residuals(0)*inv_m01_2, inv_m01,
+                      ept(0)*inv_m01-mc(0)*residuals(1)*inv_m01_2, ept(1)*inv_m01-mc(1)*residuals(1)*inv_m01_2, inv_m01;
+            dr_dmc = sqrt_info * dr_dmc;
+
+            if(jacobians_raw[0]) {
+                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jwb(jacobians_raw[0]);
+                Eigen::Matrix<double, 2, 6> J;
+                Jwb.rightCols<1>().setZero();
+            }
+
+            if(jacobians_raw[1]) {
+                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jbc(jacobians_raw[1]);
+                Eigen::Matrix<double, 2, 6> J;
+                Jbc.rightCols<1>().setZero();
+            }
+
+            if(jacobians_raw[2]) {
+                Eigen::Map<Eigen::Matrix<double, 2, 6, Eigen::RowMajor>> Jline(jacobians_raw[2]);
+                Jline.rightCols<1>().setZero();
+            }
+        }
+
+        return true;
+    }
+};
+
+}
 
 class LineProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 2>
 {
