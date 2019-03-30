@@ -23,8 +23,8 @@ public:
         Eigen::Map<const Plucker::Line3d> Lw(parameters_raw[2]);
         Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
 
-        Sophus::SE3d Tcw = (Twb * Tbc).inverse();
-        Plucker::Line3d Lc = Tcw * Lw;
+        Plucker::Line3d Lb = Twb.inverse() * Lw;
+        Plucker::Line3d Lc = Tbc.inverse() * Lb;
         Eigen::Vector3d l = Lc.m() / Lc.m().head<2>().norm(); // 2d line in normal plane equal to Lc normal vector
         residuals << l.dot(spt),
                      l.dot(ept);
@@ -40,21 +40,35 @@ public:
                       ept(0)*inv_m01-mc(0)*residuals(1)*inv_m01_2, ept(1)*inv_m01-mc(1)*residuals(1)*inv_m01_2, inv_m01;
             dr_dmc = sqrt_info * dr_dmc;
 
+            Eigen::Matrix3d Rcb = Tbc.so3().inverse().matrix(),
+                            Rbw = Twb.so3().inverse().matrix(),
+                            Rcw = (Twb.so3() * Tbc.so3()).inverse().matrix();
+
+            Eigen::Vector3d p_bc = Tbc.translation();
+            auto hat = Sophus::SO3d::hat;
+
             if(jacobians_raw[0]) {
                 Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jwb(jacobians_raw[0]);
-                Eigen::Matrix<double, 2, 6> J;
+                Eigen::Matrix<double, 3, 6> J;
+                J.leftCols<3>() = Rcw * hat(Lw.l());
+                J.rightCols<3>() = Rcb * (hat(Lb.m()) - hat(p_bc) * hat(Lb.l()));
+                Jwb.leftCols<6>() = dr_dmc * J;
                 Jwb.rightCols<1>().setZero();
             }
 
             if(jacobians_raw[1]) {
                 Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jbc(jacobians_raw[1]);
-                Eigen::Matrix<double, 2, 6> J;
+                Eigen::Matrix<double, 3, 6> J;
+                J.leftCols<3>() = Rcb * hat(Lb.l());
+                J.rightCols<3>() = hat(Lc.m());
+                Jbc.leftCols<6>() = dr_dmc * J;
                 Jbc.rightCols<1>().setZero();
             }
 
             if(jacobians_raw[2]) {
                 Eigen::Map<Eigen::Matrix<double, 2, 6, Eigen::RowMajor>> Jline(jacobians_raw[2]);
-                Jline.rightCols<1>().setZero();
+                Jline.leftCols<4>();
+                Jline.rightCols<2>().setZero();
             }
         }
 

@@ -56,5 +56,7 @@ int main() {
     l2 = Line3d(p2, d2, POINT_DIR);
     std::cout << pow(Distance(l1, l2), 2) << std::endl;
 
+    std::cout << l2 << std::endl;
+    std::cout << l2.Jacobian() << std::endl;
     return 0;
 }

@@ -103,22 +103,39 @@ public:
     }
 
     // method
-    Plucker::Vector4<Scalar> Orthonormal() const {
+    void SetPlucker(const Plucker::Vector3<Scalar>& l_, const Plucker::Vector3<Scalar>& m_) {
+        Scalar l_norm = l_.norm();
+        if(l_norm <= Sophus::Constants<Scalar>::epsilon())
+            throw std::runtime_error("l close to zero vector!!!");
+        l() = l_ / l_norm;
+        m() = m_ / l_norm;
+    }
+
+    void Orthonormal(Plucker::Vector4<Scalar>& Theta) const {
         Eigen::Matrix<Scalar, 3, 2> C;
         C << m(), l();
         C.normalize();
         // C = U*Sigma (QR decomposition)
         Eigen::HouseholderQR<Eigen::Matrix<Scalar, 3, 2>> qr(C);
         Eigen::Matrix<Scalar, 3, 2> Sigma = qr.matrixQR().template triangularView<Eigen::Upper>(); // R
-        Eigen::Matrix<Scalar, 3, 3> U = qr.householderQ();                                // Q
-
+        Eigen::Matrix<Scalar, 3, 3> U = qr.householderQ();                                         // Q
         Scalar theta = std::atan2(Sigma(1, 1), Sigma(0, 0));
         // theta_x theta_y theta_z from decomposition U
         Scalar theta_x = std::atan2(-U(1, 2), U(2, 2));
         Scalar theta_y = std::atan2(U(0, 2), U(2, 2) / cos(theta_x));
         Scalar theta_z = std::atan2(-U(0, 1), U(0, 0));
-        Plucker::Vector4<Scalar> Theta(theta_x, theta_y, theta_z, theta);
-        return Theta;
+        Theta << theta_x, theta_y, theta_z, theta;
+    }
+
+    void Orthonormal(Eigen::Matrix<Scalar, 3, 3>& U, Scalar& w1, Scalar& w2) const {
+        Eigen::Matrix<Scalar, 3, 2> C;
+        C << m(), l();
+        C.normalize();
+        Eigen::HouseholderQR<Eigen::Matrix<Scalar, 3, 2>> qr(C);
+        Eigen::Matrix<Scalar, 3, 2> Sigma = qr.matrixQR().template triangularView<Eigen::Upper>(); // R
+        w1 = Sigma(0, 0); // cos(theta)
+        w2 = Sigma(1, 1); // sin(theta)
+        U = qr.householderQ();
     }
 
     void FromOrthonormal(const Plucker::Vector4<Scalar>& Theta) {
@@ -139,12 +156,23 @@ public:
         SetPlucker(l, m);
     }
 
-    void SetPlucker(const Plucker::Vector3<Scalar>& l_, const Plucker::Vector3<Scalar>& m_) {
-        Scalar l_norm = l_.norm();
-        if(l_norm <= std::numeric_limits<double>::min())
-            throw std::runtime_error("l close to zero vector!!!");
-        l() = l_ / l_norm;
-        m() = m_ / l_norm;
+    Eigen::Matrix<Scalar, 6, 4> Jacobian() const {
+        Eigen::Matrix<Scalar, 6, 4> dL_dth;
+        // L = [m, l]'
+        // th = [thx, thy, thz, th]'
+        Eigen::Matrix<Scalar, 3, 3> U;
+        double w1, w2;
+        Orthonormal(U, w1, w2);
+
+        Plucker::Vector3<Scalar> O3x1 = Plucker::Vector3<Scalar>::Zero(),
+                                 w1u2 = w1 * U.col(1),
+                                 w2u1 = w2 * U.col(0),
+                                 w1u3 = w1 * U.col(2),
+                                 w2u3 = w1 * U.col(2);
+        dL_dth << O3x1, -w1u3,  w1u2, -w2u1,
+                  w2u3,  O3x1, -w2u1,  w1u2;
+
+        return dL_dth;
     }
 
     Scalar Distance() const {
@@ -167,18 +195,18 @@ public:
         return q + l().cross(mq);
     }
 
-    Line3<Scalar> operator*(const Plucker::Vector4<Scalar>& delta) {
-        Plucker::Vector4<Scalar> Theta = Orthonormal();
+    Line3<Scalar> operator*(const Plucker::Vector4<Scalar>& delta) const {
         Eigen::Matrix<Scalar, 3, 3> U, dU, U_plus_dU;
-        U =  Eigen::AngleAxis<Scalar>(Theta(0), Plucker::Vector3<Scalar>::UnitX()) *
-             Eigen::AngleAxis<Scalar>(Theta(1), Plucker::Vector3<Scalar>::UnitY()) *
-             Eigen::AngleAxis<Scalar>(Theta(2), Plucker::Vector3<Scalar>::UnitZ());
+        Scalar w1, w2;
+        Orthonormal(U, w1, w2);
         dU = Eigen::AngleAxis<Scalar>(delta(0), Plucker::Vector3<Scalar>::UnitX()) *
              Eigen::AngleAxis<Scalar>(delta(1), Plucker::Vector3<Scalar>::UnitY()) *
              Eigen::AngleAxis<Scalar>(delta(2), Plucker::Vector3<Scalar>::UnitZ());
         U_plus_dU = U * dU;
 
-        Scalar theta = Theta(3) + delta(3),
+        Scalar th = std::atan2(w2, w1);
+
+        Scalar theta = th + delta(3),
                theta_x = std::atan2(-U_plus_dU(1, 2), U_plus_dU(2, 2)),
                theta_y = std::atan2(U_plus_dU(0, 2), U_plus_dU(2, 2) / cos(theta_x)),
                theta_z = std::atan2(-U_plus_dU(0, 1), U_plus_dU(0, 0));
