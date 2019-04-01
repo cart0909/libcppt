@@ -8,72 +8,28 @@
 
 namespace Plucker {
 
-class LineProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 4>
+class LineProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 6>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    LineProjectionFactor(const Eigen::Vector3d& spt_, const Eigen::Vector3d& ept_, double focal_length);
 
-    bool Evaluate(double const* const* parameters_raw, double* residuals_raw, double** jacobians_raw) const {
-        Eigen::Matrix2d sqrt_info;
-        Eigen::Vector3d spt, ept;
-        // parameters [0]: Twb
-        //            [2]: Tbc
-        //            [3]: Lw
-        Eigen::Map<const Sophus::SE3d> Twb(parameters_raw[0]), Tbc(parameters_raw[1]);
-        Eigen::Map<const Plucker::Line3d> Lw(parameters_raw[2]);
-        Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
+    bool Evaluate(double const* const* parameters_raw, double* residuals_raw, double** jacobians_raw) const;
 
-        Plucker::Line3d Lb = Twb.inverse() * Lw;
-        Plucker::Line3d Lc = Tbc.inverse() * Lb;
-        Eigen::Vector3d l = Lc.m() / Lc.m().head<2>().norm(); // 2d line in normal plane equal to Lc normal vector
-        residuals << l.dot(spt),
-                     l.dot(ept);
+    Eigen::Matrix2d sqrt_info;
+    Eigen::Vector3d spt, ept;
+};
 
-        residuals = sqrt_info * residuals;
+class LineSlaveProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 6>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    LineSlaveProjectionFactor(const Eigen::Vector3d& spt_, const Eigen::Vector3d& ept_, double focal_length);
 
-        if(jacobians_raw) {
-            Eigen::Matrix2_3d dr_dmc;
-            Eigen::Vector3d mc = Lc.m();
-            double m01 = mc.head<2>().norm();
-            double inv_m01 = 1.0f / m01, inv_m01_2 = inv_m01 * inv_m01;
-            dr_dmc << spt(0)*inv_m01-mc(0)*residuals(0)*inv_m01_2, spt(1)*inv_m01-mc(1)*residuals(0)*inv_m01_2, inv_m01,
-                      ept(0)*inv_m01-mc(0)*residuals(1)*inv_m01_2, ept(1)*inv_m01-mc(1)*residuals(1)*inv_m01_2, inv_m01;
-            dr_dmc = sqrt_info * dr_dmc;
+    bool Evaluate(double const* const* parameters_raw, double* residuals_raw, double** jacobians_raw) const;
 
-            Eigen::Matrix3d Rcb = Tbc.so3().inverse().matrix(),
-                            Rbw = Twb.so3().inverse().matrix(),
-                            Rcw = (Twb.so3() * Tbc.so3()).inverse().matrix();
-
-            Eigen::Vector3d p_bc = Tbc.translation();
-            auto hat = Sophus::SO3d::hat;
-
-            if(jacobians_raw[0]) {
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jwb(jacobians_raw[0]);
-                Eigen::Matrix<double, 3, 6> J;
-                J.leftCols<3>() = Rcw * hat(Lw.l());
-                J.rightCols<3>() = Rcb * (hat(Lb.m()) - hat(p_bc) * hat(Lb.l()));
-                Jwb.leftCols<6>() = dr_dmc * J;
-                Jwb.rightCols<1>().setZero();
-            }
-
-            if(jacobians_raw[1]) {
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jbc(jacobians_raw[1]);
-                Eigen::Matrix<double, 3, 6> J;
-                J.leftCols<3>() = Rcb * hat(Lb.l());
-                J.rightCols<3>() = hat(Lc.m());
-                Jbc.leftCols<6>() = dr_dmc * J;
-                Jbc.rightCols<1>().setZero();
-            }
-
-            if(jacobians_raw[2]) {
-                Eigen::Map<Eigen::Matrix<double, 2, 6, Eigen::RowMajor>> Jline(jacobians_raw[2]);
-                Jline.leftCols<4>();
-                Jline.rightCols<2>().setZero();
-            }
-        }
-
-        return true;
-    }
+    Eigen::Matrix2d sqrt_info;
+    Eigen::Vector3d spt, ept;
 };
 
 }
