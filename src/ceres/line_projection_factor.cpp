@@ -5,7 +5,7 @@ namespace Plucker {
 LineProjectionFactor::LineProjectionFactor(const Eigen::Vector3d& spt_, const Eigen::Vector3d& ept_, double focal_length)
     : spt(spt_), ept(ept_)
 {
-    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 1.5f;
+    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 3.0f;
 }
 
 bool LineProjectionFactor::Evaluate(double const* const* parameters_raw, double* residuals_raw, double** jacobians_raw) const {
@@ -23,30 +23,36 @@ bool LineProjectionFactor::Evaluate(double const* const* parameters_raw, double*
     Eigen::Vector3d l = Lc.m() / Lc.m().head<2>().norm(); // 2d line in normal plane equal to Lc normal vector
     residuals << l.dot(spt),
                  l.dot(ept);
-
     residuals = sqrt_info * residuals;
 
     if(jacobians_raw) {
         Eigen::Matrix2_3d reduce;
         Eigen::Vector3d mc = Lc.m();
         double m01 = mc.head<2>().norm();
-        double inv_m01 = 1.0f / m01, inv_m01_2 = inv_m01 * inv_m01;
-        reduce << spt(0)*inv_m01-mc(0)*residuals(0)*inv_m01_2, spt(1)*inv_m01-mc(1)*residuals(0)*inv_m01_2, inv_m01,
-                  ept(0)*inv_m01-mc(0)*residuals(1)*inv_m01_2, ept(1)*inv_m01-mc(1)*residuals(1)*inv_m01_2, inv_m01;
+        double inv_m01 = 1.0f / m01, inv_m01_2 = inv_m01 * inv_m01, inv_m01_3 = inv_m01 * inv_m01_2;
+        double mc_dot_spt = mc.dot(spt), mc_dot_ept = mc.dot(ept);
+        reduce << spt(0)*inv_m01-mc(0)*mc_dot_spt*inv_m01_3, spt(1)*inv_m01-mc(1)*mc_dot_spt*inv_m01_3, inv_m01,
+                  ept(0)*inv_m01-mc(0)*mc_dot_ept*inv_m01_3, ept(1)*inv_m01-mc(1)*mc_dot_ept*inv_m01_3, inv_m01;
         reduce = sqrt_info * reduce;
 
-        Eigen::Matrix3d Rcb = Tbc.so3().inverse().matrix(),
-                        Rbw = Twb.so3().inverse().matrix(),
-                        Rcw = (Twb.so3() * Tbc.so3()).inverse().matrix();
+        Sophus::SO3d q_cb = Tcb.so3(), q_bw = Tbw.so3(), q_cw = q_cb * q_bw;
 
-        Eigen::Vector3d p_bc = Tbc.translation(), p_wb = Twb.translation();
+        Eigen::Matrix3d Rcb = q_cb.matrix(),
+                        Rbw = q_bw.matrix(),
+                        Rcw = q_cw.matrix();
+
+        const Eigen::Vector3d &p_bc = Tbc.translation(), &p_wb = Twb.translation();
         auto hat = Sophus::SO3d::hat;
+        Eigen::Matrix3d lw_hat = hat(Lw.l()),
+                        mb_hat = hat(Lb.m()), lb_hat = hat(Lb.l()),
+                        mc_hat = hat(Lc.m()), lc_hat = hat(Lc.l()),
+                        tbc_hat = hat(p_bc), twb_hat = hat(p_wb);
 
         if(jacobians_raw[0]) {
             Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jwb(jacobians_raw[0]);
             Eigen::Matrix<double, 3, 6> J;
-            J.leftCols<3>() = Rcw * hat(Lw.l());
-            J.rightCols<3>() = Rcb * (hat(Lb.m()) - hat(p_bc) * hat(Lb.l()));
+            J.leftCols<3>() = Rcw * lw_hat;
+            J.rightCols<3>() = Rcb * (mb_hat - tbc_hat * lb_hat);
             Jwb.leftCols<6>() = reduce * J;
             Jwb.rightCols<1>().setZero();
         }
@@ -54,8 +60,8 @@ bool LineProjectionFactor::Evaluate(double const* const* parameters_raw, double*
         if(jacobians_raw[1]) {
             Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jbc(jacobians_raw[1]);
             Eigen::Matrix<double, 3, 6> J;
-            J.leftCols<3>() = Rcb * hat(Lb.l());
-            J.rightCols<3>() = hat(Lc.m());
+            J.leftCols<3>() = Rcb * lb_hat;
+            J.rightCols<3>() = mc_hat;
             Jbc.leftCols<6>() = reduce * J;
             Jbc.rightCols<1>().setZero();
         }
@@ -65,7 +71,7 @@ bool LineProjectionFactor::Evaluate(double const* const* parameters_raw, double*
             Eigen::Matrix<double, 6, 4> dLw_dTh = Lw.Jacobian();
             Eigen::Matrix<double, 3, 4> dmw_dTh = dLw_dTh.topRows<3>(),
                                         dlw_dTh = dLw_dTh.bottomRows<3>();
-            Jline.leftCols<4>() = reduce * Rcb * ((Rbw * dmw_dTh - Rbw * hat(p_wb) * dlw_dTh) - hat(p_bc) * (Rbw * dlw_dTh));
+            Jline.leftCols<4>() = reduce * Rcb * ((Rbw * dmw_dTh - Rbw * twb_hat * dlw_dTh) - tbc_hat * (Rbw * dlw_dTh));
             Jline.rightCols<2>().setZero();
         }
     }
@@ -75,7 +81,7 @@ bool LineProjectionFactor::Evaluate(double const* const* parameters_raw, double*
 LineSlaveProjectionFactor::LineSlaveProjectionFactor(const Eigen::Vector3d& spt_, const Eigen::Vector3d& ept_, double focal_length)
     : spt(spt_), ept(ept_)
 {
-    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 1.5f;
+    sqrt_info = Eigen::Matrix2d::Identity() * focal_length / 3.0f;
 }
 
 bool LineSlaveProjectionFactor::Evaluate(double const* const* parameters_raw, double* residuals_raw, double** jacobians_raw) const {
@@ -103,9 +109,10 @@ bool LineSlaveProjectionFactor::Evaluate(double const* const* parameters_raw, do
         Eigen::Matrix2_3d reduce;
         Eigen::Vector3d ms = Ls.m();
         double m01 = ms.head<2>().norm();
-        double inv_m01 = 1.0f / m01, inv_m01_2 = inv_m01 * inv_m01;
-        reduce << spt(0)*inv_m01-ms(0)*residuals(0)*inv_m01_2, spt(1)*inv_m01-ms(1)*residuals(0)*inv_m01_2, inv_m01,
-                  ept(0)*inv_m01-ms(0)*residuals(1)*inv_m01_2, ept(1)*inv_m01-ms(1)*residuals(1)*inv_m01_2, inv_m01;
+        double inv_m01 = 1.0f / m01, inv_m01_2 = inv_m01 * inv_m01, inv_m01_3 = inv_m01 * inv_m01_2;
+        double mc_dot_spt = ms.dot(spt), mc_dot_ept = ms.dot(ept);
+        reduce << spt(0)*inv_m01-ms(0)*mc_dot_spt*inv_m01_3, spt(1)*inv_m01-ms(1)*mc_dot_spt*inv_m01_3, inv_m01,
+                  ept(0)*inv_m01-ms(0)*mc_dot_ept*inv_m01_3, ept(1)*inv_m01-ms(1)*mc_dot_ept*inv_m01_3, inv_m01;
         reduce = sqrt_info * reduce;
 
         Sophus::SO3d q_sm = Tsm.so3(), q_cb = Tbc.so3().inverse(), q_bw = Twb.so3().inverse(),

@@ -82,4 +82,5 @@ private:
     double* para_lines;
 
     std::vector<std::function<void(const Eigen::VecVector3d&, const Eigen::VecVector3d&)>> pub_lines;
+    void PredictNextFramePose(BackEnd::FramePtr ref_frame, BackEnd::FramePtr cur_frame) override;
 };

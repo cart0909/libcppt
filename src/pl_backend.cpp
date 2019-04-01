@@ -270,16 +270,19 @@ void PLBackEnd::SolveBA() {
 
         problem.AddParameterBlock(para_lines + line_idx * 6, 6, local_para_line3);
 
+//        Eigen::Map<Plucker::Line3d> map_line(para_lines + line_idx * 6);
+//        std::cout << "-----line " << line.feat_id << "\n" << map_line << "\n" << line.Lw << std::endl;
+
         for(int i = 0, n = line.spt_n_per_frame.size(); i < n; ++i) {
             int id = line.start_id + i;
             Eigen::Vector3d spt = line.spt_n_per_frame[i], ept = line.ept_n_per_frame[i];
             auto factor = new Plucker::LineProjectionFactor(spt, ept, focal_length);
-            problem.AddResidualBlock(factor, loss_function, para_pose + id * 7, para_ex_bc, para_lines + line_idx * 6);
+            problem.AddResidualBlock(factor, line_loss_function, para_pose + id * 7, para_ex_bc, para_lines + line_idx * 6);
 
             if(line.spt_r_n_per_frame[i](2) != 0) {
                 Eigen::Vector3d spt_r = line.spt_r_n_per_frame[i], ept_r = line.ept_r_n_per_frame[i];
                 auto factor = new Plucker::LineSlaveProjectionFactor(spt_r, ept_r, focal_length);
-                problem.AddResidualBlock(factor, loss_function, para_pose + id * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 6);
+                problem.AddResidualBlock(factor, line_loss_function, para_pose + id * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 6);
             }
         }
         ++line_idx;
@@ -729,6 +732,32 @@ void PLBackEnd::Publish() {
         for(auto& pub : pub_lines) {
             pub(v_Pw, v_Qw);
         }
+    }
+}
+
+void PLBackEnd::PredictNextFramePose(BackEnd::FramePtr ref_frame, BackEnd::FramePtr cur_frame) {
+    cur_frame->q_wb = ref_frame->q_wb;
+    cur_frame->p_wb = ref_frame->p_wb;
+    cur_frame->v_wb = ref_frame->v_wb;
+    cur_frame->ba = ref_frame->ba;
+    cur_frame->bg = ref_frame->bg;
+    cur_frame->imupreinte = std::make_shared<IntegrationBase>(
+                ref_frame->v_acc.back(), ref_frame->v_gyr.back(),
+                ref_frame->ba, ref_frame->bg,
+                acc_n, gyr_n, acc_w, gyr_w);
+
+    Eigen::Vector3d gyr_0 = ref_frame->v_gyr.back(), acc_0 = ref_frame->v_acc.back();
+    double t0 = ref_frame->v_imu_timestamp.back();
+
+    for(int i = 0, n = cur_frame->v_acc.size(); i < n; ++i) {
+        double t = cur_frame->v_imu_timestamp[i], dt = t - t0;
+        Eigen::Vector3d gyr = cur_frame->v_gyr[i];
+        Eigen::Vector3d acc = cur_frame->v_acc[i];
+        cur_frame->imupreinte->push_back(dt, acc, gyr);
+
+        gyr_0 = gyr;
+        acc_0 = acc;
+        t0 = t;
     }
 }
 
