@@ -32,7 +32,7 @@ public:
     struct LineFeature {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         LineFeature(uint64_t feat_id_, int start_id_)
-            : feat_id(feat_id_), start_id(start_id_), inv_depth{-1, -1}, need_triangulate(true) {}
+            : feat_id(feat_id_), start_id(start_id_), need_triangulate(true) {}
 
         inline int CountNumMeas(int sw_idx) const {
             int num_meas = 0;
@@ -49,8 +49,6 @@ public:
 
         uint64_t feat_id;
         int start_id;
-        double inv_depth[2]; // [0]: spt inv_depth
-                             // [1]: ept inv_depth
         Eigen::DeqVector3d spt_n_per_frame, ept_n_per_frame;
         Eigen::DeqVector3d spt_r_n_per_frame, ept_r_n_per_frame;
 

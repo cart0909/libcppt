@@ -16,8 +16,10 @@ bool LineProjectionFactor::Evaluate(double const* const* parameters_raw, double*
     Eigen::Map<const Plucker::Line3d> Lw(parameters_raw[2]);
     Eigen::Map<Eigen::Vector2d> residuals(residuals_raw);
 
-    Plucker::Line3d Lb = Twb.inverse() * Lw;
-    Plucker::Line3d Lc = Tbc.inverse() * Lb;
+    Sophus::SE3d Tbw = Twb.inverse(), Tcb = Tbc.inverse();
+
+    Plucker::Line3d Lb = Tbw * Lw;
+    Plucker::Line3d Lc = Tcb * Lb;
     Eigen::Vector3d l = Lc.m() / Lc.m().head<2>().norm(); // 2d line in normal plane equal to Lc normal vector
     residuals << l.dot(spt),
                  l.dot(ept);
@@ -123,7 +125,7 @@ bool LineSlaveProjectionFactor::Evaluate(double const* const* parameters_raw, do
                         twb_hat = hat(p_wb), tbc_hat = hat(p_bc), tsm_hat = hat(p_sm);
 
         if(jacobians_raw[0]) {
-            Eigen::Matrix<double, 2, 7, Eigen::RowMajor> Jwb(jacobians_raw[0]);
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jwb(jacobians_raw[0]);
             Eigen::Matrix<double, 3, 6> J;
             J.leftCols<3>() = Rsw * lw_hat;
             J.rightCols<3>() = Rsb * (mb_hat - tbc_hat * lb_hat) + tsm_hat * Rsb * lb_hat;
@@ -132,7 +134,7 @@ bool LineSlaveProjectionFactor::Evaluate(double const* const* parameters_raw, do
         }
 
         if(jacobians_raw[1]) {
-            Eigen::Matrix<double, 2, 7, Eigen::RowMajor> Jbc(jacobians_raw[1]);
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jbc(jacobians_raw[1]);
             Eigen::Matrix<double, 3, 6> J;
             J.leftCols<3>() = Rsb * lb_hat;
             J.rightCols<3>() = Rsm * mc_hat + tsm_hat * Rsm * lc_hat;
@@ -141,7 +143,7 @@ bool LineSlaveProjectionFactor::Evaluate(double const* const* parameters_raw, do
         }
 
         if(jacobians_raw[2]) {
-            Eigen::Matrix<double, 2, 7, Eigen::RowMajor> Jsm(jacobians_raw[2]);
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> Jsm(jacobians_raw[2]);
             Eigen::Matrix<double, 3, 6> J;
             J.leftCols<3>() = -hat(q_sm * Lc.l());
             J.rightCols<3>() = -(Rsm * mc_hat + tsm_hat * Rsm * lc_hat);
@@ -150,7 +152,7 @@ bool LineSlaveProjectionFactor::Evaluate(double const* const* parameters_raw, do
         }
 
         if(jacobians_raw[3]) {
-            Eigen::Matrix<double, 2, 6, Eigen::RowMajor> Jline(jacobians_raw[3]);
+            Eigen::Map<Eigen::Matrix<double, 2, 6, Eigen::RowMajor>> Jline(jacobians_raw[3]);
             Eigen::Matrix<double, 6, 4> dLw_dTh = Lw.Jacobian();
             Eigen::Matrix<double, 3, 4> dmw_dTh = dLw_dTh.topRows<3>(),
                                         dlw_dTh = dLw_dTh.bottomRows<3>();
