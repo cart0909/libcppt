@@ -14,6 +14,8 @@ using Line3d = Line3<double>;
 using Line3f = Line3<float>;
 
 template <class Scalar>
+using Vector2 = Eigen::Matrix<Scalar, 2, 1>;
+template <class Scalar>
 using Vector3 = Eigen::Matrix<Scalar, 3, 1>;
 template <class Scalar>
 using Vector4 = Eigen::Matrix<Scalar, 4, 1>;
@@ -128,14 +130,20 @@ public:
     }
 
     void Orthonormal(Eigen::Matrix<Scalar, 3, 3>& U, Scalar& w1, Scalar& w2) const {
-        Eigen::Matrix<Scalar, 3, 2> C;
-        C << m(), l();
-        C.normalize();
-        Eigen::HouseholderQR<Eigen::Matrix<Scalar, 3, 2>> qr(C);
-        Eigen::Matrix<Scalar, 3, 2> Sigma = qr.matrixQR().template triangularView<Eigen::Upper>(); // R
-        w1 = Sigma(0, 0); // cos(theta)
-        w2 = Sigma(1, 1); // sin(theta)
-        U = qr.householderQ();
+        Plucker::Vector3<Scalar> mxl = m().cross(l());
+        U << m().normalized(), l().normalized(), mxl.normalized();
+        Plucker::Vector2<Scalar> sigma;
+        sigma << m().norm(), l().norm();
+        sigma.normalize();
+        w1 = sigma(0);
+        w2 = sigma(1);
+    }
+
+    void FromOrthonormal(const Eigen::Matrix<Scalar, 3, 3>& U, Scalar w1, Scalar w2) {
+        Plucker::Vector3<Scalar> l, m;
+        m = w1 * U.col(0);
+        l = w2 * U.col(1);
+        SetPlucker(l, m);
     }
 
     void FromOrthonormal(const Plucker::Vector4<Scalar>& Theta) {

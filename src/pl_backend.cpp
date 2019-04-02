@@ -183,7 +183,13 @@ void PLBackEnd::data2double() {
         auto& line = it.second;
         if(line.CountNumMeas(window_size) < 2 || line.need_triangulate)
             continue;
-        std::memcpy(para_lines + num_lines * Plucker::Line3d::num_parameters, line.Lw.data(), sizeof(double) * Plucker::Line3d::num_parameters);
+        Eigen::Matrix3d Q;
+        double w1, w2;
+        line.Lw.Orthonormal(Q, w1, w2);
+        Sophus::SO3d U(Q);
+        Sophus::SO2d W(w1, w2);
+        std::memcpy(para_lines + num_lines * 6, U.data(), sizeof(double) * 4);
+        std::memcpy(para_lines + num_lines * 6 + 4, W.data(), sizeof(double) * 2);
         ++num_lines;
     }
 }
@@ -197,7 +203,13 @@ void PLBackEnd::double2data() {
         auto& line = it.second;
         if(line.CountNumMeas(window_size) < 2 || line.need_triangulate)
             continue;
-        std::memcpy(line.Lw.data(), para_lines + (num_lines++) * Plucker::Line3d::num_parameters, sizeof(double) * Plucker::Line3d::num_parameters);
+        Sophus::SO3d U;
+        Sophus::SO2d W;
+        std::memcpy(U.data(), para_lines + num_lines * 6, sizeof(double) * 4);
+        std::memcpy(W.data(), para_lines + num_lines * 6 + 4, sizeof(double) * 2);
+        line.Lw.FromOrthonormal(U.matrix(), W.unit_complex()(0), W.unit_complex()(1));
+        ++num_lines;
+//        std::memcpy(line.Lw.data(), para_lines + (num_lines++) * Plucker::Line3d::num_parameters, sizeof(double) * Plucker::Line3d::num_parameters);
         // TODO
         // remove outliers
     }
@@ -210,9 +222,9 @@ void PLBackEnd::SolveBA() {
     data2double();
     ceres::Problem problem;
     ceres::LossFunction *loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
-    ceres::LossFunction *line_loss_function = new ceres::HuberLoss(0.3);
+    ceres::LossFunction *line_loss_function = new ceres::HuberLoss(0.01);
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3(),
-                                 *local_para_line3 = new LocalParameterizationLine3();
+                                 *local_para_so3xso2 = new LocalParameterizationSO3xSO2();
 
     problem.AddParameterBlock(para_ex_bc, 7, local_para_se3);
     problem.AddParameterBlock(para_ex_sm, 7, local_para_se3);
@@ -226,7 +238,6 @@ void PLBackEnd::SolveBA() {
             problem.SetParameterBlockConstant(para_pose);
     }
 
-#if USE_POINT
     size_t mp_idx = 0;
     for(auto& it : m_features) {
         auto& feat = it.second;
@@ -260,7 +271,7 @@ void PLBackEnd::SolveBA() {
         }
         ++mp_idx;
     }
-#endif
+
     size_t line_idx = 0;
     for(auto& it : m_lines) {
         auto& line = it.second;
@@ -268,20 +279,17 @@ void PLBackEnd::SolveBA() {
             continue;
         }
 
-        problem.AddParameterBlock(para_lines + line_idx * 6, 6, local_para_line3);
-
-//        Eigen::Map<Plucker::Line3d> map_line(para_lines + line_idx * 6);
-//        std::cout << "-----line " << line.feat_id << "\n" << map_line << "\n" << line.Lw << std::endl;
+        problem.AddParameterBlock(para_lines + line_idx * 6, 6, local_para_so3xso2);
 
         for(int i = 0, n = line.spt_n_per_frame.size(); i < n; ++i) {
             int id = line.start_id + i;
             Eigen::Vector3d spt = line.spt_n_per_frame[i], ept = line.ept_n_per_frame[i];
-            auto factor = new Plucker::LineProjectionFactor(spt, ept, focal_length);
+            auto factor = new LineProjectionFactor(spt, ept, focal_length);
             problem.AddResidualBlock(factor, line_loss_function, para_pose + id * 7, para_ex_bc, para_lines + line_idx * 6);
 
             if(line.spt_r_n_per_frame[i](2) != 0) {
                 Eigen::Vector3d spt_r = line.spt_r_n_per_frame[i], ept_r = line.ept_r_n_per_frame[i];
-                auto factor = new Plucker::LineSlaveProjectionFactor(spt_r, ept_r, focal_length);
+                auto factor = new LineSlaveProjectionFactor(spt_r, ept_r, focal_length);
                 problem.AddResidualBlock(factor, line_loss_function, para_pose + id * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 6);
             }
         }
@@ -290,10 +298,10 @@ void PLBackEnd::SolveBA() {
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.trust_region_strategy_type = ceres::DOGLEG;
+    options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     options.max_num_iterations = max_num_iterations;
-    options.num_threads = 1;
-    options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
+    options.num_threads = 8;
+//    options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
 
     ceres::Solve(options, &problem, &summary);
@@ -397,37 +405,37 @@ void PLBackEnd::SolveBAImu() {
     }
 #endif
 
-    size_t line_idx = 0;
-    for(auto& it : m_lines) {
-        auto& line = it.second;
-        if(line.CountNumMeas(window_size) < 2 || line.need_triangulate) {
-            continue;
-        }
+//    size_t line_idx = 0;
+//    for(auto& it : m_lines) {
+//        auto& line = it.second;
+//        if(line.CountNumMeas(window_size) < 2 || line.need_triangulate) {
+//            continue;
+//        }
 
-        size_t id_i = line.start_id;
-        Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
-        for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
-            size_t id_j = id_i + j;
-            Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
-            if(j != 0) {
-                auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
-                problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
-            }
+//        size_t id_i = line.start_id;
+//        Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
+//        for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
+//            size_t id_j = id_i + j;
+//            Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
+//            if(j != 0) {
+//                auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
+//                problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2);
+//            }
 
-            if(line.spt_r_n_per_frame[j](2) != 0) {
-                Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
-                if(j == 0) {
-                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
-                    problem.AddResidualBlock(factor, line_loss_function, para_ex_sm, para_lines + line_idx * 2);
-                }
-                else {
-                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
-                    problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
-                }
-            }
-        }
-        ++line_idx;
-    }
+//            if(line.spt_r_n_per_frame[j](2) != 0) {
+//                Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
+//                if(j == 0) {
+//                    auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
+//                    problem.AddResidualBlock(factor, line_loss_function, para_ex_sm, para_lines + line_idx * 2);
+//                }
+//                else {
+//                    auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
+//                    problem.AddResidualBlock(factor, line_loss_function, para_pose + id_i * 7, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2);
+//                }
+//            }
+//        }
+//        ++line_idx;
+//    }
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
@@ -572,50 +580,50 @@ void PLBackEnd::Marginalize() {
         }
 #endif
         // line
-        size_t line_idx = -1;
-        for(auto& it : m_lines) {
-            auto& line = it.second;
-            if(line.CountNumMeas(window_size) < 2 || line.need_triangulate) {
-                continue;
-            }
+//        size_t line_idx = -1;
+//        for(auto& it : m_lines) {
+//            auto& line = it.second;
+//            if(line.CountNumMeas(window_size) < 2 || line.need_triangulate) {
+//                continue;
+//            }
 
-            line_idx++;
-            size_t id_i = line.start_id;
+//            line_idx++;
+//            size_t id_i = line.start_id;
 
-            if(id_i != 0)
-                continue;
+//            if(id_i != 0)
+//                continue;
 
-            Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
-            for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
-                size_t id_j = id_i + j;
-                Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
-                if(j != 0) {
-                    auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
-                    auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
-                                                                     std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2},
-                                                                     std::vector<int>{0, 3});
-                    margin_info->addResidualBlockInfo(residual_block_info);
-                }
+//            Eigen::Vector3d spt_i = line.spt_n_per_frame[0], ept_i = line.ept_n_per_frame[0];
+//            for(int j = 0, n = line.spt_n_per_frame.size(); j < n; ++j) {
+//                size_t id_j = id_i + j;
+//                Eigen::Vector3d spt_j = line.spt_n_per_frame[j], ept_j = line.ept_n_per_frame[j];
+//                if(j != 0) {
+//                    auto factor = new LineProjectionFactor(spt_i, ept_i, spt_j, ept_j, focal_length);
+//                    auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
+//                                                                     std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_lines + line_idx * 2},
+//                                                                     std::vector<int>{0, 3});
+//                    margin_info->addResidualBlockInfo(residual_block_info);
+//                }
 
-                if(line.spt_r_n_per_frame[j](2) != 0) {
-                    Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
-                    if(j == 0) {
-                        auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
-                        auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
-                                                                         std::vector<double*>{para_ex_sm, para_lines + line_idx * 2},
-                                                                         std::vector<int>{1});
-                        margin_info->addResidualBlockInfo(residual_block_info);
-                    }
-                    else {
-                        auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
-                        auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
-                                                                         std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2},
-                                                                         std::vector<int>{0, 4});
-                        margin_info->addResidualBlockInfo(residual_block_info);
-                    }
-                }
-            }
-        }
+//                if(line.spt_r_n_per_frame[j](2) != 0) {
+//                    Eigen::Vector3d spt_jr = line.spt_r_n_per_frame[j], ept_jr = line.ept_r_n_per_frame[j];
+//                    if(j == 0) {
+//                        auto factor = new LineSelfProjectionFactor(spt_j, ept_j, spt_jr, ept_jr, focal_length);
+//                        auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
+//                                                                         std::vector<double*>{para_ex_sm, para_lines + line_idx * 2},
+//                                                                         std::vector<int>{1});
+//                        margin_info->addResidualBlockInfo(residual_block_info);
+//                    }
+//                    else {
+//                        auto factor = new LineSlaveProjectionFactor(spt_i, ept_i, spt_jr, ept_jr, focal_length);
+//                        auto residual_block_info = new ResidualBlockInfo(factor, line_loss_function,
+//                                                                         std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_lines + line_idx * 2},
+//                                                                         std::vector<int>{0, 4});
+//                        margin_info->addResidualBlockInfo(residual_block_info);
+//                    }
+//                }
+//            }
+//        }
 
         margin_info->preMarginalize();
         margin_info->marginalize();
