@@ -244,6 +244,7 @@ Line3<typename Line3Base<Derived>::Scalar> operator*(const Sophus::SE3<typename 
 template <class Scalar>
 class Line3 : public Line3Base<Line3<Scalar>> {
 public:
+    using Base = Plucker::Line3Base<Line3<Scalar>>;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Line3() : l_(Scalar(1), Scalar(0), Scalar(0)), m_(Scalar(0), Scalar(0), Scalar(0)) {}
     Line3(const Line3& line)
@@ -298,6 +299,10 @@ public:
         l_ = l / l_norm;
         m_ = m / l_norm;
     }
+
+    // LCOV_EXCL_START
+//    EIGEN_INHERIT_ASSIGNMENT_EQUAL_OPERATOR(Line3)
+    // LCOV_EXCL_STOP
 
     Plucker::Vector3<Scalar>& l() {
         return l_;
@@ -463,7 +468,7 @@ bool CommonPerpendicular(const Line3Base<Derived1>& L1, const Line3Base<Derived2
 template <class Derived, class OtherDerived>
 bool Feet(const Line3Base<Derived>& L1, const Line3Base<OtherDerived>& L2,
           Vector3<typename Line3Base<Derived>::Scalar>& p1_star,
-          Vector3<typename Line3Base<Derived>::Scalar>& p2_star, LinesStatus* status = nullptr)
+          Vector3<typename Line3Base<Derived>::Scalar>* p2_star = nullptr, LinesStatus* status = nullptr)
 {
     using Scalar = typename Line3Base<Derived>::Scalar;
     using DirectionType = typename Line3Base<Derived>::DirectionType;
@@ -486,7 +491,8 @@ bool Feet(const Line3Base<Derived>& L1, const Line3Base<OtherDerived>& L2,
                 *status = INTERSECT_LINES;
             Eigen::Matrix<Scalar, 3, 3> I3 = Eigen::Matrix<Scalar, 3, 3>::Identity();
             p1_star = ((m1.dot(l2)*I3 + l1*m2.transpose() - l2*m1.transpose()) * l1xl2)/(norm_l1xl2 * norm_l1xl2);
-            p2_star = p1_star;
+            if(p2_star)
+                *p2_star = p1_star;
             return true;
         }
     }
@@ -495,7 +501,8 @@ bool Feet(const Line3Base<Derived>& L1, const Line3Base<OtherDerived>& L2,
             *status = SKEW_LINES;
         Scalar norm_l1xl2_2 = norm_l1xl2 * norm_l1xl2;
         p1_star = (-m1.cross(l2.cross(l1xl2)) + (m2.dot(l1xl2))*l1) / norm_l1xl2_2;
-        p2_star = ( m2.cross(l1.cross(l1xl2)) - (m1.dot(l1xl2))*l2) / norm_l1xl2_2;
+        if(p2_star)
+            *p2_star = ( m2.cross(l1.cross(l1xl2)) - (m1.dot(l1xl2))*l2) / norm_l1xl2_2;
         return true;
     }
 }

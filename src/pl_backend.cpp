@@ -161,6 +161,23 @@ int PLBackEnd::Triangulate(int sw_idx) {
         Eigen::Vector3d n, dir;
         Plucker::Correction::LMPC(x.head<3>(), x.tail<3>(), n, dir);
         Plucker::Line3d L0(dir, n, Plucker::PLUCKER_L_M);
+        Plucker::Line3d P_line0(Eigen::Vector3d(0, 0, 0), line.spt_n_per_frame[0], Plucker::TWO_POINT),
+                        Q_line0(Eigen::Vector3d(0, 0, 0), line.ept_n_per_frame[0], Plucker::TWO_POINT);
+
+        Eigen::Vector3d p1_star, q1_star;
+        Plucker::Feet(P_line0, L0, p1_star);
+        Plucker::Feet(Q_line0, L0, q1_star);
+
+        if(p1_star(2) < 0 || q1_star(2) < 0 || (p1_star - q1_star).norm() > 5)
+            continue;
+
+        Eigen::Vector3d l = L0.m() / L0.m().head<2>().norm();
+        Eigen::Vector2d residuals;
+        residuals << focal_length * l.dot(line.spt_n_per_frame[0]),
+                     focal_length * l.dot(line.ept_n_per_frame[0]);
+
+        if(residuals.norm() > 3)
+            continue;
 
         line.Lw = Twc0 * L0;
         line.need_triangulate = false;
@@ -208,7 +225,6 @@ void PLBackEnd::double2data() {
     Sophus::SE3d Tw0w1(q_w0w1, p_w0w1);
 
     size_t num_lines = 0;
-    std::vector<uint64_t> v_outlier_line_id;
     for(auto& it : m_lines) {
         auto& line = it.second;
         if(line.CountNumMeas(window_size) < 2 || line.need_triangulate)
@@ -221,14 +237,59 @@ void PLBackEnd::double2data() {
         Lw1.FromOrthonormal(U.matrix(), W.unit_complex()(0), W.unit_complex()(1));
         line.Lw = Tw0w1 * Lw1;
         ++num_lines;
-        // TODO
-        // remove outliers
+    }
+
+    BackEnd::double2data();
+
+    // remove line outliers after backend::double2data finished
+    std::vector<uint64_t> v_outlier_line_id;
+    Sophus::SE3d Tbc(q_bc, p_bc), Trl(q_rl, p_rl);
+    for(auto& it : m_lines) {
+        auto& line = it.second;
+        if(line.CountNumMeas(window_size) < 2 || line.need_triangulate)
+            continue;
+
+        double ave_r_norm = 0.0;
+        int count = 0;
+        bool is_outlier = false;
+        for(int i = 0, n = line.spt_n_per_frame.size(); i < n; ++i) {
+            int id = line.start_id + i;
+            Sophus::SE3d Twb(d_frames[id]->q_wb, d_frames[id]->p_wb);
+            Sophus::SE3d Tcw = (Twb * Tbc).inverse();
+            Plucker::Line3d Lc = Tcw * line.Lw;
+
+            Plucker::Line3d P_line0(Eigen::Vector3d(0, 0, 0), line.spt_n_per_frame[i], Plucker::TWO_POINT),
+                            Q_line0(Eigen::Vector3d(0, 0, 0), line.ept_n_per_frame[i], Plucker::TWO_POINT);
+
+            Eigen::Vector3d p1_star, q1_star;
+            Plucker::Feet(P_line0, Lc, p1_star);
+            Plucker::Feet(Q_line0, Lc, q1_star);
+
+            if(p1_star(2) < 0|| q1_star(2) < 0 || (p1_star - q1_star).norm() > 5) {
+                v_outlier_line_id.emplace_back(it.first);
+                is_outlier = true;
+                break;
+            }
+
+            Eigen::Vector3d l = Lc.m() / Lc.m().head<2>().norm();
+            Eigen::Vector2d residuals;
+            residuals << focal_length * l.dot(line.spt_n_per_frame[i]),
+                         focal_length * l.dot(line.ept_n_per_frame[i]);
+
+            ave_r_norm += residuals.norm();
+            ++count;
+        }
+
+        if(!is_outlier) {
+            ave_r_norm /= count;
+            if(ave_r_norm > 3) {
+                v_outlier_line_id.emplace_back(it.first);
+            }
+        }
     }
 
     for(auto& it : v_outlier_line_id)
         m_lines.erase(it);
-
-    BackEnd::double2data();
 }
 
 void PLBackEnd::SolveBA() {
@@ -444,10 +505,10 @@ void PLBackEnd::SolveBAImu() {
     options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     options.max_num_iterations = max_num_iterations;
     options.num_threads = 8;
-//    options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
+    options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    LOG(INFO) << summary.FullReport();
+    std::cout << summary.FullReport() << std::endl;
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i)
@@ -726,12 +787,9 @@ void PLBackEnd::Publish() {
                             Q_line0(Eigen::Vector3d(0, 0, 0), line.ept_n_per_frame[0], Plucker::TWO_POINT);
 
             Plucker::Line3d Lc = Twc.inverse() * line.Lw;
-            Eigen::Vector3d p1_star, p2_star, q1_star, q2_star;
-            Plucker::Feet(P_line0, Lc, p1_star, p2_star);
-            Plucker::Feet(Q_line0, Lc, q1_star, q2_star);
-
-            if(p1_star(2) < 0 || q1_star(2) < 0)
-                continue;
+            Eigen::Vector3d p1_star, q1_star;
+            Plucker::Feet(P_line0, Lc, p1_star);
+            Plucker::Feet(Q_line0, Lc, q1_star);
 
             Eigen::Vector3d Pw, Qw;
             Pw = Twc * p1_star;

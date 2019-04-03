@@ -156,8 +156,3 @@ vins/imu_factor.cpp
 ${DBOW2_SRC_FILES}
 )
 target_link_libraries(${PROJECT_NAME} ${THRID_PARTY_LIBS})
-
-add_executable(line_test
-plucker/line_test.cpp
-)
-target_link_libraries(line_test ${PROJECT_NAME})
