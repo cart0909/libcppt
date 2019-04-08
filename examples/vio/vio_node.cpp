@@ -31,6 +31,7 @@ using namespace sensor_msgs;
 // global variable
 SystemPtr pl_system;
 
+
 void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
 //    if(image_timestamp != -1.0f && std::abs(img_msg->header.stamp.toSec() - image_timestamp) > 10) { // 10 ms
 //        // reset system
@@ -51,10 +52,15 @@ void ImuCallback(const ImuConstPtr& imu_msg) {
     pl_system->PushImuData(gyr, acc, imu_msg->header.stamp.toSec());
 }
 
+void sigint_handler(int s) {
+    vis::RecordPose();
+    exit(1);
+}
+
 int main(int argc, char** argv) {
     ros::init(argc, argv, "cppt_vio", ros::init_options::NoSigintHandler);
 //    ros::init(argc, argv, "cppt_vio");
-//    signal(SIGINT, sigint_handler);
+    signal(SIGINT, sigint_handler);
     ros::NodeHandle nh("~");
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
 
@@ -70,6 +76,7 @@ int main(int argc, char** argv) {
     ros::Subscriber sub_imu = nh.subscribe("/imu/data_raw", 2000, &ImuCallback,
                                            ros::TransportHints().tcpNoDelay());
     vis::ReadFromNodeHandle(nh, pl_system);
+
     ROS_INFO_STREAM("Player is ready.");
     ros::spin();
     return 0;
@@ -111,19 +118,3 @@ int main(int argc, char** argv) {
 //        }
 //    }
 
-//void sigint_handler(int s) {
-//    ROS_INFO_STREAM("logging trajectory to the file");
-//    std::ofstream fout(node.log_filename);
-//    if(!fout.is_open())
-//        exit(1);
-
-//    for(auto& pose : node.path.poses) {
-//        fout << pose.header.stamp << " ";
-//        fout << pose.pose.position.x << " " << pose.pose.position.y << " " <<
-//                pose.pose.position.z << " ";
-//        fout << pose.pose.orientation.x << " " << pose.pose.orientation.y << " "
-//             << pose.pose.orientation.z << " " << pose.pose.orientation.w << std::endl;
-//    }
-
-//    exit(1);
-//}

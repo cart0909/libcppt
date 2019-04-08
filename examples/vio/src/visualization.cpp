@@ -30,6 +30,9 @@ static ros::Publisher pub_lines;
 static std::mutex mtx_loop_edge_index;
 static std::vector<std::pair<uint64_t, uint64_t>> v_loop_edge_index;
 
+//logtum
+static nav_msgs::Path log_path;
+
 void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     pub_track_img = nh.advertise<sensor_msgs::Image>("track_img", 1000);
     pub_vio_pose = nh.advertise<visualization_msgs::MarkerArray>("vio_pose", 1000);
@@ -86,6 +89,9 @@ void PubVioPose(double timestamp, const Sophus::SE3d& Twc) {
     pose_stamped.pose.position.y = twc(1);
     pose_stamped.pose.position.z = twc(2);
     vio_path.poses.emplace_back(pose_stamped);
+#if POSE_LOG
+    log_path.poses.emplace_back(pose_stamped);
+#endif
     pub_vio_path.publish(vio_path);
 
     // camera pose
@@ -146,7 +152,6 @@ void AddRelocPath(const Sophus::SE3d& Twc) {
     pose_stamped.pose.position.z = twc(2);
     reloc_path.poses.emplace_back(pose_stamped);
     pub_reloc_path.publish(reloc_path);
-
     loop_edge_visual.reset();
     mtx_loop_edge_index.lock();
     for(auto& it : v_loop_edge_index) {
@@ -238,5 +243,19 @@ void PubLines(const Eigen::VecVector3d& v_Pw, const Eigen::VecVector3d& v_Qw) {
     }
 
     pub_lines.publish(marker);
+}
+
+void RecordPose(){
+        ROS_INFO_STREAM("logging trajectory to the file");
+        std::ofstream fout("/catkin_ws/src/libcppt/config/log.tum");
+        if(!fout.is_open())
+            exit(1);
+        for(auto& pose : log_path.poses) {
+            fout << pose.header.stamp << " ";
+            fout << pose.pose.position.x << " " << pose.pose.position.y << " " <<
+                    pose.pose.position.z << " ";
+            fout << pose.pose.orientation.x << " " << pose.pose.orientation.y << " "
+                 << pose.pose.orientation.z << " " << pose.pose.orientation.w << std::endl;
+        }
 }
 }
