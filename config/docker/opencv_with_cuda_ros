@@ -1,0 +1,22 @@
+# install opencv 3.4.4
+RUN wget https://github.com/opencv/opencv/archive/3.4.4.zip && mv 3.4.4.zip opencv-3.4.4.zip
+RUN wget https://github.com/opencv/opencv_contrib/archive/3.4.4.zip && mv 3.4.4.zip opencv_contrib-3.4.4.zip
+RUN unzip opencv-3.4.4.zip && unzip opencv_contrib-3.4.4.zip && mkdir -p opencv-3.4.4/build
+WORKDIR opencv-3.4.4/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release -DOPENCV_EXTRA_MODULES_PATH=/home/3rdParty/opencv_contrib-3.4.4/modules -DWITH_CUDA=ON && make -j12 && make install
+WORKDIR /home/3rdParty
+RUN rm -rf opencv-3.4.4/ && rm -rf opencv_contrib-3.4.4/
+
+# change ros cv_bridge opencv dependency
+# Use "bash" as replacement for	"sh"
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+RUN wget https://github.com/ros-perception/vision_opencv/archive/1.13.0.zip && mv 1.13.0.zip vision_opencv-1.13.0.zip
+RUN unzip vision_opencv-1.13.0.zip && mkdir -p vision_opencv-1.13.0/cv_bridge/build
+WORKDIR vision_opencv-1.13.0/cv_bridge/build
+RUN source /opt/ros/$ROS_DISTRO/setup.bash \
+&& cmake .. -DCMAKE_INSTALL_PREFIX=/opt/ros/melodic/ \
+&& make -j12 \
+&& make install
+WORKDIR /home/3rdParty
+RUN rm -rf vision_opencv-1.13.0/
+
