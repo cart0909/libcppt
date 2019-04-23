@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
 
     std::string config_file;
     config_file = readParam<std::string>(nh, "config_file");
-    pl_system = std::make_shared<PLSystem>(config_file);
+    pl_system = std::make_shared<System>(config_file);
 
     message_filters::Subscriber<Image> sub_img[2] {{nh, "/camera/left/image_raw", 100},
                                                    {nh, "/camera/right/image_raw", 100}};

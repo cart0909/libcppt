@@ -109,6 +109,7 @@ RUN apt-get install ros-melodic-turtlebot3 -y
 
 # rotors package dependency
 RUN apt-get install ros-melodic-octomap* ros-melodic-mav-comm -y
+RUN apt-get install ros-melodic-joystick-drivers -y
 
 #import Carl Qt setting
 COPY QtProject /root/.config/QtProject
