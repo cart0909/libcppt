@@ -111,6 +111,9 @@ RUN apt-get install ros-melodic-turtlebot3 -y
 RUN apt-get install ros-melodic-octomap* ros-melodic-mav-comm -y
 RUN apt-get install ros-melodic-joystick-drivers -y
 
+# ros usb camera package
+RUN apt-get install ros-melodic-usb-cam -y
+
 #import Carl Qt setting
 COPY QtProject /root/.config/QtProject
 
