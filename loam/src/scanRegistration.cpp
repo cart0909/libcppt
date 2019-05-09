@@ -255,6 +255,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
     for (int i = 0; i < N_SCANS; i++)
     {
         scanStartInd[i] = laserCloud->size() + 5;
+        //pointType
         *laserCloud += laserCloudScans[i];
         scanEndInd[i] = laserCloud->size() - 6;
     }
@@ -412,7 +413,6 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
         downSizeFilter.setInputCloud(surfPointsLessFlatScan);
         downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
         downSizeFilter.filter(surfPointsLessFlatScanDS);
-
         surfPointsLessFlat += surfPointsLessFlatScanDS;
     }
     printf("sort q time %f \n", t_q_sort);
