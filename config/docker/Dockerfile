@@ -114,6 +114,9 @@ RUN apt-get install ros-melodic-joystick-drivers -y
 # ros usb camera package
 RUN apt-get install ros-melodic-usb-cam -y
 
+# catkin
+RUN apt-get install python-catkin-tools -y
+
 #import Carl Qt setting
 COPY QtProject /root/.config/QtProject
 

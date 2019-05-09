@@ -3,6 +3,8 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud.h>
 #include <nav_msgs/Path.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <tf/transform_broadcaster.h>
 #include "CameraPoseVisualization.h"
 #include "pl_system.h"
 #include "rgbd_system.h"
@@ -22,6 +24,7 @@ static ros::Publisher pub_reloc_path;
 static ros::Publisher pub_reloc_pose;
 static ros::Publisher pub_loop_edge;
 static ros::Publisher pub_reloc_img;
+static ros::Publisher pub_transform;
 
 // show features
 static ros::Publisher pub_mappoints;
@@ -42,6 +45,7 @@ void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     pub_reloc_img = nh.advertise<sensor_msgs::Image>("reloc_img", 1000);
     pub_mappoints = nh.advertise<sensor_msgs::PointCloud>("mappoints", 1000);
     pub_lines = nh.advertise<visualization_msgs::Marker>("lines", 1000);
+    pub_transform = nh.advertise<geometry_msgs::TransformStamped>("transform", 1000);
 
     vio_pose_visual.setScale(0.3);
 
@@ -112,24 +116,25 @@ void PubRelocPose(double timestamp, const Sophus::SE3d& Twc) {
     reloc_pose_visual.add_pose(twc, qwc);
     reloc_pose_visual.publish_by(pub_reloc_pose, header);
 
-//    geometry_msgs::TransformStamped transform_stamped;
-//    transform_stamped.header = header;
-//    transform_stamped.transform.rotation.w = qwc.w();
-//    transform_stamped.transform.rotation.x = qwc.x();
-//    transform_stamped.transform.rotation.y = qwc.y();
-//    transform_stamped.transform.rotation.z = qwc.z();
+    geometry_msgs::TransformStamped transform_stamped;
+    transform_stamped.header = header;
+    transform_stamped.child_frame_id = "camera";
+    transform_stamped.transform.rotation.w = qwc.w();
+    transform_stamped.transform.rotation.x = qwc.x();
+    transform_stamped.transform.rotation.y = qwc.y();
+    transform_stamped.transform.rotation.z = qwc.z();
 
-//    transform_stamped.transform.translation.x = twc(0);
-//    transform_stamped.transform.translation.y = twc(1);
-//    transform_stamped.transform.translation.z = twc(2);
-//    pub_transform.publish(transform_stamped);
+    transform_stamped.transform.translation.x = twc(0);
+    transform_stamped.transform.translation.y = twc(1);
+    transform_stamped.transform.translation.z = twc(2);
+    pub_transform.publish(transform_stamped);
 
-//    // for dense mapping (skimap, openchisel)
-//    static tf::TransformBroadcaster tf_broadcaster;
-//    tf::StampedTransform tf_stamped_transform(
-//                tf::Transform(tf::Quaternion(qwc.x(), qwc.y(), qwc.z(), qwc.w()), tf::Vector3(twc(0), twc(1), twc(2))),
-//                header.stamp, "world", "camera");
-//    tf_broadcaster.sendTransform(tf_stamped_transform);
+    // for dense mapping (skimap, openchisel)
+    static tf::TransformBroadcaster tf_broadcaster;
+    tf::StampedTransform tf_stamped_transform(
+                tf::Transform(tf::Quaternion(qwc.x(), qwc.y(), qwc.z(), qwc.w()), tf::Vector3(twc(0), twc(1), twc(2))),
+                header.stamp, "world", "camera");
+    tf_broadcaster.sendTransform(tf_stamped_transform);
 }
 
 void AddRelocPath(const Sophus::SE3d& Twc) {

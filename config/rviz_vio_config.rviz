@@ -3,7 +3,8 @@ Panels:
     Help Height: 0
     Name: Displays
     Property Tree Widget:
-      Expanded: ~
+      Expanded:
+        - /Status1
       Splitter Ratio: 0.4651159942150116
     Tree Height: 491
   - Class: rviz/Selection
@@ -24,7 +25,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: track_img
   - Class: rviz/Displays
     Help Height: 78
     Name: Displays
@@ -34,6 +35,8 @@ Panels:
     Tree Height: 365
 Preferences:
   PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
 Visualization Manager:
   Class: ""
   Displays:
@@ -116,7 +119,7 @@ Visualization Manager:
           Marker Topic: /cppt_vio/reloc_pose
           Name: reloc_pose
           Namespaces:
-            {}
+            CameraPoseVisualization: true
           Queue Size: 100
           Value: true
         - Alpha: 1
@@ -202,6 +205,12 @@ Visualization Manager:
         {}
       Queue Size: 100
       Value: true
+    - Class: voxblox_rviz_plugin/VoxbloxMesh
+      Enabled: true
+      Name: VoxbloxMesh
+      Topic: /voxblox_node/mesh
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -215,7 +224,10 @@ Visualization Manager:
     - Class: rviz/FocusCamera
     - Class: rviz/Measure
     - Class: rviz/SetInitialPose
+      Theta std deviation: 0.2617993950843811
       Topic: /initialpose
+      X std deviation: 0.5
+      Y std deviation: 0.5
     - Class: rviz/SetGoal
       Topic: /move_base_simple/goal
     - Class: rviz/PublishPoint
@@ -225,25 +237,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 11.033951759338379
+      Distance: 8.019484519958496
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.31239748001098633
-        Y: -0.2987241744995117
+        X: -1.161902904510498
+        Y: -0.6015927791595459
         Z: 3.5954246413894e-5
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6697975397109985
+      Pitch: 0.6947984099388123
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz)
-      Yaw: 3.3958353996276855
+      Yaw: 3.2176291942596436
     Saved: ~
 Window Geometry:
   Displays:

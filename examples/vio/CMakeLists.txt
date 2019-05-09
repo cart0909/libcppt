@@ -77,8 +77,11 @@ cppt
 )
 catkin_package()
 
+find_package(Eigen3 REQUIRED)
+
 include_directories(${catkin_INCLUDE_DIRS})
 include_directories(src)
+include_directories(${EIGEN3_INCLUDE_DIR})
 
 add_executable(cppt_vio
 vio_node.cpp
