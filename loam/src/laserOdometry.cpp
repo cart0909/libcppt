@@ -1,6 +1,6 @@
 // This is an advanced implementation of the algorithm described in the following paper:
 //   J. Zhang and S. Singh. LOAM: Lidar Odometry and Mapping in Real-time.
-//     Robotics: Science and Systems Conference (RSS). Berkeley, CA, July 2014. 
+//     Robotics: Science and Systems Conference (RSS). Berkeley, CA, July 2014.
 
 // Modifier: Tong Qin               qintonguav@gmail.com
 // 	         Shaozu Cao 		    saozu.cao@connect.ust.hk
@@ -54,8 +54,9 @@
 #include "aloam_velodyne/common.h"
 #include "aloam_velodyne/tic_toc.h"
 #include "lidarFactor.hpp"
-#include "../../src/ceres/local_parameterization_se3.h"
 #include "sophus/se3.hpp"
+#include "ceres/local_parameterization_se3.h"
+//#include "local_parameterization.h"
 #define DISTORTION 0
 
 
@@ -89,18 +90,14 @@ pcl::PointCloud<PointType>::Ptr laserCloudFullRes(new pcl::PointCloud<PointType>
 int laserCloudCornerLastNum = 0;
 int laserCloudSurfLastNum = 0;
 
-// Transformation from current frame to world frame
-Eigen::Quaterniond q_w_curr(1, 0, 0, 0);
+// Transformation from current frame to camera_init frame
+Sophus::SO3d q_w_curr;
 Eigen::Vector3d t_w_curr(0, 0, 0);
 
 // q_last_curr(x, y, z, w), t_last_curr
-double para_q[4] = {0, 0, 0, 1};
-double para_t[3] = {0, 0, 0};
-Eigen::Vector3d para_P;
-Sophus::SO3d para_R;
-double* para_pose; //Tcur_last
-Eigen::Map<Eigen::Quaterniond> q_last_curr(para_q);
-Eigen::Map<Eigen::Vector3d> t_last_curr(para_t);
+Eigen::Vector3d para_P; //tlast_cur
+Sophus::SO3d para_R;    //Rlast_cur
+double* para_pose; //Tlast_cur
 
 std::queue<sensor_msgs::PointCloud2ConstPtr> cornerSharpBuf;
 std::queue<sensor_msgs::PointCloud2ConstPtr> cornerLessSharpBuf;
@@ -120,8 +117,8 @@ void TransformToStart(PointType const *const pi, PointType *const po)
     else
         s = 1.0;
     //s = 1;
-    Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr);
-    Eigen::Vector3d t_point_last = s * t_last_curr;
+    Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, para_R.unit_quaternion());
+    Eigen::Vector3d t_point_last = s * para_P;
     Eigen::Vector3d point(pi->x, pi->y, pi->z);
     Eigen::Vector3d un_point = q_point_last * point + t_point_last;
 
@@ -140,7 +137,7 @@ void TransformToEnd(PointType const *const pi, PointType *const po)
     TransformToStart(pi, &un_point_tmp);
 
     Eigen::Vector3d un_point(un_point_tmp.x, un_point_tmp.y, un_point_tmp.z);
-    Eigen::Vector3d point_end = q_last_curr.inverse() * (un_point - t_last_curr);
+    Eigen::Vector3d point_end = para_R.inverse().unit_quaternion() * (un_point - para_P);
 
     po->x = point_end.x();
     po->y = point_end.y();
@@ -273,6 +270,9 @@ int main(int argc, char **argv)
             {
                 systemInited = true;
                 para_R.setQuaternion(Eigen::Quaterniond::Identity());
+                q_w_curr.setQuaternion(Eigen::Quaterniond::Identity());
+                para_P.setZero();
+                para_pose = new double[7];
                 std::cout << "Initialization finished \n";
             }
             else
@@ -281,6 +281,8 @@ int main(int argc, char **argv)
                 int surfPointsFlatNum = surfPointsFlat->points.size();
 
                 TicToc t_opt;
+                std::memcpy(para_pose , para_R.data(), sizeof(double) * Sophus::SO3d::num_parameters);
+                std::memcpy(para_pose + 4, para_P.data(), sizeof(double) * 3);
                 for (size_t opti_counter = 0; opti_counter < 2; ++opti_counter)
                 {
                     corner_correspondence = 0;
@@ -288,20 +290,17 @@ int main(int argc, char **argv)
 
                     //ceres::LossFunction *loss_function = NULL;
                     ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
-                    ceres::LocalParameterization *q_parameterization =
-                            new ceres::EigenQuaternionParameterization();
+//                    ceres::LocalParameterization *q_parameterization =
+//                            new ceres::EigenQuaternionParameterization();
+                    ceres::LocalParameterization *local_para_se3 = new autodiff::LocalParameterizationSE3();
                     ceres::Problem::Options problem_options;
 
                     ceres::Problem problem(problem_options);
                     //set Pose
-                    std::memcpy(para_pose , para_R.data(), sizeof(double) * Sophus::SO3d::num_parameters);
-                    std::memcpy(para_pose + 4, para_P.data(), sizeof(double) * 3);
-                    problem.AddParameterBlock(para_q, 4, q_parameterization);
-                    problem.AddParameterBlock(para_t, 3);
+                    problem.AddParameterBlock(para_pose, 7, local_para_se3);
                     pcl::PointXYZI pointSel;
                     std::vector<int> pointSearchInd;
                     std::vector<float> pointSearchSqDis;
-
                     TicToc t_data;
                     // find correspondence for corner features
                     // for sharp point
@@ -390,8 +389,12 @@ int main(int argc, char **argv)
                                 s = (cornerPointsSharp->points[i].intensity - int(cornerPointsSharp->points[i].intensity)) / SCAN_PERIOD;
                             else
                                 s = 1.0;
-                            ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
-                            problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                            ceres::CostFunction *cost_function = LidarEdgeFactorSO3::Create(curr_point, last_point_a, last_point_b, s);
+//                            std::cout << "=========" <<std::endl;
+//                            for(int k =0; k < 7; k++){
+//                                std::cout << "k=" << *(para_pose + k) <<std::endl;
+//                            }
+                            problem.AddResidualBlock(cost_function, loss_function, para_pose);
                             corner_correspondence++;
                         }
                     }
@@ -489,15 +492,15 @@ int main(int argc, char **argv)
                                     s = (surfPointsFlat->points[i].intensity - int(surfPointsFlat->points[i].intensity)) / SCAN_PERIOD;
                                 else
                                     s = 1.0;
-                                ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
-                                problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                                ceres::CostFunction *cost_function = LidarPlaneFactorSO3::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
+                                problem.AddResidualBlock(cost_function, loss_function, para_pose);
                                 plane_correspondence++;
                             }
                         }
                     }
 
                     //printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-                    printf("data association time %f ms \n", t_data.toc());
+                    //printf("data association time %f ms \n", t_data.toc());
 
                     if ((corner_correspondence + plane_correspondence) < 10)
                     {
@@ -511,12 +514,14 @@ int main(int argc, char **argv)
                     options.minimizer_progress_to_stdout = false;
                     ceres::Solver::Summary summary;
                     ceres::Solve(options, &problem, &summary);
-                    printf("solver time %f ms \n", t_solver.toc());
+                    //printf("solver time %f ms \n", t_solver.toc());
                 }
-                printf("optimization twice time %f \n", t_opt.toc());
-
-                t_w_curr = t_w_curr + q_w_curr * t_last_curr;
-                q_w_curr = q_w_curr * q_last_curr;
+                //printf("optimization twice time %f \n", t_opt.toc());
+                //get new pose
+               std::memcpy(para_R.data(), para_pose , sizeof(double) * Sophus::SO3d::num_parameters);
+               std::memcpy(para_P.data(), para_pose + 4, sizeof (double) * 3);
+                t_w_curr = t_w_curr + (q_w_curr * para_P);
+                q_w_curr = q_w_curr * para_R;
             }
 
             TicToc t_pub;
@@ -526,10 +531,10 @@ int main(int argc, char **argv)
             laserOdometry.header.frame_id = "/camera_init";
             laserOdometry.child_frame_id = "/laser_odom";
             laserOdometry.header.stamp = ros::Time().fromSec(timeSurfPointsLessFlat);
-            laserOdometry.pose.pose.orientation.x = q_w_curr.x();
-            laserOdometry.pose.pose.orientation.y = q_w_curr.y();
-            laserOdometry.pose.pose.orientation.z = q_w_curr.z();
-            laserOdometry.pose.pose.orientation.w = q_w_curr.w();
+            laserOdometry.pose.pose.orientation.x = q_w_curr.unit_quaternion().x();
+            laserOdometry.pose.pose.orientation.y = q_w_curr.unit_quaternion().y();
+            laserOdometry.pose.pose.orientation.z = q_w_curr.unit_quaternion().z();
+            laserOdometry.pose.pose.orientation.w = q_w_curr.unit_quaternion().w();
             laserOdometry.pose.pose.position.x = t_w_curr.x();
             laserOdometry.pose.pose.position.y = t_w_curr.y();
             laserOdometry.pose.pose.position.z = t_w_curr.z();
@@ -604,8 +609,8 @@ int main(int argc, char **argv)
                 laserCloudFullRes3.header.frame_id = "/camera";
                 pubLaserCloudFullRes.publish(laserCloudFullRes3);
             }
-            printf("publication time %f ms \n", t_pub.toc());
-            printf("whole laserOdometry time %f ms \n \n", t_whole.toc());
+            //printf("publication time %f ms \n", t_pub.toc());
+            //printf("whole laserOdometry time %f ms \n \n", t_whole.toc());
             if(t_whole.toc() > 100)
                 ROS_WARN("odometry process over 100ms");
 

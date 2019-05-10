@@ -8,6 +8,8 @@
 #include <pcl/point_types.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include "sophus/se3.hpp"
+
 
 struct LidarEdgeFactor
 {
@@ -96,6 +98,103 @@ struct LidarPlaneFactor
 		return (new ceres::AutoDiffCostFunction<
 				LidarPlaneFactor, 1, 4, 3>(
 			new LidarPlaneFactor(curr_point_, last_point_j_, last_point_l_, last_point_m_, s_)));
+	}
+
+	Eigen::Vector3d curr_point, last_point_j, last_point_l, last_point_m;
+	Eigen::Vector3d ljm_norm;
+	double s;
+};
+
+
+struct LidarEdgeFactorSO3
+{
+	LidarEdgeFactorSO3(Eigen::Vector3d curr_point_, Eigen::Vector3d last_point_a_,
+					Eigen::Vector3d last_point_b_, double s_)
+		: curr_point(curr_point_), last_point_a(last_point_a_), last_point_b(last_point_b_), s(s_) {}
+
+	template <typename T>
+    bool operator()(const T *pose, T *residual) const
+	{
+
+		Eigen::Matrix<T, 3, 1> cp{T(curr_point.x()), T(curr_point.y()), T(curr_point.z())};
+		Eigen::Matrix<T, 3, 1> lpa{T(last_point_a.x()), T(last_point_a.y()), T(last_point_a.z())};
+		Eigen::Matrix<T, 3, 1> lpb{T(last_point_b.x()), T(last_point_b.y()), T(last_point_b.z())};
+
+		//Eigen::Quaternion<T> q_last_curr{q[3], T(s) * q[0], T(s) * q[1], T(s) * q[2]};
+        Eigen::Map<const Sophus::SE3<T>> pose_last_cur(pose);
+        Sophus::SO3<T> R_last_cur ;
+        Eigen::Quaternion<T> q_identity;
+        q_identity.setIdentity();
+        R_last_cur.setQuaternion(q_identity.slerp(T(s), pose_last_cur.unit_quaternion()));
+        Eigen::Matrix<T, 3, 1> lp;
+        Sophus::Vector3<T> t_last_cur = pose_last_cur.translation();
+
+        lp = (R_last_cur.matrix() * cp + (s * t_last_cur)).matrix();
+
+		Eigen::Matrix<T, 3, 1> nu = (lp - lpa).cross(lp - lpb);
+		Eigen::Matrix<T, 3, 1> de = lpa - lpb;
+
+		residual[0] = nu.x() / de.norm();
+		residual[1] = nu.y() / de.norm();
+		residual[2] = nu.z() / de.norm();
+
+		return true;
+	}
+
+	static ceres::CostFunction *Create(const Eigen::Vector3d curr_point_, const Eigen::Vector3d last_point_a_,
+									   const Eigen::Vector3d last_point_b_, const double s_)
+	{
+		return (new ceres::AutoDiffCostFunction<
+                LidarEdgeFactorSO3, 3, 7>(
+			new LidarEdgeFactorSO3(curr_point_, last_point_a_, last_point_b_, s_)));
+	}
+
+	Eigen::Vector3d curr_point, last_point_a, last_point_b;
+	double s;
+};
+
+struct LidarPlaneFactorSO3
+{
+	LidarPlaneFactorSO3(Eigen::Vector3d curr_point_, Eigen::Vector3d last_point_j_,
+					 Eigen::Vector3d last_point_l_, Eigen::Vector3d last_point_m_, double s_)
+		: curr_point(curr_point_), last_point_j(last_point_j_), last_point_l(last_point_l_),
+		  last_point_m(last_point_m_), s(s_)
+	{
+		ljm_norm = (last_point_j - last_point_l).cross(last_point_j - last_point_m);
+		ljm_norm.normalize();
+	}
+
+	template <typename T>
+    bool operator()(const T *pose, T *residual) const
+	{
+
+		Eigen::Matrix<T, 3, 1> cp{T(curr_point.x()), T(curr_point.y()), T(curr_point.z())};
+		Eigen::Matrix<T, 3, 1> lpj{T(last_point_j.x()), T(last_point_j.y()), T(last_point_j.z())};
+		//Eigen::Matrix<T, 3, 1> lpl{T(last_point_l.x()), T(last_point_l.y()), T(last_point_l.z())};
+		//Eigen::Matrix<T, 3, 1> lpm{T(last_point_m.x()), T(last_point_m.y()), T(last_point_m.z())};
+		Eigen::Matrix<T, 3, 1> ljm{T(ljm_norm.x()), T(ljm_norm.y()), T(ljm_norm.z())};
+
+		//Eigen::Quaternion<T> q_last_curr{q[3], T(s) * q[0], T(s) * q[1], T(s) * q[2]};
+        Eigen::Map<const Sophus::SE3<T>> pose_last_cur(pose);
+        Sophus::SO3<T> R_last_cur;
+        Eigen::Quaternion<T> q_identity;
+        q_identity.setIdentity();
+        R_last_cur.setQuaternion(q_identity.slerp(T(s), pose_last_cur.unit_quaternion()));
+		Eigen::Matrix<T, 3, 1> lp;
+        lp = (R_last_cur.matrix() * cp + (s * pose_last_cur.translation())).matrix();
+
+		residual[0] = (lp - lpj).dot(ljm);
+
+		return true;
+	}
+
+	static ceres::CostFunction *Create(const Eigen::Vector3d curr_point_, const Eigen::Vector3d last_point_j_,
+									   const Eigen::Vector3d last_point_l_, const Eigen::Vector3d last_point_m_,
+									   const double s_)
+	{
+		return (new ceres::AutoDiffCostFunction<
+                LidarPlaneFactorSO3, 1, 7>(
+			new LidarPlaneFactorSO3(curr_point_, last_point_j_, last_point_l_, last_point_m_, s_)));
 	}
 
 	Eigen::Vector3d curr_point, last_point_j, last_point_l, last_point_m;

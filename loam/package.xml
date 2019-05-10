@@ -26,7 +26,9 @@
   <build_depend>sensor_msgs</build_depend>
   <build_depend>tf</build_depend>
   <build_depend>image_transport</build_depend>
+  <build_depend>cppt</build_depend>
   
+  <run_depend>cppt</run_depend>
   <run_depend>geometry_msgs</run_depend>
   <run_depend>nav_msgs</run_depend>
   <run_depend>sensor_msgs</run_depend>
