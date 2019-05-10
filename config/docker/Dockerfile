@@ -117,6 +117,9 @@ RUN apt-get install ros-melodic-usb-cam -y
 # catkin
 RUN apt-get install python-catkin-tools -y
 
+# libompl-dev
+RUN apt-get install libompl-dev -y
+
 #import Carl Qt setting
 COPY QtProject /root/.config/QtProject
 
