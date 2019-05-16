@@ -260,7 +260,7 @@ void PLSystem::InitCameraParameters() {
 
     cv::Size image_size(param.width[0], param.height[0]);
     if(param.cam_model[0] == "PINHOLE") {
-        cv::stereoRectify(K1, D1, K2, D2, image_size, R, t, R1, R2, P1, P2, cv::noArray());
+        cv::stereoRectify(K1, D1, K2, D2, image_size, R, t, R1, R2, P1, P2, cv::noArray(), cv::CALIB_ZERO_DISPARITY, 0);
         cv::initUndistortRectifyMap(K1, D1, R1, P1, image_size, CV_32F, M1l, M2l);
         cv::initUndistortRectifyMap(K2, D2, R2, P2, image_size, CV_32F, M1r, M2r);
 
@@ -271,14 +271,17 @@ void PLSystem::InitCameraParameters() {
         cam_s = cam_m;
     }
     else if(param.cam_model[0] == "FISHEYE") {
-        cv::fisheye::stereoRectify(K1, D1, K2, D2, image_size, R, t, R1, R2, P1, P2, cv::noArray(), cv::CALIB_ZERO_DISPARITY);
+        cv::fisheye::stereoRectify(K1, D1, K2, D2, image_size, R, t, R1, R2, P1, P2, cv::noArray(), cv::CALIB_ZERO_DISPARITY, image_size);
         double baseline = -P2.at<double>(0, 3)/P2.at<double>(0, 0);
         P1.at<double>(0, 0) = K1.at<double>(0, 0);
         P1.at<double>(1, 1) = K1.at<double>(1, 1);
+        P1.at<double>(0, 2) = K1.at<double>(0, 2);
+        P1.at<double>(1, 2) = K1.at<double>(1, 2);
         P2.at<double>(0, 0) = K1.at<double>(0, 0);
         P2.at<double>(1, 1) = K1.at<double>(1, 1);
+        P2.at<double>(0, 2) = K1.at<double>(0, 2);
+        P2.at<double>(1, 2) = K1.at<double>(1, 2);
         P2.at<double>(0, 3) = -baseline * P2.at<double>(0, 0);
-
         cv::fisheye::initUndistortRectifyMap(K1, D1, R1, P1, image_size, CV_32F, M1l, M2l);
         cv::fisheye::initUndistortRectifyMap(K2, D2, R2, P2, image_size, CV_32F, M1r, M2r);
 

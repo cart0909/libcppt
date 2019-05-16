@@ -508,7 +508,7 @@ void PLBackEnd::SolveBAImu() {
     options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    std::cout << summary.FullReport() << std::endl;
+//    std::cout << summary.FullReport() << std::endl;
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i)

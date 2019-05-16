@@ -29,7 +29,7 @@ using namespace message_filters;
 using namespace sensor_msgs;
 
 // global variable
-SystemPtr pl_system;
+SystemPtr system_;
 
 void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg) {
 //    if(image_timestamp != -1.0f && std::abs(img_msg->header.stamp.toSec() - image_timestamp) > 10) { // 10 ms
@@ -42,13 +42,13 @@ void ImageCallback(const ImageConstPtr& img_msg, const ImageConstPtr& img_r_msg)
     img_r = cv_bridge::toCvCopy(img_r_msg, "mono8")->image;
 //        img_l = cv_bridge::toCvCopy(img_msg, "8UC1")->image;
 //        img_r = cv_bridge::toCvCopy(img_r_msg, "8UC1")->image;
-    pl_system->PushImages(img_l, img_r, img_msg->header.stamp.toSec());
+    system_->PushImages(img_l, img_r, img_msg->header.stamp.toSec());
 }
 
 void ImuCallback(const ImuConstPtr& imu_msg) {
     Eigen::Vector3d gyr = Eigen::Vector3d(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
     Eigen::Vector3d acc = Eigen::Vector3d(imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z);
-    pl_system->PushImuData(gyr, acc, imu_msg->header.stamp.toSec());
+    system_->PushImuData(gyr, acc, imu_msg->header.stamp.toSec());
 }
 
 int main(int argc, char** argv) {
@@ -59,8 +59,14 @@ int main(int argc, char** argv) {
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
 
     std::string config_file;
+    bool enable_pl_system = true;
     config_file = readParam<std::string>(nh, "config_file");
-    pl_system = std::make_shared<System>(config_file);
+    enable_pl_system = readParam<bool>(nh, "pl_system");
+
+    if(enable_pl_system)
+        system_ = std::make_shared<PLSystem>(config_file);
+    else
+        system_ = std::make_shared<System>(config_file);
 
     message_filters::Subscriber<Image> sub_img[2] {{nh, "/camera/left/image_raw", 100},
                                                    {nh, "/camera/right/image_raw", 100}};
@@ -69,7 +75,7 @@ int main(int argc, char** argv) {
 
     ros::Subscriber sub_imu = nh.subscribe("/imu/data_raw", 2000, &ImuCallback,
                                            ros::TransportHints().tcpNoDelay());
-    vis::ReadFromNodeHandle(nh, pl_system);
+    vis::ReadFromNodeHandle(nh, system_);
     ROS_INFO_STREAM("Player is ready.");
     ros::spin();
     return 0;

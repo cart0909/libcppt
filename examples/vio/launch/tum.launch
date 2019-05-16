@@ -1,9 +1,11 @@
 <launch>
     <arg name="config_path" default = "$(find cppt_vio)/../../config/calib/tum.yaml" />
     <arg name="rviz_config_path" default = "-d $(find cppt_vio)/../../config/rviz_vio_config.rviz" />
+    <arg name="pl_system" default="false"/>
 
     <node name="cppt_vio" pkg="cppt_vio" type="cppt_vio" output="screen">
         <param name="config_file" type="string" value="$(arg config_path)" />
+        <param name="pl_system" type="bool" value="$(arg pl_system)" />
         <remap from="/camera/left/image_raw" to="/cam0/image_raw" />
         <remap from="/camera/right/image_raw" to="/cam1/image_raw" />
         <remap from="/imu/data_raw" to="/imu0" />
