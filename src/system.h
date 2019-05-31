@@ -35,6 +35,11 @@ public:
             reloc->SubRelocTwc(callback);
     }
 
+    inline void SubRelocTwb(std::function<void(double, const Sophus::SE3d&)> callback) {
+        if(reloc)
+            reloc->SubRelocTwb(callback);
+    }
+
     inline void SubAddRelocPath(std::function<void(const Sophus::SE3d&)> callback) {
         if(reloc)
             reloc->SubAddRelocPath(callback);

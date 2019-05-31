@@ -11,5 +11,7 @@
         <remap from="/imu/data_raw" to="/raw_imu" />
     </node>
 
+    <node name="global_opt_node" pkg="global_opt" type="global_opt_node" output="screen"/>
+<!--    <node name="global_fusion_node" pkg="global_fusion" type="global_fusion_node" output="screen"/>-->
     <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />
 </launch>

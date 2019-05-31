@@ -64,7 +64,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
 
     // start the margin when the sliding window fill the frames
     marginalization_flag = AddFeaturesCheckParallax(frame);
-//    LOG(INFO) << "this frame -----------------------------" << (marginalization_flag==MARGIN_OLD? "MARGIN_OLD" : "MARGIN_SECOND_NEW");
+    //    LOG(INFO) << "this frame -----------------------------" << (marginalization_flag==MARGIN_OLD? "MARGIN_OLD" : "MARGIN_SECOND_NEW");
 
     if(state == NEED_INIT) {
         frame->q_wb = Sophus::SO3d();
@@ -110,7 +110,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         if(state == TIGHTLY) {
             SlidingWindow();
             Publish();
-//            DrawUI();
+            //            DrawUI();
         }
     }
 }
@@ -143,7 +143,7 @@ BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
     for(auto& it : m_features) {
         auto& feat = it.second;
         if(feat.start_id <= size_frames - 3 &&
-           feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
+                feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
             size_t idx_i = size_frames - 3 - feat.start_id;
             size_t idx_j = size_frames - 2 - feat.start_id;
 
@@ -529,7 +529,7 @@ void BackEnd::double2data() {
             ave_reproj_error_norm /= num_factors;
             if(ave_reproj_error_norm * focal_length > 3) {
                 v_outlier_feat_id.emplace_back(it.first);
-//                LOG(INFO) << feat.feat_id << " " << ave_reproj_error_norm * focal_length;
+                //                LOG(INFO) << feat.feat_id << " " << ave_reproj_error_norm * focal_length;
             }
         }
     }
@@ -706,7 +706,7 @@ void BackEnd::SolveBAImu() {
     options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-//    LOG(INFO) << summary.FullReport();
+    //    LOG(INFO) << summary.FullReport();
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i)
@@ -855,7 +855,7 @@ void BackEnd::Marginalize() {
             std::vector<int> drop_set;
             for(int i = 0, n = para_margin_block.size(); i < n ; ++i) {
                 if(para_margin_block[i] == para_pose ||
-                   para_margin_block[i] == para_speed_bias)
+                        para_margin_block[i] == para_speed_bias)
                     drop_set.emplace_back(i);
             }
 
@@ -931,11 +931,11 @@ void BackEnd::Marginalize() {
                     Eigen::Vector3d velocity_jr = feat.velocity_r_per_frame[j];
                     if(j == 0) {
                         if(estimate_time_delay) {
-                             auto factor = new SelfProjectionTdFactor(pt_j, velocity_j, pt_jr, velocity_jr, d_frames[id_j]->td, focal_length);
-                             auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
-                                                                              std::vector<double*>{para_ex_sm, para_features + feature_index, para_Td},
-                                                                              std::vector<int>{1});
-                             margin_info->addResidualBlockInfo(residual_block_info);
+                            auto factor = new SelfProjectionTdFactor(pt_j, velocity_j, pt_jr, velocity_jr, d_frames[id_j]->td, focal_length);
+                            auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
+                                                                             std::vector<double*>{para_ex_sm, para_features + feature_index, para_Td},
+                                                                             std::vector<int>{1});
+                            margin_info->addResidualBlockInfo(residual_block_info);
                         }
                         else {
                             auto factor = new SelfProjectionExFactor(pt_j, pt_jr, focal_length);
@@ -953,7 +953,7 @@ void BackEnd::Marginalize() {
                             auto residual_block_info = new ResidualBlockInfo(factor, loss_function,
                                                                              std::vector<double*>{para_pose, para_pose + id_j * 7, para_ex_bc, para_ex_sm, para_features + feature_index, para_Td},
                                                                              std::vector<int>{0, 4});
-                                                        margin_info->addResidualBlockInfo(residual_block_info);
+                            margin_info->addResidualBlockInfo(residual_block_info);
                         }
                         else {
                             auto factor = new SlaveProjectionExFactor(pt_i, pt_jr, focal_length);
@@ -1047,6 +1047,9 @@ void BackEnd::Publish() {
         Sophus::SE3d Twc = Sophus::SE3d(frame->q_wb, frame->p_wb) * Sophus::SE3d(q_bc, p_bc);
         for(auto& pub : pub_vio_Twc)
             pub(frame->timestamp, Twc);
+
+        for(auto& pub : pub_vio_Twb)
+            pub(frame->timestamp, Sophus::SE3d(frame->q_wb, frame->p_wb));
     }
 
     for(auto& pub : pub_frame) {

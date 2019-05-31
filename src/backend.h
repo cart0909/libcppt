@@ -44,7 +44,7 @@ public:
 
     struct Feature {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-        Feature(uint64_t feat_id_, int start_id_)
+                Feature(uint64_t feat_id_, int start_id_)
             : feat_id(feat_id_), start_id(start_id_),
               inv_depth(-1.0f), last_time(-1.0f), last_r_time(-1.0f) {}
 
@@ -89,6 +89,10 @@ public:
             double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic,
             int estimate_td, double init_td);
     virtual ~BackEnd();
+
+    inline void SubVIOTwb(std::function<void(double, const Sophus::SE3d)> callback) {
+        pub_vio_Twb.emplace_back(callback);
+    }
 
     inline void SubVIOTwc(std::function<void(double, const Sophus::SE3d)> callback) {
         pub_vio_Twc.emplace_back(callback);
@@ -150,7 +154,7 @@ protected:
     std::map<uint64_t, Feature> m_features;
     int window_size;
     std::deque<FramePtr> d_frames; // [ 0,  1, ..., 8 ,         9 |  10] size 11
-                                   //  kf  kf      kf  second new   new
+    //  kf  kf      kf  second new   new
     uint64_t next_frame_id;
 
     double min_parallax;
@@ -178,7 +182,7 @@ protected:
     MarginalizationInfo* last_margin_info;
 
     Eigen::VecVector3d margin_mps;
-
+    std::vector<std::function<void(double, const Sophus::SE3d)>> pub_vio_Twb;
     std::vector<std::function<void(double, const Sophus::SE3d)>> pub_vio_Twc;
     std::vector<std::function<void(FramePtr, const Eigen::VecVector3d&)>> pub_keyframe;
     std::vector<std::function<void(const Eigen::VecVector3d&)>> pub_mappoints;

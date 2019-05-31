@@ -30,6 +30,9 @@ RGBDSystem::RGBDSystem(const std::string& config_file) {
         backend->SubVIOTwc(std::bind(&Relocalization::UpdateVIOPose, reloc,
                                      std::placeholders::_1,
                                      std::placeholders::_2));
+        backend->SubVIOTwb(std::bind(&Relocalization::UpdateVIOPoseWB, reloc,
+                                     std::placeholders::_1,
+                                     std::placeholders::_2));
         reloc_thread = std::thread(&RGBDSystem::RelocProcess, this);
     }
 

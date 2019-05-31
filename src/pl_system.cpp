@@ -21,23 +21,26 @@ PLSystem::PLSystem(const std::string& config_file) {
         stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.clahe_parameter, param.Fundamental_reproj_threshold);
     else
         stereo_matcher = std::make_shared<StereoMatcher>(cam_m, cam_s, param.p_rl[0], param.q_rl[0],
-                                                         param.clahe_parameter, param.Fundamental_reproj_threshold);
+                param.clahe_parameter, param.Fundamental_reproj_threshold);
 
     line_stereo_matcher = std::make_shared<LineStereoMatcher>(cam_m, cam_s);
 
     backend = std::make_shared<PLBackEnd>(cam_m->f(), param.gyr_noise, param.acc_noise,
                                           param.gyr_bias_noise, param.acc_bias_noise,
                                           param.p_rl[0], param.p_bc[0], param.q_rl[0], param.q_bc[0],
-                                          param.gravity_magnitude, param.sliding_window_size, param.keyframe_parallax,
-                                          param.max_solver_time_in_seconds, param.max_num_iterations, param.cv_huber_loss_parameter,
-                                          param.triangulate_default_depth, param.max_imu_sum_t, param.min_init_stereo_num, param.estimate_extrinsic,
-                                          param.estimate_td, param.init_td);
+            param.gravity_magnitude, param.sliding_window_size, param.keyframe_parallax,
+            param.max_solver_time_in_seconds, param.max_num_iterations, param.cv_huber_loss_parameter,
+            param.triangulate_default_depth, param.max_imu_sum_t, param.min_init_stereo_num, param.estimate_extrinsic,
+            param.estimate_td, param.init_td);
 
     if(param.enable_reloc)
         reloc = std::make_shared<Relocalization>(param.voc_filename, param.brief_pattern_file, cam_m,
                                                  param.q_bc[0], param.p_bc[0]);
     if(reloc) {
         backend->SubVIOTwc(std::bind(&Relocalization::UpdateVIOPose, reloc,
+                                     std::placeholders::_1,
+                                     std::placeholders::_2));
+        backend->SubVIOTwb(std::bind(&Relocalization::UpdateVIOPoseWB, reloc,
                                      std::placeholders::_1,
                                      std::placeholders::_2));
         reloc_thread = std::thread(&PLSystem::RelocProcess, this);
@@ -242,18 +245,18 @@ void PLSystem::InitCameraParameters() {
     cv::Mat K1, K2, D1, D2, R1, R2, P1, P2;
     cv::Mat R, t;
     K1 = (cv::Mat_<double>(3, 3) << param.intrinsic_master[0][0], 0, param.intrinsic_master[0][2],
-                                    0, param.intrinsic_master[0][1], param.intrinsic_master[0][3],
-                                    0,                            0,                            1);
+            0, param.intrinsic_master[0][1], param.intrinsic_master[0][3],
+            0,                            0,                            1);
 
     K2 = (cv::Mat_<double>(3, 3) << param.intrinsic_slave[0][0], 0, param.intrinsic_slave[0][2],
-                                    0, param.intrinsic_slave[0][1], param.intrinsic_slave[0][3],
-                                    0,                           0,                           1);
+            0, param.intrinsic_slave[0][1], param.intrinsic_slave[0][3],
+            0,                           0,                           1);
 
     D1 = (cv::Mat_<double>(4, 1) << param.distortion_master[0][0], param.distortion_master[0][1],
-                                    param.distortion_master[0][2], param.distortion_master[0][3]);
+            param.distortion_master[0][2], param.distortion_master[0][3]);
 
     D2 = (cv::Mat_<double>(4, 1) << param.distortion_slave[0][0], param.distortion_slave[0][1],
-                                    param.distortion_slave[0][2], param.distortion_slave[0][3]);
+            param.distortion_slave[0][2], param.distortion_slave[0][3]);
 
     cv::eigen2cv(param.q_rl[0].matrix(), R);
     cv::eigen2cv(param.p_rl[0], t);

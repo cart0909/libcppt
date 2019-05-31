@@ -5,6 +5,7 @@
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <tf/transform_broadcaster.h>
+#include <nav_msgs/Odometry.h>
 #include "CameraPoseVisualization.h"
 #include "pl_system.h"
 #include "rgbd_system.h"
@@ -25,7 +26,7 @@ static ros::Publisher pub_reloc_pose;
 static ros::Publisher pub_loop_edge;
 static ros::Publisher pub_reloc_img;
 static ros::Publisher pub_transform;
-
+static ros::Publisher pub_reloc_Twb;
 // show features
 static ros::Publisher pub_mappoints;
 static ros::Publisher pub_lines;
@@ -46,7 +47,7 @@ void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     pub_mappoints = nh.advertise<sensor_msgs::PointCloud>("mappoints", 1000);
     pub_lines = nh.advertise<visualization_msgs::Marker>("lines", 1000);
     pub_transform = nh.advertise<geometry_msgs::TransformStamped>("transform", 1000);
-
+    pub_reloc_Twb = nh.advertise<nav_msgs::Odometry>("/cppt_reloc_wb", 100); //Twb
     vio_pose_visual.setScale(0.3);
 
     system->SubTrackingImg(std::bind(&PubTrackImg, std::placeholders::_1,
@@ -59,7 +60,7 @@ void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     system->SubLoopEdge(std::bind(&PushLoopEdgeIndex, std::placeholders::_1));
     system->SubRelocImg(std::bind(&PubRelocImg, std::placeholders::_1));
     system->SubMapPoints(std::bind(&PubMapPoint, std::placeholders::_1));
-
+    system->SubRelocTwb(std::bind(&PubRelocPoseW2B, std::placeholders::_1, std::placeholders::_2));
     PLSystemPtr pl_system = std::dynamic_pointer_cast<PLSystem>(system);
     if(pl_system) {
         pl_system->SubLines(std::bind(&PubLines, std::placeholders::_1, std::placeholders::_2));
@@ -214,6 +215,28 @@ void PubMapPoint(const Eigen::VecVector3d& mps) {
     }
     pub_mappoints.publish(mps_msg);
 }
+
+void PubRelocPoseW2B(double timestamp, const Sophus::SE3d& Twb) {
+    std_msgs::Header header;
+    header.frame_id = "world";
+    header.stamp.fromSec(timestamp);
+    Eigen::Vector3d twb = Twb.translation();
+    Eigen::Quaterniond qwb = Twb.unit_quaternion();
+
+    //Pub Odometry
+    nav_msgs::Odometry odomCpptMapped;
+    odomCpptMapped.header = header;
+    odomCpptMapped.child_frame_id = "base_link";
+    odomCpptMapped.pose.pose.orientation.x = qwb.x();
+    odomCpptMapped.pose.pose.orientation.y = qwb.y();
+    odomCpptMapped.pose.pose.orientation.z = qwb.z();
+    odomCpptMapped.pose.pose.orientation.w = qwb.w();
+    odomCpptMapped.pose.pose.position.x = twb.x();
+    odomCpptMapped.pose.pose.position.y = twb.y();
+    odomCpptMapped.pose.pose.position.z = twb.z();
+    pub_reloc_Twb.publish(odomCpptMapped);
+
+ }
 
 void PubLines(const Eigen::VecVector3d& v_Pw, const Eigen::VecVector3d& v_Qw) {
     visualization_msgs::Marker marker;

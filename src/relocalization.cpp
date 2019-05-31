@@ -40,6 +40,16 @@ void Relocalization::UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_
     }
 }
 
+void Relocalization::UpdateVIOPoseWB(double timestamp, const Sophus::SE3d& T_viow_b) {
+    mtx_w_viow.lock();
+    Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);
+    mtx_w_viow.unlock();
+    Sophus::SE3d Twb = Tw_viow * T_viow_b;
+    for(auto& pub : pub_reloc_Twb) {
+        pub(timestamp, Twb);
+    }
+}
+
 void Relocalization::ProcessFrame(FramePtr frame) {
     mtx_w_viow.lock();
     Sophus::SE3d Tw_viow(q_w_viow, p_w_viow);

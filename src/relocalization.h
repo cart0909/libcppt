@@ -60,9 +60,12 @@ public:
     inline void SubLoopEdge(std::function<void(const std::pair<uint64_t, uint64_t>&)> callback) {
         pub_loop_edge.emplace_back(callback);
     }
-
+    inline void SubRelocTwb(std::function<void(double, const Sophus::SE3d&)> callback) {
+        pub_reloc_Twb.emplace_back(callback);
+    }
     void ProcessFrame(FramePtr frame);
     void UpdateVIOPose(double timestamp, const Sophus::SE3d& T_viow_c);
+    void UpdateVIOPoseWB(double timestamp, const Sophus::SE3d& T_viow_b);
 private:
     int64_t DetectLoop(FramePtr frame);
     bool FindMatchesAndSolvePnP(FramePtr old_frame, FramePtr frame);
@@ -97,5 +100,6 @@ private:
     std::vector<std::function<void(const Sophus::SE3d&)>> pub_add_reloc_path;
     std::vector<std::function<void(const std::vector<Sophus::SE3d>&)>> pub_update_reloc_path;
     std::vector<std::function<void(const std::pair<uint64_t, uint64_t>&)>> pub_loop_edge;
+    std::vector<std::function<void(double, const Sophus::SE3d&)>> pub_reloc_Twb;
 };
 SMART_PTR(Relocalization)
