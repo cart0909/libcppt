@@ -145,6 +145,7 @@ pl_backend.cpp
 rgbd_system.cpp
 rgbd_backend.cpp
 thread_pool_mgr.cpp
+ceres/local_parameterization_so3.cpp
 ceres/local_parameterization_se3.cpp
 ceres/local_parameterization_line.cpp
 ceres/projection_factor.cpp
