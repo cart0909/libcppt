@@ -5,7 +5,6 @@
 GlobalOptimize::GlobalOptimize(){
     initGPS = false;
     newGPS = false;
-    Eigen::Quaterniond I;
     I.setIdentity();
     WGPS_T_WVIO.so3().setQuaternion(I);
     WGPS_T_body_cur.so3().setQuaternion(I);
@@ -46,8 +45,17 @@ void GlobalOptimize::inputOdom(double t, Sophus::SE3d wvio_T_body){
     mPoseMap.unlock();
 }
 
+void GlobalOptimize::getWGPS_T_WVIO(Sophus::SE3d& WGPS_T_WVIO_){
+    WGPS_T_WVIO_ = WGPS_T_WVIO;
+}
+
 void GlobalOptimize::getGlobalOdom(Sophus::SE3d& wgps_T_bodyCur){
-     wgps_T_bodyCur = WGPS_T_body_cur;
+    wgps_T_bodyCur = WGPS_T_body_cur;
+}
+
+void GlobalOptimize::getGPSXYZ(double t, std::vector<double>& xyz){
+    xyz.resize(4);
+    xyz = GPSPositionMap[t];
 }
 
 void GlobalOptimize::GPS2XYZ(double latitude, double longitude, double altitude, double* xyz){
@@ -81,6 +89,22 @@ void GlobalOptimize::UpdateAllGlobalPath()
     }
 }
 
+void GlobalOptimize::AddPoseGlobalPath(double t, Sophus::SE3d& wgps_Twvio)
+{
+    //Add curr wgps_Twvio to global_path.
+    geometry_msgs::PoseStamped pose_stamped;
+    pose_stamped.header.stamp = ros::Time(t);
+    pose_stamped.header.frame_id = "world";
+    pose_stamped.pose.position.x = wgps_Twvio.translation().x();
+    pose_stamped.pose.position.y = wgps_Twvio.translation().y();
+    pose_stamped.pose.position.z = wgps_Twvio.translation().z();
+    pose_stamped.pose.orientation.w = wgps_Twvio.so3().unit_quaternion().w();
+    pose_stamped.pose.orientation.x = wgps_Twvio.so3().unit_quaternion().x();
+    pose_stamped.pose.orientation.y = wgps_Twvio.so3().unit_quaternion().y();
+    pose_stamped.pose.orientation.z = wgps_Twvio.so3().unit_quaternion().z();
+    global_path.poses.push_back(pose_stamped);
+}
+
 void GlobalOptimize::GPSoptimize(){
 
     while (true) {
@@ -94,7 +118,7 @@ void GlobalOptimize::GPSoptimize(){
             ceres::Solver::Summary summary;
             ceres::LossFunction *loss_function;
             loss_function = new ceres::HuberLoss(1.0);
-            ceres::LocalParameterization* local_parameterization = new ceres::QuaternionParameterization();
+            ceres::LocalParameterization* local_parameterization = new autodiff::LocalParameterizationSO3();
 
             mPoseMap.lock();
             //add vertex
@@ -105,35 +129,27 @@ void GlobalOptimize::GPSoptimize(){
             iter = globalPoseMap.begin();
             for (int i = 0; i < length; i++, iter++)
             {
-                size_t idx_pose = i * 3;
-                std::memcpy(paraP_gps_b + idx_pose, iter->second.translation().data(), sizeof(double) * 3);
-                problem.AddParameterBlock(paraP_gps_b + idx_pose, 3);
-            }
-
-            iter = globalPoseMap.begin();
-            for (int i = 0; i < length; i++, iter++)
-            {
-                //sophus so3 qw qx qy qz convert to eigen quaternion qx qy qz qw for QuaternionParameterization
-                size_t idx_pose = i * 4;
-                double tmp_qw = *(paraQ_gps_b + idx_pose + 3); //qw
-                std::memcpy(paraQ_gps_b + idx_pose , iter->second.so3().data() + 3, sizeof(double) * 1);
-                std::memcpy(paraQ_gps_b + idx_pose + 3, iter->second.so3().data() + 2, sizeof(double) * 1);
-                std::memcpy(paraQ_gps_b + idx_pose + 2, iter->second.so3().data() + 1, sizeof(double) * 1);
-                std::memcpy(paraQ_gps_b + idx_pose + 1, iter->second.so3().data() , sizeof(double) * 1);
-                //for (int gg = 0; gg < 4; gg++)
-                //{
-                //    std::cout << *( iter->second.so3().unit_quaternion().coeffs().data() + gg)
-                //              << " / " << *( paraQ_gps_b + idx_pose + gg) <<std::endl;
-                //}
-                //exit(-1);
-                problem.AddParameterBlock(paraQ_gps_b + idx_pose, 4, local_parameterization);
+                size_t p_idx_pose = i * 3;
+                size_t q_idx_pose = i * 4;
+#if 1
+                std::memcpy(paraQ_gps_b + q_idx_pose, iter->second.data(), sizeof(double) * 4);
+                std::memcpy(paraP_gps_b + p_idx_pose, iter->second.translation().data(), sizeof(double) * 3);
+#else
+                //add translation vertex
+                paraP_gps_b[p_idx_pose] = iter->second.translation().x();
+                paraP_gps_b[p_idx_pose + 1] = iter->second.translation().y();
+                paraP_gps_b[p_idx_pose + 2] = iter->second.translation().z();
+                //add roatation vertex qx qy qz qw
+                paraQ_gps_b[q_idx_pose] = iter->second.so3().unit_quaternion().x();
+                paraQ_gps_b[q_idx_pose + 1] = iter->second.so3().unit_quaternion().y();
+                paraQ_gps_b[q_idx_pose + 2] = iter->second.so3().unit_quaternion().z();
+                paraQ_gps_b[q_idx_pose + 3] = iter->second.so3().unit_quaternion().w();
+#endif
+                problem.AddParameterBlock(paraP_gps_b + p_idx_pose, 3);
+                problem.AddParameterBlock(paraQ_gps_b + q_idx_pose, 4, local_parameterization);
             }
 
 
-
-
-
-#if 0
             //add VIO edge info
             std::map<double, Sophus::SE3d>::iterator iterVIO, iterVIONext;
             std::map<double, std::vector<double>>::iterator iterGPS;
@@ -146,14 +162,13 @@ void GlobalOptimize::GPSoptimize(){
                 iterVIONext++;
                 if(iterVIONext != localPoseMap.end())
                 {
-
                     Sophus::SE3d wTi = iterVIO->second;
                     Sophus::SE3d wTj = iterVIONext->second;
                     Sophus::SE3d iTj = wTi.inverse() * wTj;
-
                     ceres::CostFunction* vio_function = RelativeRTError::Create(iTj, 0.1, 0.01);
-                    problem.AddResidualBlock(vio_function, NULL, para_gps_b + 7 * i, para_gps_b + 7 * (i + 1));
-
+                    problem.AddResidualBlock(vio_function, NULL, paraP_gps_b + 3 * i,
+                                             paraQ_gps_b + 4 * i,
+                                             paraP_gps_b + 3 * (i + 1), paraQ_gps_b + 4 * (i + 1));
                 }
                 //gps factor
                 double t = iterVIO->first;
@@ -163,20 +178,33 @@ void GlobalOptimize::GPSoptimize(){
                     ceres::CostFunction* gps_function = TError::Create(iterGPS->second[0], iterGPS->second[1],
                             iterGPS->second[2], iterGPS->second[3]);
 
-                    problem.AddResidualBlock(gps_function, loss_function, para_gps_b + 7 * i);
+                    problem.AddResidualBlock(gps_function, loss_function, paraP_gps_b + 3 * i);
                 }
-
             }
 
             ceres::Solve(options, &problem, &summary);
             //std::cout << summary.FullReport() <<std::endl;
             //Update Global pose and find the WVIO_T_WVIO
             iter = globalPoseMap.begin();
-            for (int i = 0; i < length; i++, iter++)
+            for (int j = 0; j < length; j++, iter++)
             {
-                size_t idx_pose = i * 7;
-                std::memcpy(iter->second.data(), para_gps_b + idx_pose, sizeof(double) * 7);
-                if(i == length - 1){
+                size_t p_idx_pose = j * 3;
+                size_t q_idx_pose = j * 4;
+#if 1
+                std::memcpy(iter->second.data(), paraQ_gps_b + q_idx_pose, sizeof(double) * 4);
+                std::memcpy(iter->second.data() + 4, paraP_gps_b + p_idx_pose, sizeof(double) * 3);
+#else
+                iter->second.translation().x()= paraP_gps_b[p_idx_pose];
+                iter->second.translation().y()= paraP_gps_b[p_idx_pose + 1];
+                iter->second.translation().z()= paraP_gps_b[p_idx_pose + 2];
+                Eigen::Quaterniond tmp;
+                tmp.x() = paraQ_gps_b[q_idx_pose];
+                tmp.y() = paraQ_gps_b[q_idx_pose + 1];
+                tmp.z() = paraQ_gps_b[q_idx_pose + 2];
+                tmp.w() = paraQ_gps_b[q_idx_pose + 3];
+                iter->second.so3().setQuaternion(tmp);
+#endif
+                if(j == length - 1){
                     //Estimate the WGPS_T_WVIO
                     double t = iter->first;
                     Sophus::SE3d WVIO_T_body = localPoseMap[t];
@@ -187,7 +215,7 @@ void GlobalOptimize::GPSoptimize(){
             //Update global path for rviz
             UpdateAllGlobalPath();
             mPoseMap.unlock();
-#endif
+
         }
         //delay 2000
         std::chrono::milliseconds dura(2000);

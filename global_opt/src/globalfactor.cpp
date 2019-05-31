@@ -14,6 +14,5 @@ TError::TError(const double t_x, const double t_y, const double t_z, const doubl
 
 ceres::CostFunction* TError::Create( const double t_x,  const double t_y,  const double t_z,  const double var)
 {
-    return (new ceres::AutoDiffCostFunction<
-            TError, 3, 7>(new TError(t_x, t_y, t_z, var)));
+    return (new ceres::AutoDiffCostFunction<TError, 3, 3>(new TError(t_x, t_y, t_z, var)));
 }
