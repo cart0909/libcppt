@@ -29,8 +29,6 @@ float SKIP_DIS = 0.5;
 void Sync_callback(const nav_msgs::OdometryConstPtr &pose_odom, const sensor_msgs::NavSatFixConstPtr &gps_msg){
 
     double t = pose_odom->header.stamp.toSec();
-    double gps_t = gps_msg->header.stamp.toSec();
-
     Eigen::Vector3d vio_t(pose_odom->pose.pose.position.x, pose_odom->pose.pose.position.y, pose_odom->pose.pose.position.z);
     Eigen::Quaterniond vio_q;
     vio_q.w() = pose_odom->pose.pose.orientation.w;
@@ -39,6 +37,7 @@ void Sync_callback(const nav_msgs::OdometryConstPtr &pose_odom, const sensor_msg
     vio_q.z() = pose_odom->pose.pose.orientation.z;
     //Current pose of wvio_T_body
     Sophus::SE3d wvio_T_b(vio_q, vio_t);
+
     if((vio_t - last_t).norm() > SKIP_DIS){
         //into optimize process
         globalOptimze->inputOdom(t, wvio_T_b);
@@ -50,11 +49,9 @@ void Sync_callback(const nav_msgs::OdometryConstPtr &pose_odom, const sensor_msg
             pos_accuracy = 1;
         globalOptimze->inputGPS(t, latitude, longitude, altitude, pos_accuracy);
         last_t = vio_t;
-
         //Get GPSXYZ
         std::vector<double> gps_xyz;
         globalOptimze->getGPSXYZ(t, gps_xyz);
-
         //Pub global path to rviz.
 #if 0
         Sophus::SE3d wgps_T_curbody;
@@ -118,64 +115,22 @@ void GPS_callback(const sensor_msgs::NavSatFixConstPtr &GPS_msg)
     m_buf.unlock();
 }
 
-void VIO_callback(const nav_msgs::OdometryConstPtr &pose_odom){
-    double t = pose_odom->header.stamp.toSec();
-    last_vio_t = t;
-    Eigen::Vector3d vio_t(pose_odom->pose.pose.position.x, pose_odom->pose.pose.position.y, pose_odom->pose.pose.position.z);
-    Eigen::Quaterniond vio_q;
-    vio_q.w() = pose_odom->pose.pose.orientation.w;
-    vio_q.x() = pose_odom->pose.pose.orientation.x;
-    vio_q.y() = pose_odom->pose.pose.orientation.y;
-    vio_q.z() = pose_odom->pose.pose.orientation.z;
-    Sophus::SE3d wvio_T_b(vio_q, vio_t);
-    globalOptimze->inputOdom(t, wvio_T_b);
-
-    //find the matching of gps info.
-    m_buf.lock();
-    while(!gpsQueue.empty())
-    {
-        sensor_msgs::NavSatFixConstPtr GPS_msg = gpsQueue.front();
-        double gps_t = GPS_msg->header.stamp.toSec();
-
-        if(gps_t >= t - 0.1 && gps_t <= t + 0.1)
-        {
-            double latitude = GPS_msg->latitude;
-            double longitude = GPS_msg->longitude;
-            double altitude = GPS_msg->altitude;
-            double pos_accuracy = GPS_msg->position_covariance[0];
-            if(pos_accuracy <= 0)
-                pos_accuracy = 1;
-            globalOptimze->inputGPS(t, latitude, longitude, altitude, pos_accuracy);
-            gpsQueue.pop();
-            break;
-        }
-        else if(gps_t < t - 0.01) //when gps_info too old, remove that.
-            gpsQueue.pop();
-        else if(gps_t > t + 0.01)
-            break;
-    }
-    m_buf.unlock();
-}
-
-
-
 
 
 int main(int argc, char** argv){
     ros::init(argc, argv, "GlobalEstimator");
     ros::NodeHandle nh("~");
-    //Node GlobalEstimator(nh);
     globalOptimze = std::make_shared<GlobalOptimize>();
     pub_global_path = nh.advertise<nav_msgs::Path>("global_path", 100);
     pub_global_odometry = nh.advertise<nav_msgs::Odometry>("global_odometry", 10);
     only_gps_odometry = nh.advertise<nav_msgs::Odometry>("only_gps_xyz", 10);
     pub_best_fusion = nh.advertise<nav_msgs::Odometry>("best_fusion_withGps", 10);
     global_path = &globalOptimze->global_path;
-    //message_filters::Subscriber<nav_msgs::Odometry> odom_sub(nh, "/cppt_reloc_wb", 300);
-    //message_filters::Subscriber<sensor_msgs::NavSatFix> gps_sub(nh, "/fix", 100);
+
     message_filters::Subscriber<nav_msgs::Odometry> odom_sub(nh, "/cppt_reloc_wb", 300);
-    //message_filters::Subscriber<nav_msgs::Odometry> odom_sub(nh, "/laser_odom_to_init", 300);
     message_filters::Subscriber<sensor_msgs::NavSatFix> gps_sub(nh, "/fix", 100);
+    //message_filters::Subscriber<nav_msgs::Odometry> odom_sub(nh, "/laser_odom_to_init", 300);
+    //message_filters::Subscriber<sensor_msgs::NavSatFix> gps_sub(nh, "/kitti/oxts/gps/fix", 100);
 
     typedef  message_filters::sync_policies::ApproximateTime<nav_msgs::Odometry, sensor_msgs::NavSatFix> MySyncPolicy;
     message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), odom_sub, gps_sub);

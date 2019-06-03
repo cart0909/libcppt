@@ -105,6 +105,32 @@ void GlobalOptimize::AddPoseGlobalPath(double t, Sophus::SE3d& wgps_Twvio)
     global_path.poses.push_back(pose_stamped);
 }
 
+void GlobalOptimize::RemoveOutWindowPose(){
+    std::map<double, Sophus::SE3d>::iterator iter_global, iter_local;
+    int length = globalPoseMap.size();
+    int num_remove = length - WindowSize;
+    int iter_id = 0;
+    iter_global = globalPoseMap.begin();
+    //remove globalmap
+    while (iter_global != globalPoseMap.end()) {
+        iter_id++;
+        if (iter_id < num_remove)
+            iter_global = globalPoseMap.erase(iter_global);
+        else
+            break;
+    }
+    //remove localMap
+    iter_id = 0;
+    iter_local = localPoseMap.begin();
+    while (iter_local != localPoseMap.end()) {
+        iter_id++;
+        if (iter_id < num_remove)
+            iter_local = localPoseMap.erase(iter_local);
+        else
+            break;
+    }
+}
+
 void GlobalOptimize::GPSoptimize(){
 
     while (true) {
@@ -131,20 +157,8 @@ void GlobalOptimize::GPSoptimize(){
             {
                 size_t p_idx_pose = i * 3;
                 size_t q_idx_pose = i * 4;
-#if 1
                 std::memcpy(paraQ_gps_b + q_idx_pose, iter->second.data(), sizeof(double) * 4);
                 std::memcpy(paraP_gps_b + p_idx_pose, iter->second.translation().data(), sizeof(double) * 3);
-#else
-                //add translation vertex
-                paraP_gps_b[p_idx_pose] = iter->second.translation().x();
-                paraP_gps_b[p_idx_pose + 1] = iter->second.translation().y();
-                paraP_gps_b[p_idx_pose + 2] = iter->second.translation().z();
-                //add roatation vertex qx qy qz qw
-                paraQ_gps_b[q_idx_pose] = iter->second.so3().unit_quaternion().x();
-                paraQ_gps_b[q_idx_pose + 1] = iter->second.so3().unit_quaternion().y();
-                paraQ_gps_b[q_idx_pose + 2] = iter->second.so3().unit_quaternion().z();
-                paraQ_gps_b[q_idx_pose + 3] = iter->second.so3().unit_quaternion().w();
-#endif
                 problem.AddParameterBlock(paraP_gps_b + p_idx_pose, 3);
                 problem.AddParameterBlock(paraQ_gps_b + q_idx_pose, 4, local_parameterization);
             }
@@ -177,39 +191,48 @@ void GlobalOptimize::GPSoptimize(){
                 {
                     ceres::CostFunction* gps_function = TError::Create(iterGPS->second[0], iterGPS->second[1],
                             iterGPS->second[2], iterGPS->second[3]);
-
                     problem.AddResidualBlock(gps_function, loss_function, paraP_gps_b + 3 * i);
                 }
             }
 
             ceres::Solve(options, &problem, &summary);
-            //std::cout << summary.FullReport() <<std::endl;
+
+            //For estimate the motion variation of the wgpsTwboyd before and after
+            Eigen::Vector3d t_motion_sum;
+            t_motion_sum.setZero();
+
             //Update Global pose and find the WVIO_T_WVIO
             iter = globalPoseMap.begin();
             for (int j = 0; j < length; j++, iter++)
             {
                 size_t p_idx_pose = j * 3;
                 size_t q_idx_pose = j * 4;
-#if 1
+                iterGPS = GPSPositionMap.find(iter->first);
                 std::memcpy(iter->second.data(), paraQ_gps_b + q_idx_pose, sizeof(double) * 4);
                 std::memcpy(iter->second.data() + 4, paraP_gps_b + p_idx_pose, sizeof(double) * 3);
-#else
-                iter->second.translation().x()= paraP_gps_b[p_idx_pose];
-                iter->second.translation().y()= paraP_gps_b[p_idx_pose + 1];
-                iter->second.translation().z()= paraP_gps_b[p_idx_pose + 2];
-                Eigen::Quaterniond tmp;
-                tmp.x() = paraQ_gps_b[q_idx_pose];
-                tmp.y() = paraQ_gps_b[q_idx_pose + 1];
-                tmp.z() = paraQ_gps_b[q_idx_pose + 2];
-                tmp.w() = paraQ_gps_b[q_idx_pose + 3];
-                iter->second.so3().setQuaternion(tmp);
-#endif
+                Sophus::SE3d wgpsTb_new = iter->second;
+
+                Eigen::Vector3d error;
+                error[0] = fabs(wgpsTb_new.translation().x() - iterGPS->second[0]);
+                error[1] = fabs(wgpsTb_new.translation().y() - iterGPS->second[1]);
+                error[2] = fabs(wgpsTb_new.translation().z() - iterGPS->second[2]);
+                t_motion_sum = t_motion_sum + error;
+
                 if(j == length - 1){
                     //Estimate the WGPS_T_WVIO
                     double t = iter->first;
                     Sophus::SE3d WVIO_T_body = localPoseMap[t];
                     Sophus::SE3d WGPS_T_body = globalPoseMap[t];
                     WGPS_T_WVIO = WGPS_T_body * WVIO_T_body.inverse();
+                }
+            }
+
+            //remove map info
+            if(length > WindowSize){
+                RemoveOutWindowPose();
+                if((t_motion_sum * 1.0 / length).norm() < useGps_TH && USEGPS != true){
+                    std::cout << "USEGPS SUCESS" <<std::endl;
+                    USEGPS = true;
                 }
             }
             //Update global path for rviz
