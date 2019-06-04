@@ -1,0 +1,48 @@
+<launch>
+<arg name="config_path" default = "$(find cppt_vio)/../../config/calib/sim.yaml" />
+<arg name="rviz_config_path" default = "-d $(find cppt_vio)/../../config/rviz_vio_config.rviz" />
+<arg name="pl_system" default="false"/>
+
+<node name="cppt_vio" pkg="cppt_vio" type="cppt_vio" output="screen">
+<param name="config_file" type="string" value="$(arg config_path)" />
+<param name="pl_system" type="bool" value="$(arg pl_system)" />
+<remap from="/camera/left/image_raw" to="/stereo_camera/left/image_raw" />
+<remap from="/camera/right/image_raw" to="/stereo_camera/right/image_raw" />
+<remap from="/imu/data_raw" to="/raw_imu" />
+</node>
+
+<node name="global_opt_node" pkg="global_opt" type="global_opt_node" output="screen"/>
+
+
+
+<!-- LidarInfo -->
+<param name="scan_line" type="int" value="16" />
+<!-- if 1, do mapping 10 Hz, if 2, do mapping 5 Hz. Suggest to use 1, it will adjust frequence automaticlly -->
+<param name="mapping_skip_frame" type="int" value="1" />
+<!-- remove too closed points -->
+<param name="minimum_range" type="double" value="0.3"/>
+<param name="mapping_line_resolution" type="double" value="0.2"/>
+<param name="mapping_plane_resolution" type="double" value="0.4"/>
+<!-- x y z qx qy qz qw -->
+<param name="tx" type="double" value="0.0"/>
+<param name="ty" type="double" value="0.0"/>
+<param name="tz" type="double" value="-0.088"/>
+<param name="qx" type="double" value="0.0"/>
+<param name="qy" type="double" value="0.0"/>
+<param name="qz" type="double" value="0.0"/>
+<param name="qw" type="double" value="1.0"/>
+
+<remap from="/imu/data_raw" to="/raw_imu" />
+<node pkg="vloam_velodyne" type="ascanRegistration" name="ascanRegistration" output="screen">
+</node>
+
+<node pkg="vloam_velodyne" type="alaserOdometry" name="alaserOdometry" output="screen">
+<remap from="/imu/data_raw" to="/raw_imu" />
+</node>
+
+<node pkg="vloam_velodyne" type="alaserMapping" name="alaserMapping" output="screen">
+<remap from="/imu/data_raw" to="/raw_imu" />
+</node>
+
+<node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />
+</launch>

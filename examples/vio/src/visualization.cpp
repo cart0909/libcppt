@@ -9,7 +9,7 @@
 #include "CameraPoseVisualization.h"
 #include "pl_system.h"
 #include "rgbd_system.h"
-
+#include "add_msg/ImuPredict.h"
 namespace vis {
 static ros::Publisher pub_track_img;
 static ros::Publisher pub_vio_pose;
@@ -27,6 +27,7 @@ static ros::Publisher pub_loop_edge;
 static ros::Publisher pub_reloc_img;
 static ros::Publisher pub_transform;
 static ros::Publisher pub_reloc_Twb;
+static ros::Publisher pub_imupreint_info;
 // show features
 static ros::Publisher pub_mappoints;
 static ros::Publisher pub_lines;
@@ -48,6 +49,7 @@ void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     pub_lines = nh.advertise<visualization_msgs::Marker>("lines", 1000);
     pub_transform = nh.advertise<geometry_msgs::TransformStamped>("transform", 1000);
     pub_reloc_Twb = nh.advertise<nav_msgs::Odometry>("/cppt_reloc_wb", 100); //Twb
+    pub_imupreint_info = nh.advertise<add_msg::ImuPredict>("/visual_imupreint_info", 1000);
     vio_pose_visual.setScale(0.3);
 
     system->SubTrackingImg(std::bind(&PubTrackImg, std::placeholders::_1,
@@ -61,6 +63,7 @@ void ReadFromNodeHandle(ros::NodeHandle& nh, SystemPtr system) {
     system->SubRelocImg(std::bind(&PubRelocImg, std::placeholders::_1));
     system->SubMapPoints(std::bind(&PubMapPoint, std::placeholders::_1));
     system->SubRelocTwb(std::bind(&PubRelocPoseW2B, std::placeholders::_1, std::placeholders::_2));
+    system->SubIMUPreintInfo(std::bind(&PubImuPreintegrationInfo, std::placeholders::_1, std::placeholders::_2));
     PLSystemPtr pl_system = std::dynamic_pointer_cast<PLSystem>(system);
     if(pl_system) {
         pl_system->SubLines(std::bind(&PubLines, std::placeholders::_1, std::placeholders::_2));
@@ -157,7 +160,7 @@ void AddRelocPath(const Sophus::SE3d& Twc) {
     mtx_loop_edge_index.lock();
     for(auto& it : v_loop_edge_index) {
         auto& pos_i = reloc_path.poses[it.first].pose.position,
-              pos_j = reloc_path.poses[it.second].pose.position;
+                pos_j = reloc_path.poses[it.second].pose.position;
         loop_edge_visual.add_loopedge(Eigen::Vector3d(pos_i.x, pos_i.y, pos_i.z),
                                       Eigen::Vector3d(pos_j.x, pos_j.y, pos_j.z));
     }
@@ -189,7 +192,7 @@ void UpdateRelocPath(const std::vector<Sophus::SE3d>& v_Twc) {
     mtx_loop_edge_index.lock();
     for(auto& it : v_loop_edge_index) {
         auto& pos_i = reloc_path.poses[it.first].pose.position,
-              pos_j = reloc_path.poses[it.second].pose.position;
+                pos_j = reloc_path.poses[it.second].pose.position;
         loop_edge_visual.add_loopedge(Eigen::Vector3d(pos_i.x, pos_i.y, pos_i.z),
                                       Eigen::Vector3d(pos_j.x, pos_j.y, pos_j.z));
     }
@@ -236,7 +239,11 @@ void PubRelocPoseW2B(double timestamp, const Sophus::SE3d& Twb) {
     odomCpptMapped.pose.pose.position.z = twb.z();
     pub_reloc_Twb.publish(odomCpptMapped);
 
- }
+}
+
+void PubImuPreintegrationInfo(double timestamp, const add_msg::ImuPredict& imu_info) {
+    pub_imupreint_info.publish(imu_info);
+}
 
 void PubLines(const Eigen::VecVector3d& v_Pw, const Eigen::VecVector3d& v_Qw) {
     visualization_msgs::Marker marker;

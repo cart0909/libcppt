@@ -14,4 +14,5 @@ void PushLoopEdgeIndex(const std::pair<uint64_t, uint64_t>& edge);
 void PubMapPoint(const Eigen::VecVector3d& mps);
 void PubLines(const Eigen::VecVector3d& v_Pw, const Eigen::VecVector3d& v_Qw);
 void PubRelocPoseW2B(double timestamp, const Sophus::SE3d& Twb);
+void PubImuPreintegrationInfo(double timestamp, const add_msg::ImuPredict& imu_info);
 }

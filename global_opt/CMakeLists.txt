@@ -24,12 +24,6 @@ set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${GTEST_LIBRARIES})
 message("GTEST_INCLUDE_DIRS:" ${GTEST_INCLUDE_DIRS})
 message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
 
-#find_package(PCL REQUIRED)
-#set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
-#set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${PCL_LIBRARIES})
-#message("PCL_INCLUDE_DIRS:" ${PCL_INCLUDE_DIRS})
-#message("PCL_LIBRARIES:" ${PCL_LIBRARIES})
-
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
@@ -62,7 +56,6 @@ catkin_package(
   DEPENDS EIGEN3 
   cppt
   tf
-  PCL 
   INCLUDE_DIRS ./ThirdParty/GeographicLib/include/
 )
 

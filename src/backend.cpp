@@ -6,7 +6,8 @@
 #include <ceres/ceres.h>
 #include <glog/logging.h>
 #include <opencv2/core/eigen.hpp>
-
+#include "add_msg/ImuPredict.h"
+#include "geometry_msgs/Pose.h"
 BackEnd::BackEnd() {}
 
 BackEnd::BackEnd(double focal_length_,
@@ -72,7 +73,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         frame->v_wb.setZero();
         frame->ba.setZero();
         frame->bg.setZero();
-
+        imuinfo_tmp.BackTime = -10;
         int num_mps = Triangulate(0);
 
         if(num_mps >= min_init_stereo_num && frame->v_imu_timestamp.size() >= 5) {
@@ -92,7 +93,6 @@ void BackEnd::ProcessFrame(FramePtr frame) {
             Triangulate(d_frames.size() - 3);
 
         FramePtr last_frame = *(d_frames.end() - 2);
-
         // predict next frame pose from last frame
         PredictNextFramePose(last_frame, frame);
 
@@ -110,7 +110,7 @@ void BackEnd::ProcessFrame(FramePtr frame) {
         if(state == TIGHTLY) {
             SlidingWindow();
             Publish();
-            //            DrawUI();
+            //DrawUI();
         }
     }
 }
@@ -823,12 +823,48 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
     Eigen::Vector3d gyr_0 = ref_frame->v_gyr.back(), acc_0 = ref_frame->v_acc.back();
     double t0 = ref_frame->v_imu_timestamp.back();
 
+    //set imu preintegration info for lidar pose predict.
+    {
+    imuinfo_tmp.header.frame_id = "world";
+    imuinfo_tmp.header.stamp.fromSec(t0);
+    imuinfo_tmp.BackTime = t0;
+
+    //wvio_T_bodyCur
+    imuinfo_tmp.pose.orientation.w = ref_frame->q_wb.unit_quaternion().w();
+    imuinfo_tmp.pose.orientation.x = ref_frame->q_wb.unit_quaternion().x();
+    imuinfo_tmp.pose.orientation.y = ref_frame->q_wb.unit_quaternion().y();
+    imuinfo_tmp.pose.orientation.z = ref_frame->q_wb.unit_quaternion().z();
+    imuinfo_tmp.pose.position.x = ref_frame->p_wb.x();
+    imuinfo_tmp.pose.position.y = ref_frame->p_wb.y();
+    imuinfo_tmp.pose.position.z = ref_frame->p_wb.z();
+
+    imuinfo_tmp.bias_acc.x = ref_frame->ba.x();
+    imuinfo_tmp.bias_acc.y = ref_frame->ba.y();
+    imuinfo_tmp.bias_acc.z = ref_frame->ba.z();
+
+    imuinfo_tmp.bias_gyro.x = ref_frame->bg.x();
+    imuinfo_tmp.bias_gyro.y = ref_frame->bg.y();
+    imuinfo_tmp.bias_gyro.z = ref_frame->bg.z();
+
+    imuinfo_tmp.velocity.x = ref_frame->v_wb.x();
+    imuinfo_tmp.velocity.y = ref_frame->v_wb.y();
+    imuinfo_tmp.velocity.z = ref_frame->v_wb.z();
+
+    imuinfo_tmp.acc_0.x = ref_frame->v_acc.back().x();
+    imuinfo_tmp.acc_0.y = ref_frame->v_acc.back().y();
+    imuinfo_tmp.acc_0.z = ref_frame->v_acc.back().z();
+
+    imuinfo_tmp.gyr_0.x = ref_frame->v_gyr.back().x();
+    imuinfo_tmp.gyr_0.y = ref_frame->v_gyr.back().y();
+    imuinfo_tmp.gyr_0.z = ref_frame->v_gyr.back().z();
+    }
+
     for(int i = 0, n = cur_frame->v_acc.size(); i < n; ++i) {
         double t = cur_frame->v_imu_timestamp[i], dt = t - t0;
+
         Eigen::Vector3d gyr = cur_frame->v_gyr[i];
         Eigen::Vector3d acc = cur_frame->v_acc[i];
         cur_frame->imupreinte->push_back(dt, acc, gyr);
-
         Eigen::Vector3d un_acc_0 = cur_frame->q_wb * (acc_0 - ref_frame->ba) - gw;
         Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + gyr) - ref_frame->bg;
         cur_frame->q_wb = cur_frame->q_wb * Sophus::SO3d::exp(un_gyr * dt);
@@ -1050,6 +1086,11 @@ void BackEnd::Publish() {
 
         for(auto& pub : pub_vio_Twb)
             pub(frame->timestamp, Sophus::SE3d(frame->q_wb, frame->p_wb));
+    }
+
+    //pub imu preintegration info for vloam
+    if(imuinfo_tmp.BackTime > 0) {
+        ImuPreintInfo(imuinfo_tmp.BackTime, imuinfo_tmp);
     }
 
     for(auto& pub : pub_frame) {

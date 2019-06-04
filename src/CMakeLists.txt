@@ -93,6 +93,7 @@ message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
 find_package(catkin REQUIRED COMPONENTS
 roscpp
 roslib
+add_msg
 cmake_modules
 )
 
@@ -101,7 +102,7 @@ set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${catkin_LIBRARIES})
 
 catkin_package(
 DEPENDS
-CATKIN_DEPENDS roscpp roslib
+CATKIN_DEPENDS roscpp roslib add_msg
 INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
 LIBRARIES ${PROJECT_NAME}
 )

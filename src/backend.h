@@ -5,7 +5,7 @@
 #include "util.h"
 #include "vins/integration_base.h"
 #include "vins/marginalization_factor.h"
-
+#include "add_msg/ImuPredict.h"
 class BackEnd {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -110,6 +110,10 @@ public:
         pub_mappoints.emplace_back(callback);
     }
 
+    inline void SubIMUPreintInfo(std::function<void(double, const add_msg::ImuPredict&)> callback) {
+        ImuPreintInfo = callback;
+    }
+
     inline void ResetRequest() {
         request_reset_flag = true;
     }
@@ -187,7 +191,7 @@ protected:
     std::vector<std::function<void(FramePtr, const Eigen::VecVector3d&)>> pub_keyframe;
     std::vector<std::function<void(const Eigen::VecVector3d&)>> pub_mappoints;
     std::vector<std::function<void(FramePtr)>> pub_frame;
-
+    std::function<void(double, const add_msg::ImuPredict&)> ImuPreintInfo;
     // optimize parameters
     double max_solver_time_in_seconds;
     int max_num_iterations;
@@ -201,6 +205,7 @@ protected:
     double para_Td[1];
 
     FramePtr new_keyframe;
+    add_msg::ImuPredict imuinfo_tmp;
     Eigen::VecVector3d v_new_keyframe_x3Dc;
 };
 SMART_PTR(BackEnd)

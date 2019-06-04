@@ -35,6 +35,10 @@ public:
             reloc->SubRelocTwc(callback);
     }
 
+    inline void SubIMUPreintInfo(std::function<void(double, const add_msg::ImuPredict&)> callback) {
+            backend->SubIMUPreintInfo(callback);
+    }
+
     inline void SubRelocTwb(std::function<void(double, const Sophus::SE3d&)> callback) {
         if(reloc)
             reloc->SubRelocTwb(callback);
