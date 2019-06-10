@@ -57,6 +57,11 @@
 #include "sophus/se3.hpp"
 #include "ceres/local_parameterization_se3.h"
 #include "add_msg/ImuPredict.h"
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/time_synchronizer.h>
+
 //#include "local_parameterization.h"
 #define DISTORTION 0
 
@@ -112,6 +117,7 @@ std::queue<sensor_msgs::ImuConstPtr> fullImuRawBuf;
 std::mutex mBuf;
 std::mutex mBuf_imu_raw;
 std::mutex mBuf_imu_preint;
+
 // undistort lidar point
 //TODO::Using visual IMU predict this pose.
 void TransformToStart(PointType const *const pi, PointType *const po)
@@ -153,39 +159,25 @@ void TransformToEnd(PointType const *const pi, PointType *const po)
     po->intensity = int(pi->intensity);
 }
 
+
+void Sync_callback(const sensor_msgs::PointCloud2ConstPtr &cornerPointsSharp2,
+                   const sensor_msgs::PointCloud2ConstPtr &cornerPointsLessSharp2,
+                   const sensor_msgs::PointCloud2ConstPtr &surfPointsFlat2,
+                   const sensor_msgs::PointCloud2ConstPtr &surfPointsLessFlat2,
+                   const sensor_msgs::PointCloud2ConstPtr &laserCloudFullRes2){
+        mBuf.lock();
+        cornerSharpBuf.push(cornerPointsSharp2);
+        cornerLessSharpBuf.push(cornerPointsLessSharp2);
+        surfFlatBuf.push(surfPointsFlat2);
+        surfLessFlatBuf.push(surfPointsLessFlat2);
+        fullPointsBuf.push(laserCloudFullRes2);
+        mBuf.unlock();
+}
+
 void laserCloudSharpHandler(const sensor_msgs::PointCloud2ConstPtr &cornerPointsSharp2)
 {
     mBuf.lock();
     cornerSharpBuf.push(cornerPointsSharp2);
-    mBuf.unlock();
-}
-
-void laserCloudLessSharpHandler(const sensor_msgs::PointCloud2ConstPtr &cornerPointsLessSharp2)
-{
-    mBuf.lock();
-    cornerLessSharpBuf.push(cornerPointsLessSharp2);
-    mBuf.unlock();
-}
-
-void laserCloudFlatHandler(const sensor_msgs::PointCloud2ConstPtr &surfPointsFlat2)
-{
-    mBuf.lock();
-    surfFlatBuf.push(surfPointsFlat2);
-    mBuf.unlock();
-}
-
-void laserCloudLessFlatHandler(const sensor_msgs::PointCloud2ConstPtr &surfPointsLessFlat2)
-{
-    mBuf.lock();
-    surfLessFlatBuf.push(surfPointsLessFlat2);
-    mBuf.unlock();
-}
-
-//receive all point cloud
-void laserCloudFullResHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudFullRes2)
-{
-    mBuf.lock();
-    fullPointsBuf.push(laserCloudFullRes2);
     mBuf.unlock();
 }
 
@@ -335,11 +327,6 @@ bool EstimatePredictPose(){
         }
         mBuf_imu_raw.unlock();
 
-        //std::cout << "vpose_match.BackTime =" << vpose_match.BackTime <<std::endl;
-        //std::cout << "timeLaserCloudFullRes =" << timeLaserCloudFullRes <<std::endl;
-        //std::cout << "startImu =" << imu_msg_predict[0].header.stamp.toSec() <<std::endl;
-        //std::cout << "endImu =" << imu_msg_predict[imu_msg_predict.size()-1].header.stamp.toSec() <<std::endl;
-
         //Step2.
         //Predict pose by imu_raw and wvioTbody
         ImuIntegrationForNextPose(vpose_match, imu_msg_predict);
@@ -370,20 +357,22 @@ int main(int argc, char **argv)
     lidar_T_body.translation().x() = tx;
     lidar_T_body.translation().y() = ty;
     lidar_T_body.translation().z() = tz;
+
     //from cppt or other VIO output
     ros::Subscriber subVisualIMUInfo = nh.subscribe<add_msg::ImuPredict>("visual_imupreint_info", 1000, VisualImuInfoHandler);
     //from imu sensor
     ros::Subscriber subRawImuFullInfo = nh.subscribe<sensor_msgs::Imu>("/imu/data_raw", 1000, ImuRawInfoHandler);
-    //from registration
-    ros::Subscriber subCornerPointsSharp = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_sharp", 200, laserCloudSharpHandler);
-    //from registration
-    ros::Subscriber subCornerPointsLessSharp = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_less_sharp", 200, laserCloudLessSharpHandler);
-    //from registration
-    ros::Subscriber subSurfPointsFlat = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_flat", 200, laserCloudFlatHandler);
-    //from registration
-    ros::Subscriber subSurfPointsLessFlat = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_less_flat", 200, laserCloudLessFlatHandler);
-    //from registration
-    ros::Subscriber subLaserCloudFullRes = nh.subscribe<sensor_msgs::PointCloud2>("/velodyne_cloud_2", 200, laserCloudFullResHandler);
+
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_CornerPointsSharp(nh, "/laser_cloud_sharp", 200);
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_CornerPointsLessSharp(nh, "/laser_cloud_less_sharp", 200);
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_SurfPointsFlat(nh, "/laser_cloud_less_sharp", 200);
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_SurfPointsLessFlat(nh, "/laser_cloud_less_flat", 200);
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_LaserCloudFullRes(nh, "/velodyne_cloud_2", 200);
+    typedef  message_filters::sync_policies::ApproximateTime<sensor_msgs::PointCloud2, sensor_msgs::PointCloud2 ,
+            sensor_msgs::PointCloud2 , sensor_msgs::PointCloud2 , sensor_msgs::PointCloud2> MySyncPolicy;
+    message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), sub_CornerPointsSharp, sub_CornerPointsLessSharp, sub_SurfPointsFlat,
+                                                     sub_SurfPointsLessFlat, sub_LaserCloudFullRes);
+    sync.registerCallback(boost::bind(&Sync_callback, _1, _2, _3, _4, _5));
 
     ros::Publisher pubLaserCloudCornerLast = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_corner_last", 100);
 
@@ -461,6 +450,7 @@ int main(int argc, char **argv)
             }
             else if(systemInited)
             {
+#if 1
                 Sophus::SE3d lidari_T_lidarj;
                 //bodyi_bodyj
                 Eigen::Quaterniond wvio_Qbi;
@@ -481,6 +471,10 @@ int main(int argc, char **argv)
                 lidari_T_lidarj = (T_wvioTbi * body_T_lidar).inverse() * (T_wvioTbj * body_T_lidar);
                 //Sophus::SE3d lidari_T_lidarj = (wvioTbi ).inverse() * (wvioTbj);
                 wvioTbi = wvioTbj;
+                para_R = lidari_T_lidarj.so3();
+                para_P = lidari_T_lidarj.translation();
+
+#else
                 int cornerPointsSharpNum = cornerPointsSharp->points.size();
                 int surfPointsFlatNum = surfPointsFlat->points.size();
 
@@ -718,17 +712,12 @@ int main(int argc, char **argv)
                 //get new pose
                 std::memcpy(para_R.data(), para_pose , sizeof(double) * Sophus::SO3d::num_parameters);
                 std::memcpy(para_P.data(), para_pose + 4, sizeof (double) * 3);
-                //t_w_curr = t_w_curr + (q_w_curr * para_P);
-                //q_w_curr = q_w_curr * para_R;
-                t_w_curr = t_w_curr + (q_w_curr * lidari_T_lidarj.translation());
-                q_w_curr = q_w_curr * lidari_T_lidarj.so3();
-
+#endif
+                t_w_curr = t_w_curr + (q_w_curr * para_P);
+                q_w_curr = q_w_curr * para_R;
             }
 
-            TicToc t_pub;
-
             // publish odometry
-#if 1
             nav_msgs::Odometry laserOdometry;
             laserOdometry.header.frame_id = "/world";
             laserOdometry.child_frame_id = "/laser_odom";
@@ -740,19 +729,6 @@ int main(int argc, char **argv)
             laserOdometry.pose.pose.position.x = t_w_curr.x();
             laserOdometry.pose.pose.position.y = t_w_curr.y();
             laserOdometry.pose.pose.position.z = t_w_curr.z();
-#else
-            nav_msgs::Odometry laserOdometry;
-            laserOdometry.header.frame_id = "/world";
-            laserOdometry.child_frame_id = "/laser_odom";
-            laserOdometry.header.stamp = ros::Time().fromSec(timeSurfPointsLessFlat);
-            laserOdometry.pose.pose.orientation.x = wvioTbj.pose.orientation.x;
-            laserOdometry.pose.pose.orientation.y = wvioTbj.pose.orientation.y;
-            laserOdometry.pose.pose.orientation.z = wvioTbj.pose.orientation.z;
-            laserOdometry.pose.pose.orientation.w = wvioTbj.pose.orientation.w;
-            laserOdometry.pose.pose.position.x = wvioTbj.pose.position.x;
-            laserOdometry.pose.pose.position.y = wvioTbj.pose.position.y;
-            laserOdometry.pose.pose.position.z = wvioTbj.pose.position.z;
-#endif
             pubLaserOdometry.publish(laserOdometry);
 
             geometry_msgs::PoseStamped laserPose;
@@ -802,25 +778,25 @@ int main(int argc, char **argv)
             kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
             kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
 
-            if (frameCount % skipFrameNum == 0)
+            if (1)
             {
                 frameCount = 0;
 
                 sensor_msgs::PointCloud2 laserCloudCornerLast2;
                 pcl::toROSMsg(*laserCloudCornerLast, laserCloudCornerLast2);
-                laserCloudCornerLast2.header.stamp = ros::Time().fromSec(timeSurfPointsLessFlat);
+                laserCloudCornerLast2.header.stamp = ros::Time().fromSec(timeLaserCloudFullRes);
                 laserCloudCornerLast2.header.frame_id = "/world";
                 pubLaserCloudCornerLast.publish(laserCloudCornerLast2);
 
                 sensor_msgs::PointCloud2 laserCloudSurfLast2;
                 pcl::toROSMsg(*laserCloudSurfLast, laserCloudSurfLast2);
-                laserCloudSurfLast2.header.stamp = ros::Time().fromSec(timeSurfPointsLessFlat);
+                laserCloudSurfLast2.header.stamp = ros::Time().fromSec(timeLaserCloudFullRes);
                 laserCloudSurfLast2.header.frame_id = "/world";
                 pubLaserCloudSurfLast.publish(laserCloudSurfLast2);
 
                 sensor_msgs::PointCloud2 laserCloudFullRes3;
                 pcl::toROSMsg(*laserCloudFullRes, laserCloudFullRes3);
-                laserCloudFullRes3.header.stamp = ros::Time().fromSec(timeSurfPointsLessFlat);
+                laserCloudFullRes3.header.stamp = ros::Time().fromSec(timeLaserCloudFullRes);
                 laserCloudFullRes3.header.frame_id = "/world";
                 pubLaserCloudFullRes.publish(laserCloudFullRes3);
             }
