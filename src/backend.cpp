@@ -859,6 +859,7 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
     imuinfo_tmp.gyr_0.z = ref_frame->v_gyr.back().z();
     }
 
+    //Predict pose and implement imu preintegration.
     for(int i = 0, n = cur_frame->v_acc.size(); i < n; ++i) {
         double t = cur_frame->v_imu_timestamp[i], dt = t - t0;
 

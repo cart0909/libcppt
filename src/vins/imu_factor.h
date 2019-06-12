@@ -25,3 +25,16 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
     IntegrationBasePtr pre_integration;
     Eigen::Vector3d Gw;
 };
+
+
+//only consider posej
+class IMUFactorForLidar : public ceres::SizedCostFunction<15, 7, 9>
+{
+  public:
+    IMUFactorForLidar() = delete;
+    IMUFactorForLidar(IntegrationBasePtr _pre_integration, const Eigen::Vector3d& Gw_);
+    virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const;
+
+    IntegrationBasePtr pre_integration;
+    Eigen::Vector3d Gw;
+};

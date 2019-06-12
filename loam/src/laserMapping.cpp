@@ -33,47 +33,16 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-
-#include <math.h>
-#include <vector>
-#include <vloam_velodyne/common.h>
-#include <nav_msgs/Odometry.h>
-#include <nav_msgs/Path.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/TransformStamped.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/subscriber.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <ros/ros.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_broadcaster.h>
-#include <eigen3/Eigen/Dense>
-#include <ceres/ceres.h>
-#include <mutex>
-#include <queue>
-#include <thread>
-#include <iostream>
-#include <string>
-
-#include "lidarFactor.hpp"
-#include "vloam_velodyne/common.h"
-#include "vloam_velodyne/tic_toc.h"
+#include "laserMapping.h"
 
 #define PUB_ORI_PCL2 0
 int frameCount = 0;
-
 double timeLaserCloudCornerLast = 0;
 double timeLaserCloudSurfLast = 0;
 double timeLaserCloudFullRes = 0;
 double timeLaserOdometry = 0;
 double timeOrigionalCloud = 0;
-
+double timePoseijImuLast = 0 ;
 int laserCloudCenWidth = 10;
 int laserCloudCenHeight = 10;
 int laserCloudCenDepth = 5;
@@ -115,7 +84,7 @@ pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap(new pcl::KdTreeFLANN<PointTyp
 double parameters[7] = {0, 0, 0, 1, 0, 0, 0};
 Eigen::Map<Eigen::Quaterniond> q_w_curr(parameters);
 Eigen::Map<Eigen::Vector3d> t_w_curr(parameters + 4);
-
+Sophus::SE3d wmapT_previous;
 // wmap_T_odom * odom_T_curr = wmap_T_curr;
 // transformation between odom's world and map's world frame
 Eigen::Quaterniond q_wmap_wodom(1, 0, 0, 0);
@@ -130,6 +99,7 @@ std::queue<sensor_msgs::PointCloud2ConstPtr> origional_cloud_Buf;
 std::queue<sensor_msgs::PointCloud2ConstPtr> surfLastBuf;
 std::queue<sensor_msgs::PointCloud2ConstPtr> fullResBuf;
 std::queue<nav_msgs::Odometry::ConstPtr> odometryBuf;
+std::queue<add_msg::RelativePoseIMUConstPtr> poseijImuBuf;
 std::mutex mBuf;
 
 pcl::VoxelGrid<PointType> downSizeFilterCorner;
@@ -143,6 +113,9 @@ PointType pointOri, pointSel;
 ros::Publisher pubLaserCloudSurround, pubLaserCloudMap, pubLaserCloudFullRes, pubOdomAftMapped, pubOdomAftMappedHighFrec, pubLaserAfterMappedPath;
 ros::Publisher pub_TF_stamped, pubLaserCloudvoxblox;
 nav_msgs::Path laserAfterMappedPath;
+
+//
+LidarStatePtr lidarState;
 
 // set initial guess
 void transformAssociateToMap()
@@ -200,6 +173,41 @@ void laserCloudFullResHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloud
     mBuf.unlock();
 }
 
+
+
+void relativePoseIMUHandler(const add_msg::RelativePoseIMUConstPtr &poseij_imu)
+{
+    std::cout << "===============laserMapping=========" <<std::endl;
+    //    Eigen::Quaterniond wvio_Qbi;
+    //    wvio_Qbi.x() = poseij_imu->pose_i.orientation.x;
+    //    wvio_Qbi.y() = poseij_imu->pose_i.orientation.y;
+    //    wvio_Qbi.z() = poseij_imu->pose_i.orientation.z;
+    //    wvio_Qbi.w() = poseij_imu->pose_i.orientation.w;
+    //    Eigen::Vector3d wvio_tbi(poseij_imu->pose_i.position.x, poseij_imu->pose_i.position.y, poseij_imu->pose_i.position.z);
+    //    Eigen::Quaterniond wvio_Qbj;
+    //    wvio_Qbj.x() = poseij_imu->pose_j.orientation.x;
+    //    wvio_Qbj.y() = poseij_imu->pose_j.orientation.y;
+    //    wvio_Qbj.z() = poseij_imu->pose_j.orientation.z;
+    //    wvio_Qbj.w() = poseij_imu->pose_j.orientation.w;
+    //    Eigen::Vector3d wvio_tbj(poseij_imu->pose_j.position.x, poseij_imu->pose_j.position.y, poseij_imu->pose_j.position.z);
+    //    Sophus::SE3d T_wvioTbi(wvio_Qbi, wvio_tbi);
+    //    Sophus::SE3d T_wvioTbj(wvio_Qbj, wvio_tbj);
+
+    //    std::cout << "T_wvioTbi t=" << T_wvioTbi.translation() << "_q=" << T_wvioTbi.unit_quaternion().coeffs() <<std::endl;
+    //    std::cout << "T_wvioTbi v=" << Eigen::Vector3d(poseij_imu->velocity_i.x, poseij_imu->velocity_i.y, poseij_imu->velocity_i.z) <<std::endl;
+    //    std::cout << "T_wvioTbj t=" << T_wvioTbj.translation() << "_q=" << T_wvioTbj.unit_quaternion().coeffs() <<std::endl;
+    //    std::cout << "T_wvioTbj v=" << Eigen::Vector3d(poseij_imu->velocity_j.x, poseij_imu->velocity_j.y, poseij_imu->velocity_j.z) <<std::endl;
+    //    std::cout << "PoseI time=" << poseij_imu->BackTime_i <<std::endl;
+    //    std::cout << "PoseJ time=" << poseij_imu->BackTime_j <<std::endl;
+    //    for(int imuid = 0; imuid < poseij_imu->imu_raw_info.size(); imuid++){
+    //        std::cout << "imu_id=" << imuid << "_time=" << poseij_imu->imu_raw_info[imuid].time <<std::endl;
+    //        std::cout << "imuid=" << imuid << "_acc=" << Eigen::Vector3d(poseij_imu->imu_raw_acc[imuid].x, poseij_imu->imu_raw_acc[imuid].y, poseij_imu->imu_raw_acc[imuid].z) <<std::endl;
+    //   }
+    mBuf.lock();
+    poseijImuBuf.push(poseij_imu);
+    mBuf.unlock();
+}
+
 //receive odomtry
 void laserOdometryHandler(const nav_msgs::Odometry::ConstPtr &laserOdometry)
 {
@@ -240,7 +248,7 @@ void process()
     while(1)
     {
         while (!cornerLastBuf.empty() && !surfLastBuf.empty() &&
-               !fullResBuf.empty() && !odometryBuf.empty() && !origional_cloud_Buf.empty())
+               !fullResBuf.empty() && !odometryBuf.empty() && !origional_cloud_Buf.empty() && !poseijImuBuf.empty())
         {
             mBuf.lock();
             while (!odometryBuf.empty() && odometryBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
@@ -267,16 +275,26 @@ void process()
                 break;
             }
 
+            while (!poseijImuBuf.empty() && poseijImuBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
+                poseijImuBuf.pop();
+            if (poseijImuBuf.empty())
+            {
+                mBuf.unlock();
+                break;
+            }
+
 
             timeLaserCloudCornerLast = cornerLastBuf.front()->header.stamp.toSec();
             timeLaserCloudSurfLast = surfLastBuf.front()->header.stamp.toSec();
             timeLaserCloudFullRes = fullResBuf.front()->header.stamp.toSec();
             timeLaserOdometry = odometryBuf.front()->header.stamp.toSec();
             timeOrigionalCloud = origional_cloud_Buf.front()->header.stamp.toSec();
+            timePoseijImuLast = poseijImuBuf.front()->header.stamp.toSec();
             if (timeLaserCloudCornerLast != timeLaserOdometry ||
                     timeLaserCloudSurfLast != timeLaserOdometry ||
                     timeLaserCloudFullRes != timeLaserOdometry ||
-                    timeOrigionalCloud != timeLaserOdometry)
+                    timeOrigionalCloud != timeLaserOdometry ||
+                    timePoseijImuLast != timeLaserOdometry)
             {
                 printf("time corner %f surf %f full %f odom %f orgional %f\n", timeLaserCloudCornerLast, timeLaserCloudSurfLast, timeLaserCloudFullRes, timeLaserOdometry, timeOrigionalCloud);
                 printf("unsync messeage!");
@@ -295,13 +313,14 @@ void process()
             laserCloudFullRes->clear();
             pcl::fromROSMsg(*fullResBuf.front(), *laserCloudFullRes);
             fullResBuf.pop();
+
 #if PUB_ORI_PCL2
             sensor_msgs::PointCloud2 laserCloudFullRes_voxblox;
             laserCloudFullRes_voxblox = (*origional_cloud_Buf.front());
             laserCloudFullRes_voxblox.header.stamp = ros::Time().fromSec(timeLaserOdometry);
             pubLaserCloudvoxblox.publish(laserCloudFullRes_voxblox);
 #endif
-            origional_cloud_Buf.pop();
+            origional_cloud_Buf.pop(); //no-scruibe
             q_wodom_curr.x() = odometryBuf.front()->pose.pose.orientation.x;
             q_wodom_curr.y() = odometryBuf.front()->pose.pose.orientation.y;
             q_wodom_curr.z() = odometryBuf.front()->pose.pose.orientation.z;
@@ -311,6 +330,52 @@ void process()
             t_wodom_curr.z() = odometryBuf.front()->pose.pose.position.z;
             odometryBuf.pop();
 
+            //estimate imu-preintegration
+
+            add_msg::RelativePoseIMU poseij_imu = *(poseijImuBuf.front());
+            lidarState = std::make_shared<LidarState>();
+
+            if(poseij_imu.BackTime_i != -1 && poseij_imu.BackTime_j != -1)
+            {
+                Eigen::Vector3d average_ba, average_bg, acc_0_i, gyr_0_i;
+                average_ba.x() = (poseij_imu.bias_acc_i.x + poseij_imu.bias_acc_j.x) * 0.5;
+                average_ba.y() = (poseij_imu.bias_acc_i.y + poseij_imu.bias_acc_j.y) * 0.5;
+                average_ba.z() = (poseij_imu.bias_acc_i.z + poseij_imu.bias_acc_j.z) * 0.5;
+                average_bg.x() = (poseij_imu.bias_gyro_i.x + poseij_imu.bias_gyro_j.x) * 0.5;
+                average_bg.y() = (poseij_imu.bias_gyro_i.y + poseij_imu.bias_gyro_j.y) * 0.5;
+                average_bg.z() = (poseij_imu.bias_gyro_i.z + poseij_imu.bias_gyro_j.z) * 0.5;
+
+                acc_0_i.x() = poseij_imu.acc_0_i.x;
+                acc_0_i.y() = poseij_imu.acc_0_i.y;
+                acc_0_i.z() = poseij_imu.acc_0_i.z;
+
+                gyr_0_i.x() = poseij_imu.gyr_0_i.x;
+                gyr_0_i.y() = poseij_imu.gyr_0_i.y;
+                gyr_0_i.z() = poseij_imu.gyr_0_i.z;
+                //Init imu preintegration
+                lidarState->imupreinte = std::make_shared<IntegrationBase>(acc_0_i, gyr_0_i,
+                                                                           average_ba, average_bg, acc_n, gyr_n,
+                                                                           acc_w, gyr_w);
+
+                double t0 = poseij_imu.BackTime_i;
+                Eigen::Vector3d acc_raw;
+                Eigen::Vector3d gyr_raw;
+                for(int r_id = 0; r_id < poseij_imu.imu_raw_info.size(); r_id++){
+                    double t = poseij_imu.imu_raw_info[r_id].time, dt = t - t0;
+                    acc_raw.x() = poseij_imu.imu_raw_info[r_id].acc_x;
+                    acc_raw.y() = poseij_imu.imu_raw_info[r_id].acc_y;
+                    acc_raw.z() = poseij_imu.imu_raw_info[r_id].acc_z;
+                    gyr_raw.x() = poseij_imu.imu_raw_info[r_id].gyr_x;
+                    gyr_raw.y() = poseij_imu.imu_raw_info[r_id].gyr_y;
+                    gyr_raw.z() = poseij_imu.imu_raw_info[r_id].gyr_z;
+                    lidarState->imupreinte->push_back(dt, acc_raw, gyr_raw);
+                    t0 = t;
+                }
+                lidarState->exist_imu = true;
+
+            }
+
+            poseijImuBuf.pop();
             while(!cornerLastBuf.empty())
             {
                 cornerLastBuf.pop();
@@ -321,9 +386,20 @@ void process()
             mBuf.unlock();
 
             TicToc t_whole;
+            if(!systemInited){
+                //system initialize
+                systemInited = true;
+                Eigen::Quaterniond I;
+                I.setIdentity();
+                wmapT_previous.so3().setQuaternion(I);
+            }else{
+                //save previous wmap_T_lidari
+                wmapT_previous.translation() = t_w_curr;
+                wmapT_previous.setQuaternion(q_w_curr);
+            }
+
 
             transformAssociateToMap();
-
             TicToc t_shift;
             int centerCubeI = int((t_w_curr.x() + 25.0) / 50.0) + laserCloudCenWidth;
             int centerCubeJ = int((t_w_curr.y() + 25.0) / 50.0) + laserCloudCenHeight;
@@ -735,7 +811,6 @@ void process()
                     ceres::Solver::Summary summary;
                     ceres::Solve(options, &problem, &summary);
                     printf("mapping solver time %f ms \n", t_solver.toc());
-
                     //printf("time %f \n", timeLaserOdometry);
                     //printf("corner factor num %d surf factor num %d\n", corner_num, surf_num);
                     //printf("result q %f %f %f %f result t %f %f %f\n", parameters[3], parameters[0], parameters[1], parameters[2],
@@ -941,8 +1016,17 @@ int main(int argc, char **argv)
     printf("line resolution %f plane resolution %f \n", lineRes, planeRes);
     downSizeFilterCorner.setLeafSize(lineRes, lineRes,lineRes);
     downSizeFilterSurf.setLeafSize(planeRes, planeRes, planeRes);
-
+    GetParam("IMU_INFO/acc_n", acc_n);
+    GetParam("IMU_INFO/gyr_n", gyr_n);
+    GetParam("IMU_INFO/acc_w", acc_w);
+    GetParam("IMU_INFO/gyr_w", gyr_w);
+    GetParam("IMU_INFO/g_norm", g_norm);
+    gw.z() = g_norm;
+    gw.x() = 0;
+    gw.y() = 0;
     //ros::Subscriber subLaserCloudCornerLast = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_corner_last", 100, laserCloudCornerLastHandler);
+
+    ros::Subscriber subPoseijIMU = nh.subscribe<add_msg::RelativePoseIMU>("/Poseij_imu", 100, relativePoseIMUHandler);
 
     ros::Subscriber subLaserCloudSurfLast = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_surf_last", 100, laserCloudSurfLastHandler);
 

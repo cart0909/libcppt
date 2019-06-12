@@ -34,7 +34,7 @@
 <remap from="/imu/data_raw" to="/raw_imu" />
 </node>
 
-<node pkg="vloam_velodyne" type="alaserMapping" name="alaserMapping" output="screen">
+<node pkg="vloam_velodyne" type="alaserMapping" name="alaserMapping" output="screen" launch-prefix="gdb -ex run --args ">
 <remap from="/imu/data_raw" to="/raw_imu" />
 </node>
 

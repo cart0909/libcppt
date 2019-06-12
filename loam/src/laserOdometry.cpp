@@ -52,11 +52,13 @@
 #include <mutex>
 #include <queue>
 #include "vloam_velodyne/common.h"
-#include "vloam_velodyne/tic_toc.h"
 #include "lidarFactor.hpp"
 #include "sophus/se3.hpp"
 #include "ceres/local_parameterization_se3.h"
+#include "util.h"
 #include "add_msg/ImuPredict.h"
+#include "add_msg/RelativePoseIMU.h"
+#include "add_msg/Intervalimu.h"
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -78,7 +80,7 @@ double timeCornerPointsLessSharp = 0;
 double timeSurfPointsFlat = 0;
 double timeSurfPointsLessFlat = 0;
 double timeLaserCloudFullRes = 0;
-
+Eigen::Vector3d gw(-1, -1, -1);
 pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeCornerLast(new pcl::KdTreeFLANN<pcl::PointXYZI>());
 pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeSurfLast(new pcl::KdTreeFLANN<pcl::PointXYZI>());
 
@@ -104,6 +106,7 @@ Sophus::SO3d para_R;    //Rlast_cur
 double* para_pose; //Tlast_cur
 add_msg::ImuPredict wvioTbi;
 add_msg::ImuPredict wvioTbj;
+
 Sophus::SE3d lidar_T_body;
 std::queue<sensor_msgs::PointCloud2ConstPtr> cornerSharpBuf;
 std::queue<sensor_msgs::PointCloud2ConstPtr> cornerLessSharpBuf;
@@ -161,11 +164,11 @@ void TransformToEnd(PointType const *const pi, PointType *const po)
 void Sync_callback(const sensor_msgs::PointCloud2ConstPtr &cornerPointsLessSharp2,
                    const sensor_msgs::PointCloud2ConstPtr &surfPointsLessFlat2,
                    const sensor_msgs::PointCloud2ConstPtr &laserCloudFullRes2){
-        mBuf.lock();
-        cornerLessSharpBuf.push(cornerPointsLessSharp2);
-        surfLessFlatBuf.push(surfPointsLessFlat2);
-        fullPointsBuf.push(laserCloudFullRes2);
-        mBuf.unlock();
+    mBuf.lock();
+    cornerLessSharpBuf.push(cornerPointsLessSharp2);
+    surfLessFlatBuf.push(surfPointsLessFlat2);
+    fullPointsBuf.push(laserCloudFullRes2);
+    mBuf.unlock();
 }
 
 void laserCloudSharpHandler(const sensor_msgs::PointCloud2ConstPtr &cornerPointsSharp2)
@@ -189,7 +192,8 @@ void ImuRawInfoHandler(const sensor_msgs::ImuConstPtr& imu_msg)
     mBuf_imu_raw.unlock();
 }
 
-void ImuIntegrationForNextPose(add_msg::ImuPredict& vpose_match, std::vector<sensor_msgs::Imu> imu_msg_predict)
+void ImuIntegrationForNextPose(add_msg::ImuPredict& vpose_match, add_msg::RelativePoseIMU& poseij_imu,
+                               std::vector<sensor_msgs::Imu>& imu_msg_predict)
 {
     Sophus::SO3d qwb;
     Eigen::Quaterniond tmp_qwb;
@@ -212,7 +216,7 @@ void ImuIntegrationForNextPose(add_msg::ImuPredict& vpose_match, std::vector<sen
     //insert last raw imu info
     Eigen::Vector3d gyr_0(vpose_match.gyr_0.x, vpose_match.gyr_0.y, vpose_match.gyr_0.z);
     Eigen::Vector3d acc_0(vpose_match.acc_0.x, vpose_match.acc_0.y, vpose_match.acc_0.z);
-    Eigen::Vector3d gw(0, 0, 9.81007);
+    //Eigen::Vector3d gw(0, 0, 9.81007);
 
 
     //finsish predict which need to update the p, v, r, bg, ba, header_timestamp, backtime, last_imuraw_info
@@ -220,7 +224,6 @@ void ImuIntegrationForNextPose(add_msg::ImuPredict& vpose_match, std::vector<sen
         double t = imu_msg_predict[i].header.stamp.toSec(), dt = t - t0;
         Eigen::Vector3d gyr = Eigen::Vector3d(imu_msg_predict[i].angular_velocity.x, imu_msg_predict[i].angular_velocity.y, imu_msg_predict[i].angular_velocity.z);
         Eigen::Vector3d acc = Eigen::Vector3d(imu_msg_predict[i].linear_acceleration.x, imu_msg_predict[i].linear_acceleration.y, imu_msg_predict[i].linear_acceleration.z);
-
         Eigen::Vector3d un_acc_0 = qwb * (acc_0 - ba) - gw;
         Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + gyr) - bg;
         qwb = qwb * Sophus::SO3d::exp(un_gyr * dt);
@@ -228,7 +231,6 @@ void ImuIntegrationForNextPose(add_msg::ImuPredict& vpose_match, std::vector<sen
         Eigen::Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
         pwb += dt * vwb + 0.5 * dt * dt * un_acc;
         vwb += dt * un_acc;
-
         gyr_0 = gyr;
         acc_0 = acc;
         t0 = t;
@@ -237,6 +239,9 @@ void ImuIntegrationForNextPose(add_msg::ImuPredict& vpose_match, std::vector<sen
     wvioTbj.pose.position.x = pwb.x();
     wvioTbj.pose.position.y = pwb.y();
     wvioTbj.pose.position.z = pwb.z();
+
+    wvioTbj.bias_acc = vpose_match.bias_acc;
+    wvioTbj.bias_gyro = vpose_match.bias_gyro;
 
     wvioTbj.pose.orientation.x = qwb.unit_quaternion().x();
     wvioTbj.pose.orientation.y = qwb.unit_quaternion().y();
@@ -256,15 +261,30 @@ void ImuIntegrationForNextPose(add_msg::ImuPredict& vpose_match, std::vector<sen
     wvioTbj.gyr_0.z = gyr_0.z();
 
     wvioTbj.BackTime = t0;
+
+    poseij_imu.pose_j = wvioTbj.pose;
+    poseij_imu.velocity_j = wvioTbj.velocity;
+    poseij_imu.BackTime_j = wvioTbj.BackTime;
+    poseij_imu.bias_acc_j = wvioTbj.bias_acc;
+    poseij_imu.bias_gyro_j = wvioTbj.bias_gyro;
 }
 
-bool EstimatePredictPose(std::vector<Eigen::Vector3d> &imu_cur_data){
+bool EstimatePredictPose(std::vector<Eigen::Vector3d> &imu_cur_data, add_msg::RelativePoseIMU& pij_imu){
     //estimte wvioTbody in laser of curr timestamp.
     //find the same time of fullPredictPoseBuf info.
     //wvioTbody_laser_time is wvioTbj
+    pij_imu.BackTime_i = wvioTbi.BackTime;
+    pij_imu.pose_i = wvioTbi.pose;
+    pij_imu.velocity_i = wvioTbi.velocity;
+    pij_imu.acc_0_i = wvioTbi.acc_0;
+    pij_imu.gyr_0_i = wvioTbi.gyr_0;
+    pij_imu.bias_acc_i = wvioTbi.bias_acc;
+    pij_imu.bias_gyro_i = wvioTbi.bias_gyro;
+
     double close_time = 100;
     bool find_match_vpose = false;
     imu_cur_data.clear();
+
     mBuf_imu_preint.lock();
     //find the wvioTbody info which close to time LaserCloudFullRes
     add_msg::ImuPredict vpose_match;
@@ -284,18 +304,22 @@ bool EstimatePredictPose(std::vector<Eigen::Vector3d> &imu_cur_data){
         }
     }
     mBuf_imu_preint.unlock();
+
     if(find_match_vpose == false && !systemInited){
         std::cout << "timeLaserCloudFullRes=" << timeLaserCloudFullRes <<std::endl;
         std::cout << "vpose_msg=" << fullPredictPoseBuf.front()->BackTime <<std::endl;
-        std::cout << "cannot find any matching between wvioTbody and LaserCloud" <<std::endl;
+        std::cout << "Initialize failure :: no matching between wvioTbody and LaserCloud" <<std::endl;
+        ros::shutdown();
         return false;
     }
     else if(find_match_vpose == false && systemInited){
+        //use last of visual imu pre-integation result for predict pose.
         vpose_match = wvioTbi;
     }
 
     if(vpose_match.BackTime == timeLaserCloudFullRes){
         //vpose of timeStamp = LaserCloud time stamp, we don't need to predict the pose.
+        pij_imu.BackTime_j = -1;
         wvioTbj = vpose_match;
         return true;
     }
@@ -304,15 +328,48 @@ bool EstimatePredictPose(std::vector<Eigen::Vector3d> &imu_cur_data){
         //Step1.get IMU raw info for predict pose.
         mBuf_imu_raw.lock();
         double lastimu_time = vpose_match.BackTime;
+        double lastimu_Posei_time = -1;
+        if(systemInited){
+            lastimu_Posei_time = wvioTbi.BackTime;
+        }
         std::vector<sensor_msgs::Imu> imu_msg_predict;
+
+        //inser imu raw ij to pose_ij_imu
         while(!fullImuRawBuf.empty()){
             sensor_msgs::ImuConstPtr imu_msg = fullImuRawBuf.front();
             double imuraw_time = imu_msg->header.stamp.toSec();
+            //inser raw imu info to pij_imu from
+            //(wvioTi_back_time)*---(wvioTj_from_visual)*---(wvioTj_back_time)*
             if(imuraw_time > lastimu_time && imuraw_time <= timeLaserCloudFullRes){
+                //for predict cur pose
+                //(wvioTj_from_visual)*---(wvioTj_back_time)*
                 imu_msg_predict.push_back(*(imu_msg));
+                add_msg::Intervalimu imu_raw_tmp;
+                imu_raw_tmp.time = imuraw_time;
+                imu_raw_tmp.acc_x = imu_msg->linear_acceleration.x;
+                imu_raw_tmp.acc_y = imu_msg->linear_acceleration.y;
+                imu_raw_tmp.acc_z = imu_msg->linear_acceleration.z;
+                imu_raw_tmp.gyr_x = imu_msg->angular_velocity.x;
+                imu_raw_tmp.gyr_y = imu_msg->angular_velocity.y;
+                imu_raw_tmp.gyr_z = imu_msg->angular_velocity.z;
+                pij_imu.imu_raw_info.emplace_back(imu_raw_tmp);
                 fullImuRawBuf.pop();
             }
-            else if(imuraw_time <= lastimu_time){
+            else if(imuraw_time <= lastimu_Posei_time && lastimu_Posei_time != -1){
+                //*----(wvioTi_back_time)*
+                fullImuRawBuf.pop();
+            }
+            else if(imuraw_time > lastimu_Posei_time && imuraw_time <= lastimu_time){
+                //(wvioTi_back_time)*----(wvioTj_from_visual)*
+                add_msg::Intervalimu imu_raw_tmp;
+                imu_raw_tmp.time = imuraw_time;
+                imu_raw_tmp.acc_x = imu_msg->linear_acceleration.x;
+                imu_raw_tmp.acc_y = imu_msg->linear_acceleration.y;
+                imu_raw_tmp.acc_z = imu_msg->linear_acceleration.z;
+                imu_raw_tmp.gyr_x = imu_msg->angular_velocity.x;
+                imu_raw_tmp.gyr_y = imu_msg->angular_velocity.y;
+                imu_raw_tmp.gyr_z = imu_msg->angular_velocity.z;
+                pij_imu.imu_raw_info.emplace_back(imu_raw_tmp);
                 fullImuRawBuf.pop();
             }
             else if(imuraw_time > timeLaserCloudFullRes){
@@ -321,10 +378,15 @@ bool EstimatePredictPose(std::vector<Eigen::Vector3d> &imu_cur_data){
         }
         mBuf_imu_raw.unlock();
 
+        if(imu_msg_predict.size() < 3){
+            ROS_ERROR_STREAM("only two imu_info for predict pose.");
+        }
+
         //Step2.
         //Predict pose by imu_raw and wvioTbody
-        ImuIntegrationForNextPose(vpose_match, imu_msg_predict);
-
+        ImuIntegrationForNextPose(vpose_match, pij_imu, imu_msg_predict);
+        pij_imu.header = wvioTbj.header;
+        pij_imu.header.stamp = ros::Time().fromSec(timeLaserCloudFullRes);
         return true;
     }
 }
@@ -338,15 +400,17 @@ int main(int argc, char **argv)
 
     printf("Mapping %d Hz \n", 10 / skipFrameNum);
 
-    double tx, ty, tz, qx, qy, qz, qw;
-    //
-    nh.param<double>("tx", tx, 0);
-    nh.param<double>("ty", ty, 0);
-    nh.param<double>("tz", tz, 0);
-    nh.param<double>("qx", qx, 0);
-    nh.param<double>("qy", qy, 0);
-    nh.param<double>("qz", qz, 0);
-    nh.param<double>("qw", qw, 0);
+    double qw, qx, qy, qz, tx, ty, tz;
+    GetParam("/lidar_T_body/tx", tx);
+    GetParam("/lidar_T_body/ty", ty);
+    GetParam("/lidar_T_body/tz", tz);
+    GetParam("/lidar_T_body/qx", qx);
+    GetParam("/lidar_T_body/qy", qy);
+    GetParam("/lidar_T_body/qz", qz);
+    GetParam("/lidar_T_body/qw", qw);
+    gw.x() = 0;
+    gw.y() = 0;
+    GetParam("/IMU_INFO/g_norm", gw.z());
     lidar_T_body.so3().setQuaternion(Eigen::Quaterniond(qw, qx, qy, qz));
     lidar_T_body.translation().x() = tx;
     lidar_T_body.translation().y() = ty;
@@ -375,6 +439,8 @@ int main(int argc, char **argv)
     ros::Publisher pubLaserOdometry = nh.advertise<nav_msgs::Odometry>("/laser_odom_to_init", 100);
 
     ros::Publisher pubLaserPath = nh.advertise<nav_msgs::Path>("/laser_odom_path", 100);
+
+    ros::Publisher pubPoseIJ_rawIMU = nh.advertise<add_msg::RelativePoseIMU>("/Poseij_imu", 100);
 
     nav_msgs::Path laserPath;
 
@@ -423,11 +489,16 @@ int main(int argc, char **argv)
             mBuf.unlock();
 
             std::vector<Eigen::Vector3d> imu_cur_data;
-            bool findMatchVisualPose = EstimatePredictPose(imu_cur_data);
+            add_msg::RelativePoseIMU pij_imu;
+            pij_imu.BackTime_i = -1;
+            pij_imu.BackTime_j = -1;
+            bool findMatchVisualPose = EstimatePredictPose(imu_cur_data, pij_imu);
             TicToc t_whole;
             // initializing
             if (!systemInited && findMatchVisualPose)
             {
+                pij_imu.BackTime_i = -1;
+                pij_imu.BackTime_j = -1;
                 systemInited = true;
                 wvioTbi = wvioTbj;
                 para_R.setQuaternion(Eigen::Quaterniond::Identity());
@@ -438,6 +509,7 @@ int main(int argc, char **argv)
             }
             else if(systemInited)
             {
+
                 Sophus::SE3d lidari_T_lidarj;
                 //bodyi_bodyj
                 Eigen::Quaterniond wvio_Qbi;
@@ -457,6 +529,18 @@ int main(int argc, char **argv)
                 Sophus::SE3d body_T_lidar = lidar_T_body.inverse();
                 lidari_T_lidarj = (T_wvioTbi * body_T_lidar).inverse() * (T_wvioTbj * body_T_lidar);
                 //Sophus::SE3d lidari_T_lidarj = (wvioTbi ).inverse() * (wvioTbj);
+
+
+                //debug
+                //std::cout << "T_wvioTbi t=" << T_wvioTbi.translation() << "_q=" << T_wvioTbi.unit_quaternion().coeffs() <<std::endl;
+                //std::cout << "T_wvioTbi v=" << Eigen::Vector3d(wvioTbi.velocity.x, wvioTbi.velocity.y, wvioTbi.velocity.z) <<std::endl;
+                //std::cout << "T_wvioTbj t=" << T_wvioTbj.translation() << "_q=" << T_wvioTbj.unit_quaternion().coeffs() <<std::endl;
+                //std::cout << "T_wvioTbj v=" << Eigen::Vector3d(wvioTbj.velocity.x, wvioTbj.velocity.y, wvioTbj.velocity.z) <<std::endl;
+                //for(int imuid = 0; imuid < pij_imu.imu_raw_info.size(); imuid++){
+                //
+                //}
+                //debug
+
                 wvioTbi = wvioTbj;
                 para_R = lidari_T_lidarj.so3();
                 para_P = lidari_T_lidarj.translation();
@@ -464,6 +548,9 @@ int main(int argc, char **argv)
                 q_w_curr = q_w_curr * para_R;
             }
 
+
+            //Publish poseij and raw imu info for optimize bias in laserMapping
+            pubPoseIJ_rawIMU.publish(pij_imu);
             // publish odometry
             nav_msgs::Odometry laserOdometry;
             laserOdometry.header.frame_id = "/world";

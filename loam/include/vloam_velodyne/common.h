@@ -39,6 +39,7 @@
 #include <cmath>
 
 #include <pcl/point_types.h>
+#include "ros/ros.h"
 
 typedef pcl::PointXYZI PointType;
 
@@ -50,4 +51,16 @@ inline double rad2deg(double radians)
 inline double deg2rad(double degrees)
 {
   return degrees * M_PI / 180.0;
+}
+
+template<class T>
+void GetParam(const std::string &para_name, T&param){
+    if(!ros::param::get(para_name, param)){
+        ROS_ERROR_STREAM("Can not find \"" << para_name << "\" in ROS Parameter Server");
+        ros::shutdown();
+    }
+    else
+    {
+        ROS_INFO_STREAM(para_name << ": " << param);
+    }
 }
