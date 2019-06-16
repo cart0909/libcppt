@@ -143,7 +143,7 @@ BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
     for(auto& it : m_features) {
         auto& feat = it.second;
         if(feat.start_id <= size_frames - 3 &&
-                feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
+           feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
             size_t idx_i = size_frames - 3 - feat.start_id;
             size_t idx_j = size_frames - 2 - feat.start_id;
 

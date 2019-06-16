@@ -1,16 +1,18 @@
 // Author:   Tong Qin               qintonguav@gmail.com
 // 	         Shaozu Cao 		    saozu.cao@connect.ust.hk
-
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
+#include <ceres/sized_cost_function.h>
+#include <ceres/autodiff_cost_function.h>
 #include <eigen3/Eigen/Dense>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include "sophus/se3.hpp"
+#include "util.h"
+#include "ceres/local_parameterization_se3.h"
 
-
+//++ FOR autodiff
 struct LidarEdgeFactor
 {
 	LidarEdgeFactor(Eigen::Vector3d curr_point_, Eigen::Vector3d last_point_a_,
@@ -268,4 +270,39 @@ struct LidarDistanceFactor
 
 	Eigen::Vector3d curr_point;
 	Eigen::Vector3d closed_point;
+};
+//-- FOR autodiff
+
+
+class LidarLineFactorNeedDistort: public ceres::SizedCostFunction<3, 7>
+{
+    public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    LidarLineFactorNeedDistort(const Eigen::Vector3d& curr_point_, const Eigen::Vector3d& last_point_a_,
+                               const Eigen::Vector3d& last_point_b_);
+
+    bool Evaluate(double const * const* parameters_raw,
+                  double* residuals_raw,
+                  double** jacobians_raw) const;
+
+    Eigen::Vector3d curr_point;
+    Eigen::Vector3d last_point_a;
+    Eigen::Vector3d last_point_b;
+};
+
+
+class LidarPlaneFactorNeedDistort: public ceres::SizedCostFunction<1, 7>
+{
+    public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    LidarPlaneFactorNeedDistort(const Eigen::Vector3d& curr_point_, const Eigen::Vector3d& plane_unit_norm_,
+                                double negative_OA_dot_norm_);
+
+    bool Evaluate(double const * const* parameters_raw,
+                  double* residuals_raw,
+                  double** jacobians_raw) const;
+
+    Eigen::Vector3d curr_point;
+    Eigen::Vector3d plane_unit_norm;
+    double negative_OA_dot_norm;
 };

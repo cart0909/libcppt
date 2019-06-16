@@ -52,7 +52,7 @@
 #include <mutex>
 #include <queue>
 #include "vloam_velodyne/common.h"
-#include "lidarFactor.hpp"
+#include "lidarFactor.h"
 #include "sophus/se3.hpp"
 #include "ceres/local_parameterization_se3.h"
 #include "util.h"

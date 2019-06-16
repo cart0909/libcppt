@@ -25,14 +25,13 @@
 #include <thread>
 #include <iostream>
 #include <string>
-#include "lidarFactor.hpp"
+#include "lidarFactor.h"
 #include "vloam_velodyne/common.h"
 #include "add_msg/RelativePoseIMU.h"
 #include "add_msg/Intervalimu.h"
 #include "vins/imu_factor.h"
 #include "vins/integration_base.h"
 #include "util.h"
-
 double acc_n = -1;
 double gyr_n = -1;
 double acc_w = -1;
@@ -41,19 +40,31 @@ Eigen::Vector3d gw(0,0,0);
 double g_norm = -1;
 bool systemInited = false;
 
+double parameters[7] = {0, 0, 0, 1, 0, 0, 0};
+Eigen::Map<Eigen::Quaterniond> q_w_curr(parameters);
+Eigen::Map<Eigen::Vector3d> t_w_curr(parameters + 4);
+// wmap_T_odom * odom_T_curr = wmap_T_curr;
+// transformation between odom's world and map's world frame
+Eigen::Quaterniond q_wmap_wodom(1, 0, 0, 0);
+Eigen::Vector3d t_wmap_wodom(0, 0, 0);
+
+Eigen::Quaterniond q_wodom_curr(1, 0, 0, 0);
+Eigen::Vector3d t_wodom_curr(0, 0, 0);
+Sophus::SE3d lidar_T_body;
 struct LidarState{
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     double lidar_time = -1;
     double BackTime_i = -1;
     double BackTime_j = -1;
-    Eigen::Quaterniond wvio_Qbi;
-    Eigen::Vector3d wvio_tbi;
-    Eigen::Vector3d wvio_veci;
+
+    Eigen::Quaterniond wmap_Qbi;
+    Eigen::Vector3d wmap_tbi;
+    Eigen::Vector3d wmap_veci;
     Eigen::Vector3d bias_acc_i;
     Eigen::Vector3d bias_gyr_i;
-    Eigen::Quaterniond wvio_Qbj;
-    Eigen::Vector3d wvio_tbj;
-    Eigen::Vector3d wvio_vecj;
+    Eigen::Quaterniond wmap_Qbj;
+    Eigen::Vector3d wmap_tbj;
+    Eigen::Vector3d wmap_vecj;
     Eigen::Vector3d bias_acc_j;
     Eigen::Vector3d bias_gyr_j;
     Eigen::VecVector3d v_gyr, v_acc;
