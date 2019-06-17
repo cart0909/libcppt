@@ -279,7 +279,7 @@ class LidarLineFactorNeedDistort: public ceres::SizedCostFunction<3, 7>
     public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     LidarLineFactorNeedDistort(const Eigen::Vector3d& curr_point_, const Eigen::Vector3d& last_point_a_,
-                               const Eigen::Vector3d& last_point_b_);
+                               const Eigen::Vector3d& last_point_b_, const Sophus::SE3d& body_T_lidar_);
 
     bool Evaluate(double const * const* parameters_raw,
                   double* residuals_raw,
@@ -288,6 +288,7 @@ class LidarLineFactorNeedDistort: public ceres::SizedCostFunction<3, 7>
     Eigen::Vector3d curr_point;
     Eigen::Vector3d last_point_a;
     Eigen::Vector3d last_point_b;
+    Sophus::SE3d body_T_lidar;
 };
 
 
@@ -296,7 +297,7 @@ class LidarPlaneFactorNeedDistort: public ceres::SizedCostFunction<1, 7>
     public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     LidarPlaneFactorNeedDistort(const Eigen::Vector3d& curr_point_, const Eigen::Vector3d& plane_unit_norm_,
-                                double negative_OA_dot_norm_);
+                                const Sophus::SE3d& body_T_lidar_, double negative_OA_dot_norm_);
 
     bool Evaluate(double const * const* parameters_raw,
                   double* residuals_raw,
@@ -305,4 +306,5 @@ class LidarPlaneFactorNeedDistort: public ceres::SizedCostFunction<1, 7>
     Eigen::Vector3d curr_point;
     Eigen::Vector3d plane_unit_norm;
     double negative_OA_dot_norm;
+    Sophus::SE3d body_T_lidar;
 };

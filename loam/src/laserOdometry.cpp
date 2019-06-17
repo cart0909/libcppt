@@ -352,10 +352,11 @@ bool EstimatePredictPose(std::vector<Eigen::Vector3d> &imu_cur_data, add_msg::Re
                 imu_raw_tmp.gyr_x = imu_msg->angular_velocity.x;
                 imu_raw_tmp.gyr_y = imu_msg->angular_velocity.y;
                 imu_raw_tmp.gyr_z = imu_msg->angular_velocity.z;
-                pij_imu.imu_raw_info.emplace_back(imu_raw_tmp);
+                if(lastimu_Posei_time != -1)
+                    pij_imu.imu_raw_info.emplace_back(imu_raw_tmp);
                 fullImuRawBuf.pop();
             }
-            else if(imuraw_time <= lastimu_Posei_time && lastimu_Posei_time != -1){
+            else if(imuraw_time <= lastimu_Posei_time){
                 //*----(wvioTi_back_time)*
                 fullImuRawBuf.pop();
             }
@@ -369,7 +370,8 @@ bool EstimatePredictPose(std::vector<Eigen::Vector3d> &imu_cur_data, add_msg::Re
                 imu_raw_tmp.gyr_x = imu_msg->angular_velocity.x;
                 imu_raw_tmp.gyr_y = imu_msg->angular_velocity.y;
                 imu_raw_tmp.gyr_z = imu_msg->angular_velocity.z;
-                pij_imu.imu_raw_info.emplace_back(imu_raw_tmp);
+                if(lastimu_Posei_time != -1)
+                    pij_imu.imu_raw_info.emplace_back(imu_raw_tmp);
                 fullImuRawBuf.pop();
             }
             else if(imuraw_time > timeLaserCloudFullRes){
@@ -572,6 +574,30 @@ int main(int argc, char **argv)
             laserPath.poses.push_back(laserPose);
             laserPath.header.frame_id = "/world";
             pubLaserPath.publish(laserPath);
+
+
+            // transform corner features and plane features to the scan end point, if have a distort problem
+            if (0)
+            {
+                int cornerPointsLessSharpNum = cornerPointsLessSharp->points.size();
+                for (int i = 0; i < cornerPointsLessSharpNum; i++)
+                {
+                    TransformToEnd(&cornerPointsLessSharp->points[i], &cornerPointsLessSharp->points[i]);
+                }
+
+                int surfPointsLessFlatNum = surfPointsLessFlat->points.size();
+                for (int i = 0; i < surfPointsLessFlatNum; i++)
+                {
+                    TransformToEnd(&surfPointsLessFlat->points[i], &surfPointsLessFlat->points[i]);
+                }
+
+                int laserCloudFullResNum = laserCloudFullRes->points.size();
+                for (int i = 0; i < laserCloudFullResNum; i++)
+                {
+                    TransformToEnd(&laserCloudFullRes->points[i], &laserCloudFullRes->points[i]);
+                }
+            }
+
 
             //printf("publication time %f ms \n", t_pub.toc());
             //printf("whole laserOdometry time %f ms \n \n", t_whole.toc());

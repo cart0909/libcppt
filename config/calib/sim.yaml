@@ -87,7 +87,7 @@ td: 0.0                             # initial value of time offset. unit: s. rea
 #visualize_imu_forward: 0        # output imu forward propogation to achieve low latency and high frequence results
 #visualize_camera_size: 0.4      # size of camera marker in RVIZ
 
-voc_path: "/catkin_ws/src/libcppt/config/voc/brief_k10L6.bin"
-brief_pattern_path: "/catkin_ws/src/libcppt/config/brief/brief_pattern.yml"
+voc_path: "/drone_ws/src/libcppt/config/voc/brief_k10L6.bin"
+brief_pattern_path: "/drone_ws/src/libcppt/config/brief/brief_pattern.yml"
 
 enable_pose_faster: 0            # pose will align with imu fps

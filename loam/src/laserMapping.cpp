@@ -101,24 +101,30 @@ ros::Publisher pub_TF_stamped, pubLaserCloudvoxblox;
 nav_msgs::Path laserAfterMappedPath;
 
 
-LidarStatePtr lidarState;
 // set initial guess
 void transformAssociateToMap()
 {
-    q_w_curr = q_wmap_wodom * q_wodom_curr;
-    t_w_curr = q_wmap_wodom * t_wodom_curr + t_wmap_wodom;
+    Sophus::SE3d wmapTodom(q_wmap_wodom, t_wmap_wodom);
+    Sophus::SE3d wodomTcurr(q_wodom_curr, t_wodom_curr);
+    Sophus::SE3d wmapTlidar = wmapTodom *  wodomTcurr * lidar_T_body.inverse();
+    q_w_lidarj = wmapTlidar.so3().unit_quaternion();
+    t_w_lidarj = wmapTlidar.translation();
 }
 
 void transformUpdate()
 {
-    q_wmap_wodom = q_w_curr * q_wodom_curr.inverse();
-    t_wmap_wodom = t_w_curr - q_wmap_wodom * t_wodom_curr;
+    Sophus::SE3d wmapTlidar(q_w_lidarj, t_w_lidarj);
+    Sophus::SE3d wodomTbody_cur(q_wodom_curr, t_wodom_curr);
+    Sophus::SE3d wmapTodom = wmapTlidar * lidar_T_body * wodomTbody_cur.inverse();
+
+    q_wmap_wodom = wmapTodom.so3().unit_quaternion();
+    t_wmap_wodom = wmapTodom.translation();
 }
 
 void pointAssociateToMap(PointType const *const pi, PointType *const po)
 {
     Eigen::Vector3d point_curr(pi->x, pi->y, pi->z);
-    Eigen::Vector3d point_w = q_w_curr * point_curr + t_w_curr;
+    Eigen::Vector3d point_w = q_w_lidarj * point_curr + t_w_lidarj;
     po->x = point_w.x();
     po->y = point_w.y();
     po->z = point_w.z();
@@ -129,7 +135,7 @@ void pointAssociateToMap(PointType const *const pi, PointType *const po)
 void pointAssociateTobeMapped(PointType const *const pi, PointType *const po)
 {
     Eigen::Vector3d point_w(pi->x, pi->y, pi->z);
-    Eigen::Vector3d point_curr = q_w_curr.inverse() * (point_w - t_w_curr);
+    Eigen::Vector3d point_curr = q_w_lidarj.inverse() * (point_w - t_w_lidarj);
     po->x = point_curr.x();
     po->y = point_curr.y();
     po->z = point_curr.z();
@@ -162,32 +168,32 @@ void laserCloudFullResHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloud
 
 void relativePoseIMUHandler(const add_msg::RelativePoseIMUConstPtr &poseij_imu)
 {
-    std::cout << "===============laserMapping=========" <<std::endl;
-    //    Eigen::Quaterniond wvio_Qbi;
-    //    wvio_Qbi.x() = poseij_imu->pose_i.orientation.x;
-    //    wvio_Qbi.y() = poseij_imu->pose_i.orientation.y;
-    //    wvio_Qbi.z() = poseij_imu->pose_i.orientation.z;
-    //    wvio_Qbi.w() = poseij_imu->pose_i.orientation.w;
-    //    Eigen::Vector3d wvio_tbi(poseij_imu->pose_i.position.x, poseij_imu->pose_i.position.y, poseij_imu->pose_i.position.z);
-    //    Eigen::Quaterniond wvio_Qbj;
-    //    wvio_Qbj.x() = poseij_imu->pose_j.orientation.x;
-    //    wvio_Qbj.y() = poseij_imu->pose_j.orientation.y;
-    //    wvio_Qbj.z() = poseij_imu->pose_j.orientation.z;
-    //    wvio_Qbj.w() = poseij_imu->pose_j.orientation.w;
-    //    Eigen::Vector3d wvio_tbj(poseij_imu->pose_j.position.x, poseij_imu->pose_j.position.y, poseij_imu->pose_j.position.z);
-    //    Sophus::SE3d T_wvioTbi(wvio_Qbi, wvio_tbi);
-    //    Sophus::SE3d T_wvioTbj(wvio_Qbj, wvio_tbj);
+    //    std::cout << "===============laserMapping=========" <<std::endl;
+    //        Eigen::Quaterniond wvio_Qbi;
+    //        wvio_Qbi.x() = poseij_imu->pose_i.orientation.x;
+    //        wvio_Qbi.y() = poseij_imu->pose_i.orientation.y;
+    //        wvio_Qbi.z() = poseij_imu->pose_i.orientation.z;
+    //        wvio_Qbi.w() = poseij_imu->pose_i.orientation.w;
+    //        Eigen::Vector3d wvio_tbi(poseij_imu->pose_i.position.x, poseij_imu->pose_i.position.y, poseij_imu->pose_i.position.z);
+    //        Eigen::Quaterniond wvio_Qbj;
+    //        wvio_Qbj.x() = poseij_imu->pose_j.orientation.x;
+    //        wvio_Qbj.y() = poseij_imu->pose_j.orientation.y;
+    //        wvio_Qbj.z() = poseij_imu->pose_j.orientation.z;
+    //        wvio_Qbj.w() = poseij_imu->pose_j.orientation.w;
+    //        Eigen::Vector3d wvio_tbj(poseij_imu->pose_j.position.x, poseij_imu->pose_j.position.y, poseij_imu->pose_j.position.z);
+    //        Sophus::SE3d T_wvioTbi(wvio_Qbi, wvio_tbi);
+    //        Sophus::SE3d T_wvioTbj(wvio_Qbj, wvio_tbj);
 
-    //    std::cout << "T_wvioTbi t=" << T_wvioTbi.translation() << "_q=" << T_wvioTbi.unit_quaternion().coeffs() <<std::endl;
-    //    std::cout << "T_wvioTbi v=" << Eigen::Vector3d(poseij_imu->velocity_i.x, poseij_imu->velocity_i.y, poseij_imu->velocity_i.z) <<std::endl;
-    //    std::cout << "T_wvioTbj t=" << T_wvioTbj.translation() << "_q=" << T_wvioTbj.unit_quaternion().coeffs() <<std::endl;
-    //    std::cout << "T_wvioTbj v=" << Eigen::Vector3d(poseij_imu->velocity_j.x, poseij_imu->velocity_j.y, poseij_imu->velocity_j.z) <<std::endl;
-    //    std::cout << "PoseI time=" << poseij_imu->BackTime_i <<std::endl;
-    //    std::cout << "PoseJ time=" << poseij_imu->BackTime_j <<std::endl;
-    //    for(int imuid = 0; imuid < poseij_imu->imu_raw_info.size(); imuid++){
-    //        std::cout << "imu_id=" << imuid << "_time=" << poseij_imu->imu_raw_info[imuid].time <<std::endl;
-    //        std::cout << "imuid=" << imuid << "_acc=" << Eigen::Vector3d(poseij_imu->imu_raw_acc[imuid].x, poseij_imu->imu_raw_acc[imuid].y, poseij_imu->imu_raw_acc[imuid].z) <<std::endl;
-    //   }
+    //        std::cout << "T_wvioTbi t=" << T_wvioTbi.translation() << "_q=" << T_wvioTbi.unit_quaternion().coeffs() <<std::endl;
+    //        std::cout << "T_wvioTbi v=" << Eigen::Vector3d(poseij_imu->velocity_i.x, poseij_imu->velocity_i.y, poseij_imu->velocity_i.z) <<std::endl;
+    //        std::cout << "T_wvioTbj t=" << T_wvioTbj.translation() << "_q=" << T_wvioTbj.unit_quaternion().coeffs() <<std::endl;
+    //        std::cout << "T_wvioTbj v=" << Eigen::Vector3d(poseij_imu->velocity_j.x, poseij_imu->velocity_j.y, poseij_imu->velocity_j.z) <<std::endl;
+    //        std::cout << "PoseI time=" << poseij_imu->BackTime_i <<std::endl;
+    //        std::cout << "PoseJ time=" << poseij_imu->BackTime_j <<std::endl;
+    //        for(int imuid = 0; imuid < poseij_imu->imu_raw_info.size(); imuid++){
+    //            std::cout << "imu_id=" << imuid << "_time=" << poseij_imu->imu_raw_info[imuid].time <<std::endl;
+    //            std::cout << "imuid=" << imuid << "_acc=" << Eigen::Vector3d(poseij_imu->imu_raw_info[imuid].gyr_x, poseij_imu->imu_raw_info[imuid].gyr_y, poseij_imu->imu_raw_info[imuid].gyr_z) <<std::endl;
+    //       }
     mBuf.lock();
     poseijImuBuf.push(poseij_imu);
     mBuf.unlock();
@@ -201,34 +207,34 @@ void laserOdometryHandler(const nav_msgs::Odometry::ConstPtr &laserOdometry)
     mBuf.unlock();
 
     // high frequence publish
-    Eigen::Quaterniond q_wodom_curr;
-    Eigen::Vector3d t_wodom_curr;
-    q_wodom_curr.x() = laserOdometry->pose.pose.orientation.x;
-    q_wodom_curr.y() = laserOdometry->pose.pose.orientation.y;
-    q_wodom_curr.z() = laserOdometry->pose.pose.orientation.z;
-    q_wodom_curr.w() = laserOdometry->pose.pose.orientation.w;
-    t_wodom_curr.x() = laserOdometry->pose.pose.position.x;
-    t_wodom_curr.y() = laserOdometry->pose.pose.position.y;
-    t_wodom_curr.z() = laserOdometry->pose.pose.position.z;
-
-    Eigen::Quaterniond q_w_curr = q_wmap_wodom * q_wodom_curr;
-    Eigen::Vector3d t_w_curr = q_wmap_wodom * t_wodom_curr + t_wmap_wodom;
+    Eigen::Quaterniond tmp_q_wodom_curr;
+    Eigen::Vector3d tmp_t_wodom_curr;
+    tmp_q_wodom_curr.x() = laserOdometry->pose.pose.orientation.x;
+    tmp_q_wodom_curr.y() = laserOdometry->pose.pose.orientation.y;
+    tmp_q_wodom_curr.z() = laserOdometry->pose.pose.orientation.z;
+    tmp_q_wodom_curr.w() = laserOdometry->pose.pose.orientation.w;
+    tmp_t_wodom_curr.x() = laserOdometry->pose.pose.position.x;
+    tmp_t_wodom_curr.y() = laserOdometry->pose.pose.position.y;
+    tmp_t_wodom_curr.z() = laserOdometry->pose.pose.position.z;
+    Sophus::SE3d odomTbody(tmp_q_wodom_curr, tmp_t_wodom_curr);
+    Sophus::SE3d wmapTwodom(q_wmap_wodom, t_wmap_wodom);
+    Sophus::SE3d wmapTlidar = wmapTwodom * odomTbody * lidar_T_body.inverse();
 
     nav_msgs::Odometry odomAftMapped;
     odomAftMapped.header.frame_id = "/world";
     odomAftMapped.child_frame_id = "/aft_mapped";
     odomAftMapped.header.stamp = laserOdometry->header.stamp;
-    odomAftMapped.pose.pose.orientation.x = q_w_curr.x();
-    odomAftMapped.pose.pose.orientation.y = q_w_curr.y();
-    odomAftMapped.pose.pose.orientation.z = q_w_curr.z();
-    odomAftMapped.pose.pose.orientation.w = q_w_curr.w();
-    odomAftMapped.pose.pose.position.x = t_w_curr.x();
-    odomAftMapped.pose.pose.position.y = t_w_curr.y();
-    odomAftMapped.pose.pose.position.z = t_w_curr.z();
+    odomAftMapped.pose.pose.orientation.x = wmapTlidar.so3().unit_quaternion().x();
+    odomAftMapped.pose.pose.orientation.y = wmapTlidar.so3().unit_quaternion().y();
+    odomAftMapped.pose.pose.orientation.z = wmapTlidar.so3().unit_quaternion().z();
+    odomAftMapped.pose.pose.orientation.w = wmapTlidar.so3().unit_quaternion().w();
+    odomAftMapped.pose.pose.position.x = wmapTlidar.translation().x();
+    odomAftMapped.pose.pose.position.y = wmapTlidar.translation().y();
+    odomAftMapped.pose.pose.position.z = wmapTlidar.translation().z();
     pubOdomAftMappedHighFrec.publish(odomAftMapped);
 }
 
-void PushPoseIJTolidarState(LidarStatePtr, add_msg::RelativePoseIMU& poseij_imu){
+void PushPoseIJTolidarState(LidarStatePtr lidarState, add_msg::RelativePoseIMU& poseij_imu){
     //InsertSomeInfo from RelativePoseIMU to LidarState
     //without 14.lidarState->v_acc 15. lidarState->v_gyr
     // 16.lidarState->imupreinte 17.lidarState->exist_imu
@@ -257,12 +263,13 @@ void PushPoseIJTolidarState(LidarStatePtr, add_msg::RelativePoseIMU& poseij_imu)
     lidarState->bias_gyr_j.z() = poseij_imu.bias_gyro_j.z;
 
     //8.wmap_q_lidari: poseij_imu is wodom_T_body
-    lidarState->wmap_Qbi.x() = poseij_imu.pose_i.orientation.x;
-    lidarState->wmap_Qbi.y() = poseij_imu.pose_i.orientation.y;
-    lidarState->wmap_Qbi.x() = poseij_imu.pose_i.orientation.x;
-    lidarState->wmap_Qbi.w() = poseij_imu.pose_i.orientation.w;
+    Eigen::Quaterniond wodom_Qbi;
+    wodom_Qbi.x() = poseij_imu.pose_i.orientation.x;
+    wodom_Qbi.y() = poseij_imu.pose_i.orientation.y;
+    wodom_Qbi.z() = poseij_imu.pose_i.orientation.z;
+    wodom_Qbi.w() = poseij_imu.pose_i.orientation.w;
     //convert to wmap
-    lidarState->wmap_Qbi = q_wmap_wodom * lidarState->wmap_Qbi;
+    lidarState->wmap_Qbi.setQuaternion(q_wmap_wodom * wodom_Qbi);
 
     //9.wmap_t_lidari:
     lidarState->wmap_tbi.x() = poseij_imu.pose_i.position.x;
@@ -277,12 +284,13 @@ void PushPoseIJTolidarState(LidarStatePtr, add_msg::RelativePoseIMU& poseij_imu)
     lidarState->wmap_veci = q_wmap_wodom * lidarState->wmap_veci;
 
     //11.wmap_q_lidarj: poseij_imu is wodom_T_body
-    lidarState->wmap_Qbj.x() = poseij_imu.pose_j.orientation.x;
-    lidarState->wmap_Qbj.y() = poseij_imu.pose_j.orientation.y;
-    lidarState->wmap_Qbj.x() = poseij_imu.pose_j.orientation.x;
-    lidarState->wmap_Qbj.w() = poseij_imu.pose_j.orientation.w;
+    Eigen::Quaterniond wodom_Qbj;
+    wodom_Qbj.x() = poseij_imu.pose_j.orientation.x;
+    wodom_Qbj.y() = poseij_imu.pose_j.orientation.y;
+    wodom_Qbj.z() = poseij_imu.pose_j.orientation.z;
+    wodom_Qbj.w() = poseij_imu.pose_j.orientation.w;
     //convert to wmap
-    lidarState->wmap_Qbj = q_wmap_wodom * lidarState->wmap_Qbj;
+    lidarState->wmap_Qbj.setQuaternion(q_wmap_wodom * wodom_Qbj);
 
     //12.wmap_t_lidarj:j
     lidarState->wmap_tbj.x() = poseij_imu.pose_j.position.x;
@@ -375,6 +383,7 @@ void process()
             pubLaserCloudvoxblox.publish(laserCloudFullRes_voxblox);
 #endif
             origional_cloud_Buf.pop(); //no-scruibe
+
             q_wodom_curr.x() = odometryBuf.front()->pose.pose.orientation.x;
             q_wodom_curr.y() = odometryBuf.front()->pose.pose.orientation.y;
             q_wodom_curr.z() = odometryBuf.front()->pose.pose.orientation.z;
@@ -387,16 +396,23 @@ void process()
             //estimate imu-preintegration
 
             add_msg::RelativePoseIMU poseij_imu = *(poseijImuBuf.front());
-            lidarState = std::make_shared<LidarState>();
+            LidarStatePtr lidarState = std::make_shared<LidarState>();
             if(poseij_imu.BackTime_i != -1 && poseij_imu.BackTime_j != -1)
             {
                 Eigen::Vector3d average_ba, average_bg, acc_0_i, gyr_0_i;
-                average_ba.x() = (poseij_imu.bias_acc_i.x + poseij_imu.bias_acc_j.x) * 0.5;
-                average_ba.y() = (poseij_imu.bias_acc_i.y + poseij_imu.bias_acc_j.y) * 0.5;
-                average_ba.z() = (poseij_imu.bias_acc_i.z + poseij_imu.bias_acc_j.z) * 0.5;
-                average_bg.x() = (poseij_imu.bias_gyro_i.x + poseij_imu.bias_gyro_j.x) * 0.5;
-                average_bg.y() = (poseij_imu.bias_gyro_i.y + poseij_imu.bias_gyro_j.y) * 0.5;
-                average_bg.z() = (poseij_imu.bias_gyro_i.z + poseij_imu.bias_gyro_j.z) * 0.5;
+                //average_ba.x() = (poseij_imu.bias_acc_i.x + poseij_imu.bias_acc_j.x) * 0.5;
+                //average_ba.y() = (poseij_imu.bias_acc_i.y + poseij_imu.bias_acc_j.y) * 0.5;
+                //average_ba.z() = (poseij_imu.bias_acc_i.z + poseij_imu.bias_acc_j.z) * 0.5;
+                //average_bg.x() = (poseij_imu.bias_gyro_i.x + poseij_imu.bias_gyro_j.x) * 0.5;
+                //average_bg.y() = (poseij_imu.bias_gyro_i.y + poseij_imu.bias_gyro_j.y) * 0.5;
+                //average_bg.z() = (poseij_imu.bias_gyro_i.z + poseij_imu.bias_gyro_j.z) * 0.5;
+
+                average_ba.x() = (poseij_imu.bias_acc_i.x );
+                average_ba.y() = (poseij_imu.bias_acc_i.y );
+                average_ba.z() = (poseij_imu.bias_acc_i.z );
+                average_bg.x() = (poseij_imu.bias_gyro_i.x);
+                average_bg.y() = (poseij_imu.bias_gyro_i.y);
+                average_bg.z() = (poseij_imu.bias_gyro_i.z);
 
                 acc_0_i.x() = poseij_imu.acc_0_i.x;
                 acc_0_i.y() = poseij_imu.acc_0_i.y;
@@ -415,6 +431,7 @@ void process()
                 double t0 = poseij_imu.BackTime_i;
                 Eigen::Vector3d acc_raw;
                 Eigen::Vector3d gyr_raw;
+
                 for(size_t r_id = 0; r_id < poseij_imu.imu_raw_info.size(); r_id++){
                     double t = poseij_imu.imu_raw_info[r_id].time, dt = t - t0;
                     acc_raw.x() = poseij_imu.imu_raw_info[r_id].acc_x;
@@ -424,13 +441,14 @@ void process()
                     gyr_raw.y() = poseij_imu.imu_raw_info[r_id].gyr_y;
                     gyr_raw.z() = poseij_imu.imu_raw_info[r_id].gyr_z;
                     lidarState->v_acc.emplace_back(acc_raw);
-                    lidarState->v_gyr.emplace_back(acc_raw);
+                    lidarState->v_gyr.emplace_back(gyr_raw);
                     lidarState->imupreinte->push_back(dt, acc_raw, gyr_raw);
                     t0 = t;
                 }
 
-                if(poseij_imu.imu_raw_info.size() > 5)
+                if(poseij_imu.imu_raw_info.size() > 5 && poseij_imu.imu_raw_info.size() < 30)
                     lidarState->exist_imu = true;
+                //lidarState->exist_imu = false;
             }
 
             poseijImuBuf.pop();
@@ -448,22 +466,24 @@ void process()
                 systemInited = true;
                 Eigen::Quaterniond I;
                 I.setIdentity();
+                w_T_lidarj_last.so3().setQuaternion(I);
             }
 
             //:convert to wvioTlidar to wmapTlidarj by wmapTwvio
             transformAssociateToMap();
+            Sophus::SE3d wmap_T_lidarj(q_w_lidarj, t_w_lidarj);
+            w_T_bodyj = wmap_T_lidarj * lidar_T_body;
+
             TicToc t_shift;
-            int centerCubeI = int((t_w_curr.x() + 25.0) / 50.0) + laserCloudCenWidth;
-            int centerCubeJ = int((t_w_curr.y() + 25.0) / 50.0) + laserCloudCenHeight;
-            int centerCubeK = int((t_w_curr.z() + 25.0) / 50.0) + laserCloudCenDepth;
-
-
+            int centerCubeI = int((t_w_lidarj.x() + 25.0) / 50.0) + laserCloudCenWidth;
+            int centerCubeJ = int((t_w_lidarj.y() + 25.0) / 50.0) + laserCloudCenHeight;
+            int centerCubeK = int((t_w_lidarj.z() + 25.0) / 50.0) + laserCloudCenDepth;
             //+++shift map according to translation of wmap_T_lidarj
-            if (t_w_curr.x() + 25.0 < 0)
+            if (t_w_lidarj.x() + 25.0 < 0)
                 centerCubeI--;
-            if (t_w_curr.y() + 25.0 < 0)
+            if (t_w_lidarj.y() + 25.0 < 0)
                 centerCubeJ--;
-            if (t_w_curr.z() + 25.0 < 0)
+            if (t_w_lidarj.z() + 25.0 < 0)
                 centerCubeK--;
 
             while (centerCubeI < 3)
@@ -722,13 +742,15 @@ void process()
                     //        new ceres::EigenQuaternionParameterization();
                     ceres::Problem::Options problem_options;
 
+
                     ceres::Problem problem(problem_options);
                     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
-                    problem.AddParameterBlock(parameters, 7, local_para_se3);
-                    //problem.AddParameterBlock(parameters, 4, q_parameterization);
-                    //problem.AddParameterBlock(parameters + 4, 3);
+                    problem.AddParameterBlock(parameters_j, 7, local_para_se3);
+                    //problem.AddParameterBlock(parameters_j, 4, q_parameterization);
+                    //problem.AddParameterBlock(parameters_j + 4, 3);
 
                     TicToc t_data;
+                    Sophus::SE3d body_T_lidar = lidar_T_body.inverse();
                     int corner_num = 0;
 #if 1
                     for (int i = 0; i < laserCloudCornerStackNum; i++)
@@ -774,29 +796,11 @@ void process()
 
                                 //ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0);
                                 //problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
-
-                                auto factor = new LidarLineFactorNeedDistort(curr_point, point_a, point_b);
-                                problem.AddResidualBlock(factor, loss_function, parameters);
+                                auto factor = new LidarLineFactorNeedDistort(curr_point, point_a, point_b, body_T_lidar);
+                                problem.AddResidualBlock(factor, loss_function, parameters_j);
                                 corner_num++;
                             }
                         }
-                        /*
-                        else if(pointSearchSqDis[4] < 0.01 * sqrtDis)
-                        {
-                                Eigen::Vector3d center(0, 0, 0);
-                                for (int j = 0; j < 5; j++)
-                                {
-                                        Eigen::Vector3d tmp(laserCloudCornerFromMap->points[pointSearchInd[j]].x,
-                                                                                laserCloudCornerFromMap->points[pointSearchInd[j]].y,
-                                                                                laserCloudCornerFromMap->points[pointSearchInd[j]].z);
-                                        center = center + tmp;
-                                }
-                                center = center / 5.0;
-                                Eigen::Vector3d curr_point(pointOri.x, pointOri.y, pointOri.z);
-                                ceres::CostFunction *cost_function = LidarDistanceFactor::Create(curr_point, center);
-                                problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
-                        }
-                        */
                     }
 #endif
 
@@ -842,37 +846,15 @@ void process()
                             Eigen::Vector3d curr_point(pointOri.x, pointOri.y, pointOri.z);
                             if (planeValid)
                             {
-                                auto factor = new LidarPlaneFactorNeedDistort(curr_point, norm, negative_OA_dot_norm);
-                                problem.AddResidualBlock(factor, loss_function, parameters);
+                                auto factor = new LidarPlaneFactorNeedDistort(curr_point, norm, body_T_lidar, negative_OA_dot_norm);
+                                problem.AddResidualBlock(factor, loss_function, parameters_j);
                                 //ceres::CostFunction *cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
-                                //problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
+                                //problem.AddResidualBlock(cost_function, loss_function, parameters_j, parameters_j + 4);
                                 surf_num++;
                             }
                         }
-                        /*
-                        else if(pointSearchSqDis[4] < 0.01 * sqrtDis)
-                        {
-                                Eigen::Vector3d center(0, 0, 0);
-                                for (int j = 0; j < 5; j++)
-                                {
-                                        Eigen::Vector3d tmp(laserCloudSurfFromMap->points[pointSearchInd[j]].x,
-                                                                                laserCloudSurfFromMap->points[pointSearchInd[j]].y,
-                                                                                laserCloudSurfFromMap->points[pointSearchInd[j]].z);
-                                        center = center + tmp;
-                                }
-                        OrigionalCloudLast	center = center / 5.0;
-                                Eigen::Vector3d curr_point(pointOri.x, pointOri.y, pointOri.z);
-                                ceres::CostFunction *cost_function = LidarDistanceFactor::Create(curr_point, center);
-                                problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
-                        }
-                       */
                     }
 #endif
-
-                    if(systemInited && lidarState->exist_imu){
-                        //TODO::add IMU preintegration info
-
-                    }
 
                     //printf("corner num %d used corner num %d \n", laserCloudCornerStackNum, corner_num);
                     //printf("surf num %d used surf num %d \n", laserCloudSurfStackNum, surf_num);
@@ -888,13 +870,73 @@ void process()
                     options.gradient_check_relative_precision = 1e-4;
                     ceres::Solver::Summary summary;
                     ceres::Solve(options, &problem, &summary);
+
                     printf("mapping solver time %f ms \n", t_solver.toc());
                     //printf("time %f \n", timeLaserOdometry);
                     //printf("corner factor num %d surf factor num %d\n", corner_num, surf_num);
                     //printf("result q %f %f %f %f result t %f %f %f\n", parameters[3], parameters[0], parameters[1], parameters[2],
-                    //	   parameters[4], parameters[5], parameters[6]);
+                    //parameters[4], parameters[5], parameters[6]);
                 }
                 //---Optimize laserMapping do twice
+
+                //+++optimization for IMU
+                if(systemInited && lidarState->exist_imu){
+                    ceres::Problem::Options problem_options;
+                    ceres::Problem problem(problem_options);
+                    ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
+
+                    problem.AddParameterBlock(parameters_j, 7, local_para_se3);
+                    std::memcpy(parameters_i , lidarState->wmap_Qbi.data(), sizeof(double) * Sophus::SO3d::num_parameters);
+                    std::memcpy(parameters_i + 4, lidarState->wmap_tbi.data(), sizeof(double) * 3);
+
+                    std::memcpy(parameters_speed_bias_i, lidarState->wmap_veci.data(), sizeof(double) * 3);
+                    std::memcpy(parameters_speed_bias_i + 3, lidarState->bias_acc_i.data(), sizeof(double) * 3);
+                    std::memcpy(parameters_speed_bias_i + 6, lidarState->bias_gyr_i.data(), sizeof(double) * 3);
+
+                    std::memcpy(parameters_speed_bias_j, lidarState->wmap_vecj.data(), sizeof(double) * 3);
+                    std::memcpy(parameters_speed_bias_j + 3, lidarState->bias_acc_j.data(), sizeof(double) * 3);
+                    std::memcpy(parameters_speed_bias_j + 6, lidarState->bias_gyr_j.data(), sizeof(double) * 3);
+
+                    problem.AddParameterBlock(parameters_i, 7, local_para_se3);
+                    problem.AddParameterBlock(parameters_speed_bias_i, 9);
+                    problem.AddParameterBlock(parameters_speed_bias_j, 9);
+                    problem.SetParameterBlockConstant(parameters_i);
+                    problem.SetParameterBlockConstant(parameters_speed_bias_i);
+                    problem.SetParameterBlockConstant(parameters_j);
+
+                    //TODO::add IMU preintegration info
+                    Eigen::Vector3d gwmap = q_wmap_wodom * gw;
+                    auto factor = new IMUFactor(lidarState->imupreinte, gwmap);
+                    problem.AddResidualBlock(factor, NULL,
+                                             parameters_i,
+                                             parameters_speed_bias_i,
+                                             parameters_j,
+                                             parameters_speed_bias_j);
+
+
+
+                    TicToc t_solver;
+                    ceres::Solver::Options options;
+                    options.linear_solver_type = ceres::DENSE_QR;
+                    options.max_num_iterations = 4;
+                    options.minimizer_progress_to_stdout = false;
+                    options.check_gradients = false;
+                    options.gradient_check_relative_precision = 1e-4;
+                    ceres::Solver::Summary summary;
+                    ceres::Solve(options, &problem, &summary);
+
+                    //std::cout << summary.FullReport() <<std::endl;
+                    std::cout << "lidarState->bias_acc_j 1= " << lidarState->bias_acc_j << std::endl;
+                    std::cout << "lidarState->bias_gyr_j 1= " << lidarState->bias_gyr_j << std::endl;
+
+                    std::memcpy(lidarState->bias_acc_j.data(), parameters_speed_bias_j + 3, sizeof(double) * 3);
+                    std::memcpy(lidarState->bias_gyr_j.data(), parameters_speed_bias_j + 6, sizeof(double) * 3);
+
+                    std::cout << "lidarState->bias_acc_j 2= " << lidarState->bias_acc_j << std::endl;
+                    std::cout << "lidarState->bias_gyr_j 2= " << lidarState->bias_gyr_j << std::endl;
+
+                }
+                //---optimization for IMU
 
                 printf("mapping optimization time %f \n", t_opt.toc());
             }
@@ -902,7 +944,18 @@ void process()
             {
                 ROS_WARN("time Map corner and surf num are not enough");
             }
+
+
+
+
+            //++update pose / baj /bgj ...
+            Sophus::SE3d w_T_lidarj = w_T_bodyj * lidar_T_body.inverse();
+            q_w_lidarj = w_T_lidarj.so3().unit_quaternion();
+            t_w_lidarj = w_T_lidarj.translation();
+            w_T_lidarj_last.so3().setQuaternion(q_w_lidarj);
+            w_T_lidarj_last.translation() = t_w_lidarj;
             transformUpdate();
+            //--update pose / baj /bgj ...
 
             TicToc t_add;
             for (int i = 0; i < laserCloudCornerStackNum; i++)
@@ -1035,24 +1088,24 @@ void process()
             odomAftMapped.header.frame_id = "/world";
             odomAftMapped.child_frame_id = "/aft_mapped";
             odomAftMapped.header.stamp = ros::Time().fromSec(timeLaserOdometry);
-            odomAftMapped.pose.pose.orientation.x = q_w_curr.x();
-            odomAftMapped.pose.pose.orientation.y = q_w_curr.y();
-            odomAftMapped.pose.pose.orientation.z = q_w_curr.z();
-            odomAftMapped.pose.pose.orientation.w = q_w_curr.w();
-            odomAftMapped.pose.pose.position.x = t_w_curr.x();
-            odomAftMapped.pose.pose.position.y = t_w_curr.y();
-            odomAftMapped.pose.pose.position.z = t_w_curr.z();
+            odomAftMapped.pose.pose.orientation.x = q_w_lidarj.x();
+            odomAftMapped.pose.pose.orientation.y = q_w_lidarj.y();
+            odomAftMapped.pose.pose.orientation.z = q_w_lidarj.z();
+            odomAftMapped.pose.pose.orientation.w = q_w_lidarj.w();
+            odomAftMapped.pose.pose.position.x = t_w_lidarj.x();
+            odomAftMapped.pose.pose.position.y = t_w_lidarj.y();
+            odomAftMapped.pose.pose.position.z = t_w_lidarj.z();
             pubOdomAftMapped.publish(odomAftMapped);
 
             geometry_msgs::TransformStamped transform_stamped;
             transform_stamped.header = odomAftMapped.header;
-            transform_stamped.transform.rotation.w = q_w_curr.w();
-            transform_stamped.transform.rotation.x = q_w_curr.x();
-            transform_stamped.transform.rotation.y = q_w_curr.y();
-            transform_stamped.transform.rotation.z = q_w_curr.z();
-            transform_stamped.transform.translation.x = t_w_curr.x();
-            transform_stamped.transform.translation.y = t_w_curr.y();
-            transform_stamped.transform.translation.z = t_w_curr.z();
+            transform_stamped.transform.rotation.w = q_w_lidarj.w();
+            transform_stamped.transform.rotation.x = q_w_lidarj.x();
+            transform_stamped.transform.rotation.y = q_w_lidarj.y();
+            transform_stamped.transform.rotation.z = q_w_lidarj.z();
+            transform_stamped.transform.translation.x = t_w_lidarj.x();
+            transform_stamped.transform.translation.y = t_w_lidarj.y();
+            transform_stamped.transform.translation.z = t_w_lidarj.z();
             pub_TF_stamped.publish(transform_stamped);
 
 
@@ -1067,13 +1120,13 @@ void process()
             static tf::TransformBroadcaster br;
             tf::Transform transform;
             tf::Quaternion q;
-            transform.setOrigin(tf::Vector3(t_w_curr(0),
-                                            t_w_curr(1),
-                                            t_w_curr(2)));
-            q.setW(q_w_curr.w());
-            q.setX(q_w_curr.x());
-            q.setY(q_w_curr.y());
-            q.setZ(q_w_curr.z());
+            transform.setOrigin(tf::Vector3(t_w_lidarj(0),
+                                            t_w_lidarj(1),
+                                            t_w_lidarj(2)));
+            q.setW(q_w_lidarj.w());
+            q.setX(q_w_lidarj.x());
+            q.setY(q_w_lidarj.y());
+            q.setZ(q_w_lidarj.z());
             transform.setRotation(q);
             br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp, "/world", "/aft_mapped"));
 

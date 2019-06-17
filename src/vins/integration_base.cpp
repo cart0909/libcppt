@@ -146,6 +146,9 @@ void IntegrationBase::propagate(double _dt, const Eigen::Vector3d &_acc_1, const
     sum_dt += dt;
     acc_0 = acc_1;
     gyr_0 = gyr_1;
+//    std::cout << "propagate sum_dt=" << sum_dt <<std::endl;
+//   std::cout << "delta_p=" << delta_p <<std::endl;
+//     std::cout << "acc_0=" << acc_0 <<std::endl;
 
 }
 
