@@ -6,10 +6,6 @@ Panels:
       Expanded:
         - /Status1
         - /Path1
-        - /Path2
-        - /Path3
-        - /PointCloud22
-        - /Path4
         - /Path4/Offset1
       Splitter Ratio: 0.4651159942150116
     Tree Height: 655
@@ -185,7 +181,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 4096
@@ -202,7 +198,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /cppt_vio/lines
@@ -221,7 +217,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 85; 85; 255
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
@@ -239,12 +235,12 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /global_opt_node/global_path
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
       Color: 170; 0; 0
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
@@ -262,7 +258,7 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /global_fusion_node/global_path
       Unreliable: false
-      Value: true
+      Value: false
     - Angle Tolerance: 0.10000000149011612
       Class: rviz/Odometry
       Covariance:
@@ -280,7 +276,7 @@ Visualization Manager:
           Scale: 1
           Value: true
         Value: true
-      Enabled: true
+      Enabled: false
       Keep: 100
       Name: Odometry
       Position Tolerance: 0.10000000149011612
@@ -296,7 +292,7 @@ Visualization Manager:
         Value: Arrow
       Topic: /global_opt_node/only_gps_xyz
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -463,25 +459,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 15.046815872192383
+      Distance: 7.713639259338379
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -1.7396247386932373
-        Y: -1.0960006713867188
-        Z: 4.465652455110103e-5
+        X: -1.2499911785125732
+        Y: 1.4281574487686157
+        Z: 4.5133361709304154e-5
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6847971677780151
+      Pitch: 0.6497970223426819
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz)
-      Yaw: 3.23262619972229
+      Yaw: 4.812627792358398
     Saved: ~
 Window Geometry:
   Displays:

@@ -111,6 +111,15 @@ void System::PushImuData(const Eigen::Vector3d& gyr, const Eigen::Vector3d& acc,
     cv_backend.notify_one();
 }
 
+void System::PushLidarData(const sensor_msgs::PointCloud2ConstPtr &cornerPointsLessSharp2,
+                           const sensor_msgs::PointCloud2ConstPtr &surfPointsLessFlat2){
+    mtx_backend.lock();
+    backend_buffer_lidar.emplace_back(cornerPointsLessSharp2, surfPointsLessFlat2);
+    mtx_backend.unlock();
+    cv_backend.notify_one();
+}
+
+
 void System::FrontEndProcess() {
     while(1) {
         cv::Mat img_l, img_r;
@@ -157,15 +166,21 @@ void System::FrontEndProcess() {
 void System::BackEndProcess() {
     while(1) {
         Eigen::VecVector3d v_gyr, v_acc;
+        Eigen::VecVector3d v_gyr_lidar, v_acc_lidar;
+        std::vector<double> v_imu_t_lidar;
         std::vector<double> v_imu_t;
+        v_gyr_lidar.clear(); v_acc_lidar.clear();
+        v_imu_t_lidar.clear();
         FeatureTracker::FramePtr feat_frame;
+        std::pair<sensor_msgs::PointCloud2ConstPtr, sensor_msgs::PointCloud2ConstPtr> lidar_info;
+        bool start_this_frame = false;
         cv::Mat img_r;
         double img_t = -1.0f;
         double td = backend->GetTd();
         std::unique_lock<std::mutex> lock(mtx_backend);
         cv_backend.wait(lock, [&] {
             while(1) {
-                if(backend_buffer_img.empty() || backend_buffer_imu_t.empty())
+                if(backend_buffer_img.empty() || backend_buffer_imu_t.empty() || backend_buffer_lidar.empty())
                     return false;
 
                 if(backend_buffer_imu_t.back() < backend_buffer_img.front().first->timestamp + td)
@@ -190,19 +205,58 @@ void System::BackEndProcess() {
                     backend_buffer_imu_t.pop_front();
                 }
 
+                //std::cout << "img_t=" << img_t <<std::endl;
+
+                //find close lidar info.
+                if(!backend_buffer_lidar.empty()){
+                    int close_id = -1;
+                    double close_time = 0.05;
+                    for(int i = 0; i<backend_buffer_lidar.size(); i++){
+                        if(fabs(backend_buffer_lidar[i].first->header.stamp.toSec() - (img_t + td)) < close_time){
+                            close_time = fabs(backend_buffer_lidar[i].first->header.stamp.toSec() - (img_t + td));
+                            close_id = i;
+                            start_this_frame = true;
+                        }
+                    }
+                    //int ind= lower_bound(backend_buffer_lidar.begin() ,backend_buffer_lidar.end(),
+                    //                     img_t + td, comp);
+                    //std::cout << "ind=" << ind <<std::endl;
+                    //std::cout << "i=" << ind <<std::endl;
+                    if(close_id != -1){
+                        double lidar_t = backend_buffer_lidar[close_id].first->header.stamp.toSec();
+                        //std::cout << "lidar_t=" << lidar_t <<std::endl;
+                        if(lidar_t > v_imu_t[v_imu_t.size()-1]){
+                            for(int id = 0; id < backend_buffer_imu_t.size(); id++){
+                                if(lidar_t >= backend_buffer_imu_t[id]){
+                                    v_gyr_lidar.emplace_back(backend_buffer_gyr[id]);
+                                    v_acc_lidar.emplace_back(backend_buffer_acc[id]);
+                                    v_imu_t_lidar.emplace_back(backend_buffer_imu_t[id]);
+                                }
+                                else{
+                                    break;
+                                }
+                            }
+                        }
+                        lidar_info = backend_buffer_lidar[close_id];
+                        backend_buffer_lidar.erase(backend_buffer_lidar.begin(), backend_buffer_lidar.begin() + close_id + 1);
+                    }
+                    else{
+                        backend_buffer_lidar.erase(backend_buffer_lidar.begin(), backend_buffer_lidar.end()-1);
+                    }
+                }
                 return true;
             }
         });
         lock.unlock();
         backend_busy = true;
-
+        //std::cout << "lidar_info size=" << lidar_info.first.data.size() <<std::endl;
         feature_tracker->ExtractFAST(feat_frame);
         PubTrackingImg(feat_frame);
         StereoMatcher::FramePtr stereo_frame = stereo_matcher->Process(feat_frame, img_r);
         BackEnd::FramePtr back_frame = Converter::Convert(feat_frame, cam_m, stereo_frame, cam_s,
                                                           v_gyr, v_acc, v_imu_t);
         back_frame->td = td;
-        backend->ProcessFrame(back_frame);
+        backend->ProcessFrame(back_frame, lidar_info, start_this_frame, v_acc_lidar, v_gyr_lidar, v_imu_t_lidar);
 
         if(reloc) {
             BackEnd::FramePtr new_keyframe;

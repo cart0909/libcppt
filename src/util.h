@@ -15,6 +15,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+//for lidar
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl_conversions/pcl_conversions.h>
 #define ENABLE_TRACE 1
 
 // image pyramid
@@ -63,6 +69,9 @@ using NAME##Ptr = std::shared_ptr<NAME>; \
 using NAME##ConstPtr = std::shared_ptr<const NAME>; \
 using NAME##WPtr = std::weak_ptr<NAME>; \
 using NAME##ConstWPtr = std::weak_ptr<const NAME>;
+
+
+typedef pcl::PointXYZI PointType;
 
 // simple timer
 class TicToc {

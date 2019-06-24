@@ -1,4 +1,5 @@
 #pragma once
+
 #include <thread>
 #include <atomic>
 #include <condition_variable>
@@ -6,6 +7,11 @@
 #include "vins/integration_base.h"
 #include "vins/marginalization_factor.h"
 #include "add_msg/ImuPredict.h"
+#include "sensor_msgs/PointCloud2.h"
+#include <cmath>
+#include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
+#include <geometry_msgs/PoseStamped.h>
 class BackEnd {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -27,18 +33,33 @@ public:
         double timestamp;
         std::vector<uint64_t>  pt_id;
         Eigen::VecVector3d pt_normal_plane, pt_r_normal_plane;
-
         Sophus::SO3d    q_wb;
         Eigen::Vector3d p_wb;
         Eigen::Vector3d v_wb;
-
         Eigen::Vector3d ba;
         Eigen::Vector3d bg;
-
         Eigen::VecVector3d v_gyr, v_acc;
         std::vector<double> v_imu_timestamp;
         IntegrationBasePtr imupreinte;
         double td; // time delay
+
+        //lidarInfo
+        double lidar_time = -1;
+        int lidarInfo = -1; //1:lidartime <=imgae; 2:lidartime > image.
+        Eigen::Vector3d p_wb_lidar;
+        Sophus::SO3d    q_wb_lidar;
+        pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp;
+        pcl::PointCloud<PointType>::Ptr surfPointsLessFlat;
+        pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeCornerLast;
+        pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeSurfLast;
+        std::vector<Eigen::Vector3d> curr_point_edge;
+        std::vector<Eigen::Vector3d> last_point_a_edge;
+        std::vector<Eigen::Vector3d> last_point_b_edge;
+
+        std::vector<Eigen::Vector3d> curr_point_plane;
+        std::vector<Eigen::Vector3d> last_point_a_plane;
+        std::vector<Eigen::Vector3d> last_point_b_plane;
+        std::vector<Eigen::Vector3d> last_point_c_plane;
     };
     SMART_PTR(Frame)
 
@@ -119,6 +140,9 @@ public:
     }
 
     void ProcessFrame(FramePtr frame);
+    void ProcessFrame(FramePtr frame,
+                      std::pair<sensor_msgs::PointCloud2ConstPtr, sensor_msgs::PointCloud2ConstPtr> lidarInfo,
+                      bool &start_this_frame, Eigen::VecVector3d& lidar_acc, Eigen::VecVector3d& lidar_gyro, std::vector<double>& lidar_imut);
     bool GetNewKeyFrameAndMapPoints(FramePtr& keyframe, Eigen::VecVector3d& v_x3Dc);
     State state;
 
@@ -137,8 +161,13 @@ protected:
     virtual void SolveBA();
     virtual void SolveBAImu();
     void SolvePnP(FramePtr frame);
+    void TransLidarPointToImage(FramePtr frame, std::pair<sensor_msgs::PointCloud2ConstPtr, sensor_msgs::PointCloud2ConstPtr> lidarInfo);
+    void FindEdgeNear3DPoint(FramePtr last_frame, FramePtr frame);
+    void FindPlaneNear3DPoint(FramePtr last_frame, FramePtr frame);
+    void TransformToStart(PointType const *const pi, PointType *const po, Sophus::SE3d &lidari_T_lidarj);
     bool GyroBiasEstimation();
     Sophus::SO3d InitFirstIMUPose(const Eigen::VecVector3d& v_acc);
+    void PredictNextLidarPose(FramePtr cur_frame, Eigen::VecVector3d& lidar_acc, Eigen::VecVector3d& lidar_gyro, std::vector<double>& lidar_imut);
     virtual void PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame);
     virtual void Marginalize();
     virtual void Publish();
@@ -146,7 +175,10 @@ protected:
     double focal_length;
     Eigen::Vector3d p_rl, p_bc;
     Sophus::SO3d    q_rl, q_bc;
-
+    Sophus::SE3d Tlb;
+    double SCAN_PERIOD = 0.1;
+    const double DISTANCE_SQ_THRESHOLD = 25;
+    const double NEARBY_SCAN = 2.5;
     double gyr_n, acc_n, gyr_w, acc_w;
     Eigen::Matrix3d gyr_noise_cov;
     Eigen::Matrix3d acc_noise_cov;

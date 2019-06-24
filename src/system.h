@@ -7,7 +7,7 @@
 #include "backend.h"
 #include "relocalization.h"
 #include "pose_faster.h"
-
+#include "sensor_msgs/PointCloud2.h"
 class System {
 public:
     System();
@@ -17,7 +17,7 @@ public:
     void Reset();
     void PushImages(const cv::Mat& img_l, const cv::Mat& img_r, double timestamp);
     void PushImuData(const Eigen::Vector3d& gyr, const Eigen::Vector3d& acc, double timestamp);
-
+    void PushLidarData(const sensor_msgs::PointCloud2ConstPtr &cornerPointsLessSharp2, const sensor_msgs::PointCloud2ConstPtr &surfPointsLessFlat2);
     inline void SubTrackingImg(std::function<void(double, const cv::Mat&)> callback) {
         pub_tracking_img.emplace_back(callback);
     }
@@ -96,6 +96,7 @@ protected:
     std::mutex mtx_backend;
     std::condition_variable cv_backend;
     std::deque<std::pair<FeatureTracker::FramePtr, cv::Mat>> backend_buffer_img;
+    std::deque<std::pair<sensor_msgs::PointCloud2ConstPtr, sensor_msgs::PointCloud2ConstPtr>> backend_buffer_lidar;
     Eigen::DeqVector3d backend_buffer_gyr;
     Eigen::DeqVector3d backend_buffer_acc;
     std::deque<double> backend_buffer_imu_t;

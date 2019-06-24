@@ -69,16 +69,18 @@ bool LidarPlaneFactorNeedDistort::Evaluate(double const * const* parameters_raw,
     if(jacobians_raw){
         Eigen::Matrix<double, 1, 3> plane_lp;
         plane_lp << plane_unit_norm.x(), plane_unit_norm.y(), plane_unit_norm.z();
-      if(jacobians_raw[0]) {
-          Eigen::Map<Eigen::Matrix<double, 1, 7, Eigen::RowMajor>> J_lp_pose(jacobians_raw[0]);
-          Eigen::Matrix3_6d J;
-          Eigen::Matrix<double, 3, 3> I;
-          I.setIdentity();
-          J.leftCols<3>() = I;
-          J.rightCols<3>() = -wmap_q_bodyj.matrix() * ( Sophus::SO3d::hat(body_T_lidar.so3() * curr_point)  +  Sophus::SO3d::hat(wmap_p_bodyj));
-          J_lp_pose.leftCols<6>() = plane_lp * J;
-          J_lp_pose.rightCols<1>().setZero();
-      }
+        if(jacobians_raw[0]) {
+            Eigen::Map<Eigen::Matrix<double, 1, 7, Eigen::RowMajor>> J_lp_pose(jacobians_raw[0]);
+            Eigen::Matrix3_6d J;
+            Eigen::Matrix<double, 3, 3> I;
+            I.setIdentity();
+            J.leftCols<3>() = I;
+            J.rightCols<3>() = -wmap_q_bodyj.matrix() * ( Sophus::SO3d::hat(body_T_lidar.so3() * curr_point)  +  Sophus::SO3d::hat(wmap_p_bodyj));
+            J_lp_pose.leftCols<6>() = plane_lp * J;
+            J_lp_pose.rightCols<1>().setZero();
+        }
     }
 
 }
+
+

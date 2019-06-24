@@ -8,6 +8,8 @@
 #include <opencv2/core/eigen.hpp>
 #include "add_msg/ImuPredict.h"
 #include "geometry_msgs/Pose.h"
+#include "ceres/lidar_factor.h"
+#define LIDARFACTOR 0
 BackEnd::BackEnd() {}
 
 BackEnd::BackEnd(double focal_length_,
@@ -49,7 +51,11 @@ BackEnd::BackEnd(double focal_length_,
     para_features = new double[para_features_capacity * 1];
 
     request_reset_flag = false;
-
+    //Set body to lidar extrinsic of parameter
+    Eigen::Vector3d lidar_p_body;
+    lidar_p_body.z() = -0.05;
+    Tlb.translation() = lidar_p_body;
+    Tlb.setQuaternion(Eigen::Quaterniond(1,0,0,0));
     enable_estimate_extrinsic = estimate_extrinsic;
 }
 
@@ -115,6 +121,74 @@ void BackEnd::ProcessFrame(FramePtr frame) {
     }
 }
 
+
+void BackEnd::ProcessFrame(FramePtr frame,
+                           std::pair<sensor_msgs::PointCloud2ConstPtr, sensor_msgs::PointCloud2ConstPtr> lidarInfo,
+                           bool &start_this_frame, Eigen::VecVector3d& lidar_acc, Eigen::VecVector3d& lidar_gyro, std::vector<double>& lidar_imut){
+    // push back to sliding window
+    d_frames.emplace_back(frame);
+
+    // start the margin when the sliding window fill the frames
+    marginalization_flag = AddFeaturesCheckParallax(frame);
+    //LOG(INFO) << "this frame -----------------------------" << (marginalization_flag==MARGIN_OLD? "MARGIN_OLD" : "MARGIN_SECOND_NEW");
+
+    if(state == NEED_INIT) {
+        frame->q_wb = Sophus::SO3d();
+        frame->p_wb.setZero();
+        frame->v_wb.setZero();
+        frame->ba.setZero();
+        frame->bg.setZero();
+        imuinfo_tmp.BackTime = -10;
+        int num_mps = Triangulate(0);
+
+        if(num_mps >= min_init_stereo_num && frame->v_imu_timestamp.size() >= 5) {
+            frame->q_wb = InitFirstIMUPose(frame->v_acc);
+            frame->imupreinte = std::make_shared<IntegrationBase>(frame->v_acc[0], frame->v_gyr[0], frame->ba, frame->bg, acc_n, gyr_n, acc_w, gyr_w);
+            last_imu_t = frame->v_imu_timestamp.back();
+            state = CV_ONLY;
+        }
+        else {
+            LOG(INFO) << "Stereo init fail, no imu info or number of mappoints less than " <<  min_init_stereo_num  << ": " << num_mps;
+            Reset();
+        }
+    }
+    else {
+        // d_frames.size() max 11
+        if(d_frames.size() >= 4) // [0, 1, 2, 3 ...
+            Triangulate(d_frames.size() - 3);
+
+        if(start_this_frame){
+            frame->lidar_time = lidarInfo.first->header.stamp.toSec();
+        }
+
+        FramePtr last_frame = *(d_frames.end() - 2);
+        // predict next frame pose from last frame
+        PredictNextFramePose(last_frame, frame);
+        if(lidar_acc.size() > 0)
+            PredictNextLidarPose(frame, lidar_acc, lidar_gyro, lidar_imut);
+
+        TransLidarPointToImage(frame, lidarInfo);
+
+        if(state == CV_ONLY)
+            SolveBA();
+        else if(state == TIGHTLY)
+            SolveBAImu();
+
+        if(d_frames.size() == window_size + 1 && state == CV_ONLY) {
+            GyroBiasEstimation();
+            SolveBAImu();
+            state = TIGHTLY;
+            SolveBA();
+        }
+
+        if(state == TIGHTLY) {
+            SlidingWindow();
+            Publish();
+            //DrawUI();
+        }
+    }
+}
+
 bool BackEnd::GetNewKeyFrameAndMapPoints(FramePtr& keyframe, Eigen::VecVector3d& v_x3Dc) {
     if(state == TIGHTLY && marginalization_flag == MARGIN_OLD) {
         keyframe = new_keyframe;
@@ -143,7 +217,7 @@ BackEnd::MarginType BackEnd::AddFeaturesCheckParallax(FramePtr frame) {
     for(auto& it : m_features) {
         auto& feat = it.second;
         if(feat.start_id <= size_frames - 3 &&
-           feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
+                feat.start_id + static_cast<int>(feat.pt_n_per_frame.size()) - 1 >= size_frames - 2) {
             size_t idx_i = size_frames - 3 - feat.start_id;
             size_t idx_j = size_frames - 2 - feat.start_id;
 
@@ -612,6 +686,7 @@ void BackEnd::SolveBAImu() {
     data2double();
     ceres::Problem problem;
     ceres::LossFunction *loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
+    ceres::LossFunction *loss_function_lidar = new ceres::HuberLoss(0.1);
     ceres::LocalParameterization *local_para_se3 = new LocalParameterizationSE3();
 
     problem.AddParameterBlock(para_ex_bc, 7, local_para_se3);
@@ -698,21 +773,334 @@ void BackEnd::SolveBAImu() {
         ++mp_idx;
     }
 
+
+    //Lidar point info.
+
+#if LIDARFACTOR
+    for(int i = 1, n = d_frames.size(); i < n; i = i + 4) {
+        if(d_frames[i]->lidarInfo != -1 && d_frames[i-1]->lidarInfo != -1 ){
+            //std::cout << "size ==" << d_frames[i]->cornerPointsLessSharp->points.size() << "\i=" << i <<std::endl;
+            if(d_frames[i]->curr_point_edge.size() == 0){
+                d_frames[i]->curr_point_edge.clear();
+                d_frames[i]->last_point_a_edge.clear();
+                d_frames[i]->last_point_b_edge.clear();
+                FindEdgeNear3DPoint(d_frames[i-1], d_frames[i]);
+            }
+            ////printf("TransLidarPointToImage %f \n", t_opt.toc());
+            for(int sharp = 0; sharp < d_frames[i]->curr_point_edge.size(); ++sharp){
+                auto factor = new LidarEdgeFactor(d_frames[i]->curr_point_edge[sharp],
+                                                  d_frames[i]->last_point_a_edge[sharp],
+                                                  d_frames[i]->last_point_b_edge[sharp],
+                                                  Tlb, 1, 0);
+                problem.AddResidualBlock(factor, loss_function_lidar, para_pose + (i - 1) * 7, para_pose + i * 7);
+            }
+
+            if(d_frames[i]->curr_point_plane.size() == 0){
+                d_frames[i]->curr_point_plane.clear();
+                d_frames[i]->last_point_a_plane.clear();
+                d_frames[i]->last_point_b_plane.clear();
+                d_frames[i]->last_point_c_plane.clear();
+                FindPlaneNear3DPoint(d_frames[i-1], d_frames[i]);
+            }
+            for(int plane = 0; plane < d_frames[i]->curr_point_plane.size(); ++plane){
+                //std::cout << "curr_point_plane.size()=" << curr_point_plane.size() << std::endl;
+                auto factor = new LidarPlaneFactor(d_frames[i]->curr_point_plane[plane],
+                                                   d_frames[i]->last_point_a_plane[plane],
+                                                   d_frames[i]->last_point_b_plane[plane],
+                                                   d_frames[i]->last_point_c_plane[plane], Tlb, 1, 0);
+                problem.AddResidualBlock(factor, loss_function_lidar, para_pose + (i - 1) * 7, para_pose + i * 7);
+            }
+        }
+    }
+#endif
+
+    //int cornerPointsSharpNum = cornerPointsSharp->points.size();
+    //int surfPointsFlatNum = surfPointsFlat->points.size();
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.trust_region_strategy_type = ceres::DOGLEG;
     options.max_num_iterations = max_num_iterations;
-    options.num_threads = 1;
-    options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
+    options.num_threads = 4;
+    //options.max_solver_time_in_seconds = max_solver_time_in_seconds; // 50 ms for solver and 50 ms for other
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    //    LOG(INFO) << summary.FullReport();
+    //std::cout << summary.FullReport() <<std::endl;
     double2data();
 
     for(int i = 1, n = d_frames.size(); i < n; ++i)
         d_frames[i]->imupreinte->repropagate(d_frames[i-1]->ba, d_frames[i-1]->bg);
     Tracer::TraceEnd();
     Marginalize();
+}
+
+void BackEnd::TransLidarPointToImage(FramePtr curframe, std::pair<sensor_msgs::PointCloud2ConstPtr, sensor_msgs::PointCloud2ConstPtr> lidarInfo){
+    //TicToc t_opt;
+    if(curframe->lidarInfo != -1){
+        curframe->cornerPointsLessSharp = boost::make_shared<pcl::PointCloud<PointType>>();
+        curframe->surfPointsLessFlat = boost::make_shared<pcl::PointCloud<PointType>>();
+        curframe->kdtreeCornerLast = boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZI>>();
+        curframe->kdtreeSurfLast = boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZI>>();
+
+        pcl::fromROSMsg(*lidarInfo.first, *curframe->cornerPointsLessSharp);
+        pcl::fromROSMsg(*lidarInfo.second, *curframe->surfPointsLessFlat);
+        int cornerPointsSharpNum = curframe->cornerPointsLessSharp->points.size();
+        int surfPointsFlatNum = curframe->surfPointsLessFlat->points.size();
+        Sophus::SE3d Twb_img(curframe->q_wb, curframe->p_wb);
+        Sophus::SE3d Twb_lidar(curframe->q_wb_lidar, curframe->p_wb_lidar);
+        Sophus::SE3d Ti_l = Tlb * Twb_img.inverse() * Twb_lidar * Tlb.inverse();
+        //convert Xlidar to image timestamp.
+        for(int i = 0; i<cornerPointsSharpNum; i++){
+            Eigen::Vector3d point(curframe->cornerPointsLessSharp->points[i].x,
+                                  curframe->cornerPointsLessSharp->points[i].y,
+                                  curframe->cornerPointsLessSharp->points[i].z);
+            Eigen::Vector3d pointInimage = Ti_l * point;
+            curframe->cornerPointsLessSharp->points[i].x = pointInimage.x();
+            curframe->cornerPointsLessSharp->points[i].y = pointInimage.y();
+            curframe->cornerPointsLessSharp->points[i].z = pointInimage.z();
+        }
+
+        for(int i = 0; i<surfPointsFlatNum; i++){
+            Eigen::Vector3d point(curframe->surfPointsLessFlat->points[i].x,
+                                  curframe->surfPointsLessFlat->points[i].y,
+                                  curframe->surfPointsLessFlat->points[i].z);
+            Eigen::Vector3d pointInimage = Ti_l * point ;
+            curframe->surfPointsLessFlat->points[i].x = pointInimage.x();
+            curframe->surfPointsLessFlat->points[i].y = pointInimage.y();
+            curframe->surfPointsLessFlat->points[i].z = pointInimage.z();
+        }
+
+        curframe->kdtreeCornerLast->setInputCloud(curframe->cornerPointsLessSharp);
+        curframe->kdtreeSurfLast->setInputCloud(curframe->surfPointsLessFlat );
+    }
+    //printf("TransLidarPointToImage %f \n", t_opt.toc());
+}
+
+
+void BackEnd::FindPlaneNear3DPoint(FramePtr last_frame, FramePtr frame){
+    int surfPointsFlatNum = frame->surfPointsLessFlat->points.size();
+    pcl::PointXYZI pointSel;
+    std::vector<int> pointSearchInd;
+    std::vector<float> pointSearchSqDis;
+    Sophus::SE3d Twb_imgj(frame->q_wb, frame->p_wb);
+    Sophus::SE3d Twb_imgi(last_frame->q_wb, last_frame->p_wb);
+    Sophus::SE3d Ti_l = Tlb * Twb_imgi.inverse() * Twb_imgj * Tlb.inverse();
+    int plane_correspondence = 0;
+    //if(surfPointsFlatNum > 1000)
+    //    surfPointsFlatNum = 1000;
+    for (int i = 0; i < surfPointsFlatNum; i++)
+    {
+        TransformToStart(&(frame->surfPointsLessFlat->points[i]), &pointSel, Ti_l);
+        last_frame->kdtreeSurfLast->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
+        int closestPointInd = -1, minPointInd2 = -1, minPointInd3 = -1;
+        if (pointSearchSqDis[0] < DISTANCE_SQ_THRESHOLD)
+        {
+            closestPointInd = pointSearchInd[0];
+
+            // get closest point's scan ID
+            int closestPointScanID = int(last_frame->surfPointsLessFlat->points[closestPointInd].intensity);
+            double minPointSqDis2 = DISTANCE_SQ_THRESHOLD, minPointSqDis3 = DISTANCE_SQ_THRESHOLD;
+
+            // search in the direction of increasing scan line
+            for (int j = closestPointInd + 1; j < (int)last_frame->surfPointsLessFlat->points.size(); ++j)
+            {
+                // if not in nearby scans, end the loop
+                if (int(last_frame->surfPointsLessFlat->points[j].intensity) > (closestPointScanID + NEARBY_SCAN))
+                    break;
+
+                double pointSqDis = (last_frame->surfPointsLessFlat->points[j].x - pointSel.x) *
+                        (last_frame->surfPointsLessFlat->points[j].x - pointSel.x) +
+                        (last_frame->surfPointsLessFlat->points[j].y - pointSel.y) *
+                        (last_frame->surfPointsLessFlat->points[j].y - pointSel.y) +
+                        (last_frame->surfPointsLessFlat->points[j].z - pointSel.z) *
+                        (last_frame->surfPointsLessFlat->points[j].z - pointSel.z);
+
+                // if in the same or lower scan line
+                if (int(last_frame->surfPointsLessFlat->points[j].intensity) <= closestPointScanID && pointSqDis < minPointSqDis2)
+                {
+                    minPointSqDis2 = pointSqDis;
+                    minPointInd2 = j;
+                }
+                // if in the higher scan line
+                else if (int(last_frame->surfPointsLessFlat->points[j].intensity) > closestPointScanID && pointSqDis < minPointSqDis3)
+                {
+                    minPointSqDis3 = pointSqDis;
+                    minPointInd3 = j;
+                }
+            }
+
+            // search in the direction of decreasing scan line
+            for (int j = closestPointInd - 1; j >= 0; --j)
+            {
+                // if not in nearby scans, end the loop
+                if (int(last_frame->surfPointsLessFlat->points[j].intensity) < (closestPointScanID - NEARBY_SCAN))
+                    break;
+
+                double pointSqDis = (last_frame->surfPointsLessFlat->points[j].x - pointSel.x) *
+                        (last_frame->surfPointsLessFlat->points[j].x - pointSel.x) +
+                        (last_frame->surfPointsLessFlat->points[j].y - pointSel.y) *
+                        (last_frame->surfPointsLessFlat->points[j].y - pointSel.y) +
+                        (last_frame->surfPointsLessFlat->points[j].z - pointSel.z) *
+                        (last_frame->surfPointsLessFlat->points[j].z - pointSel.z);
+
+                // if in the same or higher scan line
+                if (int(last_frame->surfPointsLessFlat->points[j].intensity) >= closestPointScanID && pointSqDis < minPointSqDis2)
+                {
+                    minPointSqDis2 = pointSqDis;
+                    minPointInd2 = j;
+                }
+                else if (int(last_frame->surfPointsLessFlat->points[j].intensity) < closestPointScanID && pointSqDis < minPointSqDis3)
+                {
+                    // find nearer point
+                    minPointSqDis3 = pointSqDis;
+                    minPointInd3 = j;
+                }
+            }
+            if (minPointInd2 >= 0 && minPointInd3 >= 0)
+            {
+
+                Eigen::Vector3d curr_point_tmp(frame->surfPointsLessFlat->points[i].x,
+                                               frame->surfPointsLessFlat->points[i].y,
+                                               frame->surfPointsLessFlat->points[i].z);
+                Eigen::Vector3d last_point_a_tmp(last_frame->surfPointsLessFlat->points[closestPointInd].x,
+                                                 last_frame->surfPointsLessFlat->points[closestPointInd].y,
+                                                 last_frame->surfPointsLessFlat->points[closestPointInd].z);
+                Eigen::Vector3d last_point_b_tmp(last_frame->surfPointsLessFlat->points[minPointInd2].x,
+                                                 last_frame->surfPointsLessFlat->points[minPointInd2].y,
+                                                 last_frame->surfPointsLessFlat->points[minPointInd2].z);
+                Eigen::Vector3d last_point_c_tmp(last_frame->surfPointsLessFlat->points[minPointInd3].x,
+                                                 last_frame->surfPointsLessFlat->points[minPointInd3].y,
+                                                 last_frame->surfPointsLessFlat->points[minPointInd3].z);
+                frame->curr_point_plane.emplace_back(curr_point_tmp);
+                frame->last_point_a_plane.emplace_back(last_point_a_tmp);
+                frame->last_point_b_plane.emplace_back(last_point_b_tmp);
+                frame->last_point_c_plane.emplace_back(last_point_c_tmp);
+                //s_plane.emplace_back(1);
+                plane_correspondence++;
+
+            }
+
+        }
+    }
+    //std::cout << "plane_correspondence=" << plane_correspondence <<std::endl;
+    //std::cout << "plane_all=" << surfPointsFlatNum <<std::endl;
+}
+
+
+void BackEnd::FindEdgeNear3DPoint(FramePtr last_frame, FramePtr frame){
+
+    int cornerPointsSharpNum = frame->cornerPointsLessSharp->points.size();
+    pcl::PointXYZI pointSel;
+    std::vector<int> pointSearchInd;
+    std::vector<float> pointSearchSqDis;
+    Sophus::SE3d Twb_imgj(frame->q_wb, frame->p_wb);
+    Sophus::SE3d Twb_imgi(last_frame->q_wb, last_frame->p_wb);
+    Sophus::SE3d Ti_l = Tlb * Twb_imgi.inverse() * Twb_imgj * Tlb.inverse();
+    int edge_correspondence = 0;
+    //if(cornerPointsSharpNum > 600)
+    //    cornerPointsSharpNum = 600;
+    for (int i = 0; i < cornerPointsSharpNum; i++)
+    {
+        TransformToStart(&(frame->cornerPointsLessSharp->points[i]), &pointSel, Ti_l);
+        last_frame->kdtreeCornerLast->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
+        int closestPointInd = -1, minPointInd2 = -1;
+        if(pointSearchSqDis[0] < DISTANCE_SQ_THRESHOLD) {
+            closestPointInd = pointSearchInd[0];
+            int closestPointScanID = int(last_frame->cornerPointsLessSharp->points[closestPointInd].intensity);
+            double minPointSqDis2 = DISTANCE_SQ_THRESHOLD;
+            //search increse
+            for (int j = closestPointInd + 1; j < (int)last_frame->cornerPointsLessSharp->points.size(); ++j)
+            {
+                // if in the same scan line, continue
+                if (int(last_frame->cornerPointsLessSharp->points[j].intensity) <= closestPointScanID)
+                    continue;
+
+                // if not in nearby scans, end the loop
+                if (int(last_frame->cornerPointsLessSharp->points[j].intensity) > (closestPointScanID + NEARBY_SCAN))
+                    break;
+
+                double pointSqDis = (last_frame->cornerPointsLessSharp->points[j].x - pointSel.x) *
+                        (last_frame->cornerPointsLessSharp->points[j].x - pointSel.x) +
+                        (last_frame->cornerPointsLessSharp->points[j].y - pointSel.y) *
+                        (last_frame->cornerPointsLessSharp->points[j].y - pointSel.y) +
+                        (last_frame->cornerPointsLessSharp->points[j].z - pointSel.z) *
+                        (last_frame->cornerPointsLessSharp->points[j].z - pointSel.z);
+
+                if (pointSqDis < minPointSqDis2)
+                {
+                    // find nearer point
+                    minPointSqDis2 = pointSqDis;
+                    minPointInd2 = j;
+                }
+            }
+            //search decreas
+            for (int j = closestPointInd - 1; j >= 0; --j)
+            {
+                // if in the same scan line, continue
+                if (int(last_frame->cornerPointsLessSharp->points[j].intensity) >= closestPointScanID)
+                    continue;
+
+                // if not in nearby scans, end the loop
+                if (int(last_frame->cornerPointsLessSharp->points[j].intensity) < (closestPointScanID - NEARBY_SCAN))
+                    break;
+
+                double pointSqDis = (last_frame->cornerPointsLessSharp->points[j].x - pointSel.x) *
+                        (last_frame->cornerPointsLessSharp->points[j].x - pointSel.x) +
+                        (last_frame->cornerPointsLessSharp->points[j].y - pointSel.y) *
+                        (last_frame->cornerPointsLessSharp->points[j].y - pointSel.y) +
+                        (last_frame->cornerPointsLessSharp->points[j].z - pointSel.z) *
+                        (last_frame->cornerPointsLessSharp->points[j].z - pointSel.z);
+
+                if (pointSqDis < minPointSqDis2)
+                {
+                    // find nearer point
+                    minPointSqDis2 = pointSqDis;
+                    minPointInd2 = j;
+                }
+            }
+        }
+        //step2. if find the mid and closest point.
+        //insert to cost function, 1.cur_point, 2.cloest_point 3. mid_point 4.realtime(s)
+        if (minPointInd2 >= 0) // both closestPointInd and minPointInd2 is valid
+        {
+            Eigen::Vector3d curr_point(frame->cornerPointsLessSharp->points[i].x,
+                                       frame->cornerPointsLessSharp->points[i].y,
+                                       frame->cornerPointsLessSharp->points[i].z);
+            Eigen::Vector3d last_point_a_tmp(last_frame->cornerPointsLessSharp->points[closestPointInd].x,
+                                             last_frame->cornerPointsLessSharp->points[closestPointInd].y,
+                                             last_frame->cornerPointsLessSharp->points[closestPointInd].z);
+            Eigen::Vector3d last_point_b_tmp(last_frame->cornerPointsLessSharp->points[minPointInd2].x,
+                                             last_frame->cornerPointsLessSharp->points[minPointInd2].y,
+                                             last_frame->cornerPointsLessSharp->points[minPointInd2].z);
+
+            frame->curr_point_edge.push_back(curr_point);
+            frame->last_point_a_edge.push_back(last_point_a_tmp);
+            frame->last_point_b_edge.push_back(last_point_b_tmp);
+            //s_edge.emplace_back(1);
+            edge_correspondence++;
+        }
+    }
+    //std::cout << "edge_correspondence=" << edge_correspondence <<std::endl;
+    //std::cout << "edge_all=" << cornerPointsSharpNum <<std::endl;
+}
+
+void BackEnd::TransformToStart(PointType const *const pi, PointType *const po, Sophus::SE3d &lidari_T_lidarj){
+    //interpolation ratio
+    double s;
+    if (0)
+        s = (pi->intensity - int(pi->intensity)) / SCAN_PERIOD;
+    else
+        s = 1.0;
+    //s = 1;
+    Eigen::Quaterniond q_last_curr  = lidari_T_lidarj.unit_quaternion();
+    Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr);
+    Eigen::Vector3d t_point_last = s * lidari_T_lidarj.translation();
+    Eigen::Vector3d point(pi->x, pi->y, pi->z);
+    Eigen::Vector3d un_point = q_point_last * point + t_point_last;
+
+    po->x = un_point.x();
+    po->y = un_point.y();
+    po->z = un_point.z();
+    po->intensity = pi->intensity;
 }
 
 void BackEnd::SolvePnP(FramePtr frame) {
@@ -809,6 +1197,40 @@ Sophus::SO3d BackEnd::InitFirstIMUPose(const Eigen::VecVector3d& v_acc) {
     return qwb;
 }
 
+
+
+void BackEnd::PredictNextLidarPose(FramePtr cur_frame, Eigen::VecVector3d& lidar_acc, Eigen::VecVector3d& lidar_gyro, std::vector<double>& lidar_imut){
+    double t0 = cur_frame->v_imu_timestamp.back();
+
+    Eigen::Vector3d gyr_0 = cur_frame->v_gyr.back(), acc_0 = cur_frame->v_acc.back();
+    Sophus::SO3d  q_wb_tmp = cur_frame->q_wb;
+    Eigen::Vector3d p_wb_tmp = cur_frame->p_wb, v_wb_tmp = cur_frame->v_wb;
+    double close_t = 0.02;
+    //Predict pose and implement imu preintegration.
+    for(int i = 0, n = lidar_imut.size(); i < n; ++i) {
+        double t = lidar_imut[i], dt = t - t0;
+
+        Eigen::Vector3d gyr = lidar_gyro[i];
+        Eigen::Vector3d acc = lidar_acc[i];
+        Eigen::Vector3d un_acc_0 = q_wb_tmp * (acc_0 - cur_frame->ba) - gw;
+        Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + gyr) - cur_frame->bg;
+        q_wb_tmp = q_wb_tmp * Sophus::SO3d::exp(un_gyr * dt);
+        Eigen::Vector3d un_acc_1 = q_wb_tmp * (acc - cur_frame->ba) - gw;
+        Eigen::Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
+        p_wb_tmp += dt * v_wb_tmp + 0.5 * dt * dt * un_acc;
+        v_wb_tmp += dt * un_acc;
+        if(fabs(cur_frame->lidar_time - t) < close_t){
+            close_t = fabs(cur_frame->lidar_time - t);
+            cur_frame->p_wb_lidar = p_wb_tmp;
+            cur_frame->q_wb_lidar = q_wb_tmp;
+            cur_frame->lidarInfo = 2;
+        }
+        gyr_0 = gyr;
+        acc_0 = acc;
+        t0 = t;
+    }
+}
+
 void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
     cur_frame->q_wb = ref_frame->q_wb;
     cur_frame->p_wb = ref_frame->p_wb;
@@ -823,46 +1245,49 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
     Eigen::Vector3d gyr_0 = ref_frame->v_gyr.back(), acc_0 = ref_frame->v_acc.back();
     double t0 = ref_frame->v_imu_timestamp.back();
 
+
     //set imu preintegration info for lidar pose predict.
     {
-    imuinfo_tmp.header.frame_id = "world";
-    imuinfo_tmp.header.stamp.fromSec(t0);
-    imuinfo_tmp.BackTime = t0;
+        imuinfo_tmp.header.frame_id = "world";
+        imuinfo_tmp.header.stamp.fromSec(t0);
+        imuinfo_tmp.BackTime = t0;
 
-    //wvio_T_bodyCur
-    imuinfo_tmp.pose.orientation.w = ref_frame->q_wb.unit_quaternion().w();
-    imuinfo_tmp.pose.orientation.x = ref_frame->q_wb.unit_quaternion().x();
-    imuinfo_tmp.pose.orientation.y = ref_frame->q_wb.unit_quaternion().y();
-    imuinfo_tmp.pose.orientation.z = ref_frame->q_wb.unit_quaternion().z();
-    imuinfo_tmp.pose.position.x = ref_frame->p_wb.x();
-    imuinfo_tmp.pose.position.y = ref_frame->p_wb.y();
-    imuinfo_tmp.pose.position.z = ref_frame->p_wb.z();
+        //wvio_T_bodyCur
+        imuinfo_tmp.pose.orientation.w = ref_frame->q_wb.unit_quaternion().w();
+        imuinfo_tmp.pose.orientation.x = ref_frame->q_wb.unit_quaternion().x();
+        imuinfo_tmp.pose.orientation.y = ref_frame->q_wb.unit_quaternion().y();
+        imuinfo_tmp.pose.orientation.z = ref_frame->q_wb.unit_quaternion().z();
+        imuinfo_tmp.pose.position.x = ref_frame->p_wb.x();
+        imuinfo_tmp.pose.position.y = ref_frame->p_wb.y();
+        imuinfo_tmp.pose.position.z = ref_frame->p_wb.z();
 
-    imuinfo_tmp.bias_acc.x = ref_frame->ba.x();
-    imuinfo_tmp.bias_acc.y = ref_frame->ba.y();
-    imuinfo_tmp.bias_acc.z = ref_frame->ba.z();
+        imuinfo_tmp.bias_acc.x = ref_frame->ba.x();
+        imuinfo_tmp.bias_acc.y = ref_frame->ba.y();
+        imuinfo_tmp.bias_acc.z = ref_frame->ba.z();
 
-    imuinfo_tmp.bias_gyro.x = ref_frame->bg.x();
-    imuinfo_tmp.bias_gyro.y = ref_frame->bg.y();
-    imuinfo_tmp.bias_gyro.z = ref_frame->bg.z();
+        imuinfo_tmp.bias_gyro.x = ref_frame->bg.x();
+        imuinfo_tmp.bias_gyro.y = ref_frame->bg.y();
+        imuinfo_tmp.bias_gyro.z = ref_frame->bg.z();
 
-    imuinfo_tmp.velocity.x = ref_frame->v_wb.x();
-    imuinfo_tmp.velocity.y = ref_frame->v_wb.y();
-    imuinfo_tmp.velocity.z = ref_frame->v_wb.z();
+        imuinfo_tmp.velocity.x = ref_frame->v_wb.x();
+        imuinfo_tmp.velocity.y = ref_frame->v_wb.y();
+        imuinfo_tmp.velocity.z = ref_frame->v_wb.z();
 
-    imuinfo_tmp.acc_0.x = ref_frame->v_acc.back().x();
-    imuinfo_tmp.acc_0.y = ref_frame->v_acc.back().y();
-    imuinfo_tmp.acc_0.z = ref_frame->v_acc.back().z();
+        imuinfo_tmp.acc_0.x = ref_frame->v_acc.back().x();
+        imuinfo_tmp.acc_0.y = ref_frame->v_acc.back().y();
+        imuinfo_tmp.acc_0.z = ref_frame->v_acc.back().z();
 
-    imuinfo_tmp.gyr_0.x = ref_frame->v_gyr.back().x();
-    imuinfo_tmp.gyr_0.y = ref_frame->v_gyr.back().y();
-    imuinfo_tmp.gyr_0.z = ref_frame->v_gyr.back().z();
+        imuinfo_tmp.gyr_0.x = ref_frame->v_gyr.back().x();
+        imuinfo_tmp.gyr_0.y = ref_frame->v_gyr.back().y();
+        imuinfo_tmp.gyr_0.z = ref_frame->v_gyr.back().z();
     }
 
-    //Predict pose and implement imu preintegration.
-    for(int i = 0, n = cur_frame->v_acc.size(); i < n; ++i) {
-        double t = cur_frame->v_imu_timestamp[i], dt = t - t0;
 
+
+    //Predict pose and implement imu preintegration.
+    double close_t = 0.02;
+    for(int i = 0, n = cur_frame->v_imu_timestamp.size(); i < n; ++i) {
+        double t = cur_frame->v_imu_timestamp[i], dt = t - t0;
         Eigen::Vector3d gyr = cur_frame->v_gyr[i];
         Eigen::Vector3d acc = cur_frame->v_acc[i];
         cur_frame->imupreinte->push_back(dt, acc, gyr);
@@ -873,7 +1298,14 @@ void BackEnd::PredictNextFramePose(FramePtr ref_frame, FramePtr cur_frame) {
         Eigen::Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
         cur_frame->p_wb += dt * cur_frame->v_wb + 0.5 * dt * dt * un_acc;
         cur_frame->v_wb += dt * un_acc;
-
+        if(fabs(cur_frame->lidar_time - t) < close_t && cur_frame->lidar_time != -1){
+            close_t = fabs(cur_frame->lidar_time - t);
+            Sophus::SO3d q_tmp = cur_frame->q_wb;
+            Eigen::Vector3d p_tmp = cur_frame->p_wb;
+            cur_frame->p_wb_lidar = p_tmp;
+            cur_frame->q_wb_lidar = q_tmp;
+            cur_frame->lidarInfo = 1;
+        }
         gyr_0 = gyr;
         acc_0 = acc;
         t0 = t;
@@ -885,6 +1317,7 @@ void BackEnd::Marginalize() {
         ScopedTrace st("margin_old");
         margin_mps.clear();
         auto loss_function = new ceres::HuberLoss(cv_huber_loss_parameter);
+        auto loss_function_lidar = new ceres::HuberLoss(0.1);
         auto margin_info = new MarginalizationInfo();
         data2double();
 
@@ -912,6 +1345,37 @@ void BackEnd::Marginalize() {
                                                              std::vector<int>{0, 1});
             margin_info->addResidualBlockInfo(residual_block_info);
         }
+
+        //lidar
+#if LIDARFACTOR
+        if(d_frames[1]->curr_point_edge.size() > 200 && d_frames[1]->curr_point_plane.size() > 200){
+
+            for(int sharp = 0; sharp < d_frames[1]->curr_point_edge.size(); sharp++ ){
+                auto factor = new LidarEdgeFactor(d_frames[1]->curr_point_edge[sharp],
+                        d_frames[1]->last_point_a_edge[sharp],
+                        d_frames[1]->last_point_b_edge[sharp],
+                        Tlb, 1, 0);
+                auto residual_block_info = new ResidualBlockInfo(factor, loss_function_lidar,
+                                                                 std::vector<double*>{para_pose,
+                                                                                      para_pose + 7},
+                                                                 std::vector<int>{0});
+                margin_info->addResidualBlockInfo(residual_block_info);
+            }
+
+            for(int plane = 0; plane < d_frames[1]->curr_point_plane.size(); plane++ ){
+                auto factor = new LidarPlaneFactor(d_frames[1]->curr_point_plane[plane],
+                        d_frames[1]->last_point_a_plane[plane],
+                        d_frames[1]->last_point_b_plane[plane],
+                        d_frames[1]->last_point_c_plane[plane],
+                        Tlb, 1, 0);
+                auto residual_block_info = new ResidualBlockInfo(factor, loss_function_lidar,
+                                                                 std::vector<double*>{para_pose,
+                                                                                      para_pose + 7}, std::vector<int>{0});
+                margin_info->addResidualBlockInfo(residual_block_info);
+            }
+
+        }
+#endif
 
         // features
         int feature_index = -1;

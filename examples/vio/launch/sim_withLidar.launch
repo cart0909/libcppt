@@ -29,14 +29,14 @@
 <remap from="/imu/data_raw" to="/raw_imu" />
 <node pkg="vloam_velodyne" type="ascanRegistration" name="ascanRegistration" output="screen">
 </node>
-
+<!--
 <node pkg="vloam_velodyne" type="alaserOdometry" name="alaserOdometry" output="screen">
 <remap from="/imu/data_raw" to="/raw_imu" />
 </node>
 
 <node pkg="vloam_velodyne" type="alaserMapping" name="alaserMapping" output="screen">
 <remap from="/imu/data_raw" to="/raw_imu" />
-</node>
+</node>-->
 
 <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="$(arg rviz_config_path)" />
 </launch>

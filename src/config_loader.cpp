@@ -23,7 +23,6 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     param.distortion_slave.resize(param.num_camera);
     param.p_rl.resize(param.num_camera);
     param.q_rl.resize(param.num_camera);
-
     param.width[0] = fs["image_width"];
     param.height[0] = fs["image_height"];
     fs["model_type"] >> param.cam_model[0];

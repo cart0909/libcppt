@@ -17,6 +17,14 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <tf/transform_broadcaster.h>
+
+//for lidar
+#include <sensor_msgs/PointCloud2.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/time_synchronizer.h>
+
 // catch ctrl+c signal
 #include <signal.h>
 
@@ -51,6 +59,12 @@ void ImuCallback(const ImuConstPtr& imu_msg) {
     system_->PushImuData(gyr, acc, imu_msg->header.stamp.toSec());
 }
 
+void LidarCallBack(const sensor_msgs::PointCloud2ConstPtr &cornerPointsLessSharp2,
+                   const sensor_msgs::PointCloud2ConstPtr &surfPointsLessFlat2){
+    system_->PushLidarData(cornerPointsLessSharp2, surfPointsLessFlat2);
+}
+
+
 int main(int argc, char** argv) {
     ros::init(argc, argv, "cppt_vio", ros::init_options::NoSigintHandler);
 //    ros::init(argc, argv, "cppt_vio");
@@ -75,6 +89,13 @@ int main(int argc, char** argv) {
 
     ros::Subscriber sub_imu = nh.subscribe("/imu/data_raw", 2000, &ImuCallback,
                                            ros::TransportHints().tcpNoDelay());
+
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_CornerPointsLessSharp(nh, "/laser_cloud_less_sharp", 100);
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_SurfPointsLessFlat(nh, "/laser_cloud_less_flat", 100);
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::PointCloud2, sensor_msgs::PointCloud2> MySyncPolicy;
+    message_filters::Synchronizer<MySyncPolicy> sync_lidar(MySyncPolicy(30), sub_CornerPointsLessSharp, sub_SurfPointsLessFlat);
+    sync_lidar.registerCallback(boost::bind(&LidarCallBack, _1, _2));
+
     vis::ReadFromNodeHandle(nh, system_);
     ROS_INFO_STREAM("Player is ready.");
     ros::spin();

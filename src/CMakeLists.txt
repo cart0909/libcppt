@@ -87,22 +87,30 @@ find_package(GTest REQUIRED)
 set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${GTEST_INCLUDE_DIRS})
 set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${GTEST_LIBRARIES})
 message("GTEST_INCLUDE_DIRS:" ${GTEST_INCLUDE_DIRS})
-message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})
+message("GTEST_LIBRARIES:" ${GTEST_LIBRARIES})	
+
 
 # add ros
 find_package(catkin REQUIRED COMPONENTS
 roscpp
 roslib
 add_msg
+sensor_msgs
+std_msgs
 cmake_modules
 )
+
+find_package(PCL REQUIRED)
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
 
 set(THRID_PARTY_INCLUDE_DIRS ${THRID_PARTY_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 set(THRID_PARTY_LIBS ${THRID_PARTY_LIBS} ${catkin_LIBRARIES})
 
+
 catkin_package(
-DEPENDS
-CATKIN_DEPENDS roscpp roslib add_msg
+CATKIN_DEPENDS roscpp roslib add_msg sensor_msgs std_msgs
+DEPENDS PCL
 INCLUDE_DIRS ${PROJECT_SOURCE_DIR}
 LIBRARIES ${PROJECT_NAME}
 )
@@ -128,6 +136,7 @@ ${THRID_PARTY_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}
 )
 
+
 add_library(${PROJECT_NAME} SHARED
 util.cpp
 camera.cpp
@@ -152,9 +161,10 @@ ceres/local_parameterization_line.cpp
 ceres/projection_factor.cpp
 ceres/projection_td_factor.cpp
 ceres/line_projection_factor.cpp
+ceres/lidar_factor.cpp
 vins/marginalization_factor.cpp
 vins/integration_base.cpp
 vins/imu_factor.cpp
 ${DBOW2_SRC_FILES}
 )
-target_link_libraries(${PROJECT_NAME} ${THRID_PARTY_LIBS})
+target_link_libraries(${PROJECT_NAME} ${THRID_PARTY_LIBS} ${PCL_LIBRARIES})
