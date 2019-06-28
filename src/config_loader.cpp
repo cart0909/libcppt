@@ -30,7 +30,7 @@ ConfigLoader::Param ConfigLoader::Load(const std::string& config_file) {
     fs["distortion_coefficients0"] >> param.distortion_master[0];
     fs["intrinsics1"] >> param.intrinsic_slave[0];
     fs["distortion_coefficients1"] >> param.distortion_slave[0];
-
+    fs["use_lidar_tracking"] >> param.use_lidar_tracking;
     if(param.intrinsic_slave[0].empty())
         param.b_slave[0] = false;
     else

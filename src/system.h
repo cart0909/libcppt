@@ -109,7 +109,7 @@ protected:
     std::deque<std::pair<BackEnd::FramePtr, Eigen::VecVector3d>> reloc_buffer_keyframe;
 
     PoseFasterPtr pose_faster;
-
+    int use_lidar_tracking = 0;
     std::map<uint64_t, cv::Point2f> m_id_history;
     std::map<uint64_t, std::shared_ptr<std::deque<cv::Point2f>>> m_id_optical_flow;
     std::vector<std::function<void(double, const cv::Mat&)>> pub_tracking_img;

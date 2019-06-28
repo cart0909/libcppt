@@ -25,7 +25,8 @@ System::System(const std::string& config_file) {
             param.gravity_magnitude, param.sliding_window_size, param.keyframe_parallax,
             param.max_solver_time_in_seconds, param.max_num_iterations, param.cv_huber_loss_parameter,
             param.triangulate_default_depth, param.max_imu_sum_t, param.min_init_stereo_num, param.estimate_extrinsic,
-            param.estimate_td, param.init_td);
+            param.estimate_td, param.init_td, param.use_lidar_tracking);
+    use_lidar_tracking = param.use_lidar_tracking;
 
     if(param.enable_reloc)
         reloc = std::make_shared<Relocalization>(param.voc_filename, param.brief_pattern_file, cam_m,
@@ -208,7 +209,7 @@ void System::BackEndProcess() {
                 //std::cout << "img_t=" << img_t <<std::endl;
 
                 //find close lidar info.
-                if(!backend_buffer_lidar.empty()){
+                if(!backend_buffer_lidar.empty() && use_lidar_tracking!=0){
                     int close_id = -1;
                     double close_time = 0.05;
                     for(int i = 0; i<backend_buffer_lidar.size(); i++){
@@ -244,6 +245,7 @@ void System::BackEndProcess() {
                         backend_buffer_lidar.erase(backend_buffer_lidar.begin(), backend_buffer_lidar.end()-1);
                     }
                 }
+
                 return true;
             }
         });

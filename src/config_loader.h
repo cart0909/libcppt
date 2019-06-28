@@ -45,6 +45,7 @@ public:
         int estimate_td;
         double init_td;
         double depth_units;
+        int use_lidar_tracking;
         std::string voc_filename;
         std::string brief_pattern_file;
     };

@@ -91,3 +91,4 @@ voc_path: "/drone_ws/src/libcppt/config/voc/brief_k10L6.bin"
 brief_pattern_path: "/drone_ws/src/libcppt/config/brief/brief_pattern.yml"
 
 enable_pose_faster: 0            # pose will align with imu fps
+use_lidar_tracking: 1            # using lidar factor in optimization process.

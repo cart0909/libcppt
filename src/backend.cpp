@@ -21,7 +21,7 @@ BackEnd::BackEnd(double focal_length_,
                  double max_solver_time_in_seconds_, int max_num_iterations_,
                  double cv_huber_loss_parameter_, double triangulate_default_depth_,
                  double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic,
-                 int estimate_td, double init_td)
+                 int estimate_td, double init_td, int use_lidar_tracking_)
     : focal_length(focal_length_), p_rl(p_rl_), p_bc(p_bc_), q_rl(q_rl_), q_bc(q_bc_),
       gyr_n(gyr_n_), acc_n(acc_n_), gyr_w(gyr_w_), acc_w(acc_w_), window_size(window_size_),
       next_frame_id(0), state(NEED_INIT), min_parallax(min_parallax_ / focal_length), last_imu_t(-1.0f),
@@ -29,7 +29,7 @@ BackEnd::BackEnd(double focal_length_,
       max_solver_time_in_seconds(max_solver_time_in_seconds_), max_num_iterations(max_num_iterations_),
       cv_huber_loss_parameter(cv_huber_loss_parameter_), triangulate_default_depth(triangulate_default_depth_),
       max_imu_sum_t(max_imu_sum_t_), min_init_stereo_num(min_init_stereo_num_), estimate_time_delay(estimate_td),
-      time_delay(init_td)
+      time_delay(init_td), use_lidar_tracking(use_lidar_tracking_)
 {
     gyr_noise_cov = gyr_n * gyr_n * Eigen::Matrix3d::Identity();
     acc_noise_cov = acc_n * acc_n * Eigen::Matrix3d::Identity();
@@ -776,7 +776,7 @@ void BackEnd::SolveBAImu() {
 
     //Lidar point info.
 
-#if LIDARFACTOR
+if(use_lidar_tracking){
     for(int i = 1, n = d_frames.size(); i < n; i = i + 4) {
         if(d_frames[i]->lidarInfo != -1 && d_frames[i-1]->lidarInfo != -1 ){
             //std::cout << "size ==" << d_frames[i]->cornerPointsLessSharp->points.size() << "\i=" << i <<std::endl;
@@ -812,7 +812,7 @@ void BackEnd::SolveBAImu() {
             }
         }
     }
-#endif
+}
 
     //int cornerPointsSharpNum = cornerPointsSharp->points.size();
     //int surfPointsFlatNum = surfPointsFlat->points.size();
@@ -1347,7 +1347,7 @@ void BackEnd::Marginalize() {
         }
 
         //lidar
-#if LIDARFACTOR
+if(use_lidar_tracking){
         if(d_frames[1]->curr_point_edge.size() > 200 && d_frames[1]->curr_point_plane.size() > 200){
 
             for(int sharp = 0; sharp < d_frames[1]->curr_point_edge.size(); sharp++ ){
@@ -1375,7 +1375,7 @@ void BackEnd::Marginalize() {
             }
 
         }
-#endif
+}
 
         // features
         int feature_index = -1;

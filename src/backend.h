@@ -108,7 +108,7 @@ public:
             double max_solver_time_in_seconds_, int max_num_iterations_,
             double cv_huber_loss_parameter_, double triangulate_default_depth_,
             double max_imu_sum_t_, int min_init_stereo_num_, int estimate_extrinsic,
-            int estimate_td, double init_td);
+            int estimate_td, double init_td, int use_lidar_tracking_ = 0);
     virtual ~BackEnd();
 
     inline void SubVIOTwb(std::function<void(double, const Sophus::SE3d)> callback) {
@@ -235,7 +235,7 @@ protected:
     bool estimate_time_delay;
     double time_delay;
     double para_Td[1];
-
+    int use_lidar_tracking;
     FramePtr new_keyframe;
     add_msg::ImuPredict imuinfo_tmp;
     Eigen::VecVector3d v_new_keyframe_x3Dc;
