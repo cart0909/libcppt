@@ -48,8 +48,12 @@ BackEnd::BackEnd(double focal_length_,
     para_features = new double[para_features_capacity * 1];
 
     request_reset_flag = false;
-
     enable_estimate_extrinsic = estimate_extrinsic;
+    Eigen::Quaterniond tmpR(0.001,-0.090,0.0,0.996);
+    Eigen::Vector3d tmpt(-0.221, 0.000, 0.356);
+    Sophus::SE3d T(tmpR, tmpt);
+    std::cout << "T=" << T.matrix() <<std::endl;
+
 }
 
 BackEnd::~BackEnd() {

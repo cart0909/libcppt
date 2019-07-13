@@ -42,6 +42,7 @@ BackEnd::FramePtr Converter::Convert(FeatureTracker::FramePtr feat_frame, Camera
          Pl = camera->BackProject(Eigen::Vector2d(feat_frame->pt[i].x, feat_frame->pt[i].y));
          backend_frame->pt_normal_plane.emplace_back(Pl);
          double depth = depth_iamge.at<uint16_t>(feat_frame->pt[i]) * depth_units;
+
          if(depth) {
              Eigen::Vector3d x3Dl = Pl * depth;
              Eigen::Vector3d x3Dr = q_rl * x3Dl + p_rl;
